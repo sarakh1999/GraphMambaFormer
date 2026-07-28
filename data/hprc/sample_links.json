@@ -1,0 +1,2596 @@
+[
+  {
+    "sample_id": "HG00438",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG00438/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG00438",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG00438/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200710_174426.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00438/raw_data/PacBio_HiFi/m64043_200710_174426.ccs.bam",
+        "coverage": "11.3",
+        "deepconsensus_coverage": "13.81",
+        "total_gbp": "34.9"
+      },
+      {
+        "filename": "m64043_200711_235708.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00438/raw_data/PacBio_HiFi/m64043_200711_235708.ccs.bam",
+        "coverage": "8.4",
+        "deepconsensus_coverage": "11.36",
+        "total_gbp": "26.04"
+      },
+      {
+        "filename": "m64043_200713_062240.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00438/raw_data/PacBio_HiFi/m64043_200713_062240.ccs.bam",
+        "coverage": "10.6",
+        "deepconsensus_coverage": "12.69",
+        "total_gbp": "32.73"
+      },
+      {
+        "filename": "m64043_200714_124814.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00438/raw_data/PacBio_HiFi/m64043_200714_124814.ccs.bam",
+        "coverage": "10.9",
+        "deepconsensus_coverage": "13.34",
+        "total_gbp": "33.8"
+      }
+    ],
+    "illumina": {
+      "filename": "HG00438.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG00438/raw_data/Illumina/child/HG00438.final.cram",
+      "coverage": "36.29",
+      "total_gbp": "112.49"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG00438/assemblies/year1_f1_assembly_v2_genbank/HG00438.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG00438/assemblies/year1_f1_assembly_v2_genbank/HG00438.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG00621",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG00621/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG00621",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG00621/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2027.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2027.bam",
+        "coverage": "2.1",
+        "deepconsensus_coverage": "",
+        "total_gbp": "6.41"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2027.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2027.bam",
+        "coverage": "2.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "8.57"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2027.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2027.bam",
+        "coverage": "2.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "8.82"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2027.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2027.bam",
+        "coverage": "2.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "8.69"
+      },
+      {
+        "filename": "m64136_200710_174522.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m64136_200710_174522.ccs.bam",
+        "coverage": "10.4",
+        "deepconsensus_coverage": "12.56",
+        "total_gbp": "32.31"
+      },
+      {
+        "filename": "m64136_200711_235843.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m64136_200711_235843.ccs.bam",
+        "coverage": "9.6",
+        "deepconsensus_coverage": "11.73",
+        "total_gbp": "29.89"
+      },
+      {
+        "filename": "m64136_200713_062514.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m64136_200713_062514.ccs.bam",
+        "coverage": "9.4",
+        "deepconsensus_coverage": "11.66",
+        "total_gbp": "29.1"
+      },
+      {
+        "filename": "m64136_200714_125149.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/PacBio_HiFi/m64136_200714_125149.ccs.bam",
+        "coverage": "10.1",
+        "deepconsensus_coverage": "11.96",
+        "total_gbp": "31.2"
+      }
+    ],
+    "illumina": {
+      "filename": "HG00621.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG00621/raw_data/Illumina/child/HG00621.final.cram",
+      "coverage": "35.11",
+      "total_gbp": "108.83"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG00621/assemblies/year1_f1_assembly_v2_genbank/HG00621.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG00621/assemblies/year1_f1_assembly_v2_genbank/HG00621.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG00673",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG00673/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG00673",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG00673/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2028.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2028.bam",
+        "coverage": "2.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.73"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2028.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2028.bam",
+        "coverage": "3.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "10.24"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2028.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2028.bam",
+        "coverage": "3.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "10.48"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2028.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2028.bam",
+        "coverage": "3.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "10.39"
+      },
+      {
+        "filename": "m64043_200716_182902.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m64043_200716_182902.ccs.bam",
+        "coverage": "9.3",
+        "deepconsensus_coverage": "11.26",
+        "total_gbp": "28.92"
+      },
+      {
+        "filename": "m64043_200718_004213.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m64043_200718_004213.ccs.bam",
+        "coverage": "10.2",
+        "deepconsensus_coverage": "12.62",
+        "total_gbp": "31.59"
+      },
+      {
+        "filename": "m64043_200719_070806.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m64043_200719_070806.ccs.bam",
+        "coverage": "10.3",
+        "deepconsensus_coverage": "13.05",
+        "total_gbp": "31.91"
+      },
+      {
+        "filename": "m64043_200720_133355.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/PacBio_HiFi/m64043_200720_133355.ccs.bam",
+        "coverage": "9.7",
+        "deepconsensus_coverage": "11.67",
+        "total_gbp": "30.07"
+      }
+    ],
+    "illumina": {
+      "filename": "HG00673.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG00673/raw_data/Illumina/child/HG00673.final.cram",
+      "coverage": "34.22",
+      "total_gbp": "106.08"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG00673/assemblies/year1_f1_assembly_v2_genbank/HG00673.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG00673/assemblies/year1_f1_assembly_v2_genbank/HG00673.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG00735",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG00735/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG00735",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG00735/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200702_173033.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00735/raw_data/PacBio_HiFi/m64043_200702_173033.ccs.bam",
+        "coverage": "11.7",
+        "deepconsensus_coverage": "14.19",
+        "total_gbp": "36.35"
+      },
+      {
+        "filename": "m64043_200703_234328.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00735/raw_data/PacBio_HiFi/m64043_200703_234328.ccs.bam",
+        "coverage": "11.1",
+        "deepconsensus_coverage": "13.15",
+        "total_gbp": "34.37"
+      },
+      {
+        "filename": "m64043_200705_060840.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00735/raw_data/PacBio_HiFi/m64043_200705_060840.ccs.bam",
+        "coverage": "11.2",
+        "deepconsensus_coverage": "13.45",
+        "total_gbp": "34.78"
+      },
+      {
+        "filename": "m64043_200706_123423.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00735/raw_data/PacBio_HiFi/m64043_200706_123423.ccs.bam",
+        "coverage": "9.0",
+        "deepconsensus_coverage": "11.98",
+        "total_gbp": "28.0"
+      }
+    ],
+    "illumina": {
+      "filename": "HG00735.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG00735/raw_data/Illumina/child/HG00735.final.cram",
+      "coverage": "35.09",
+      "total_gbp": "108.79"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG00735/assemblies/year1_f1_assembly_v2_genbank/HG00735.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG00735/assemblies/year1_f1_assembly_v2_genbank/HG00735.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG00741",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG00741/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG00741",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG00741/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2024.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2024.bam",
+        "coverage": "2.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "8.91"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2024.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2024.bam",
+        "coverage": "3.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "11.69"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2024.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2024.bam",
+        "coverage": "3.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "11.96"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2024.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2024.bam",
+        "coverage": "3.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "11.87"
+      },
+      {
+        "filename": "m64136_200625_174949.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m64136_200625_174949.ccs.bam",
+        "coverage": "10.1",
+        "deepconsensus_coverage": "12.21",
+        "total_gbp": "31.31"
+      },
+      {
+        "filename": "m64136_200627_000247.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m64136_200627_000247.ccs.bam",
+        "coverage": "8.7",
+        "deepconsensus_coverage": "11.52",
+        "total_gbp": "27.11"
+      },
+      {
+        "filename": "m64136_200628_062837.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m64136_200628_062837.ccs.bam",
+        "coverage": "10.1",
+        "deepconsensus_coverage": "12.37",
+        "total_gbp": "31.24"
+      },
+      {
+        "filename": "m64136_200629_125431.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/PacBio_HiFi/m64136_200629_125431.ccs.bam",
+        "coverage": "9.5",
+        "deepconsensus_coverage": "11.75",
+        "total_gbp": "29.57"
+      }
+    ],
+    "illumina": {
+      "filename": "HG00741.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG00741/raw_data/Illumina/child/HG00741.final.cram",
+      "coverage": "37.4",
+      "total_gbp": "115.95"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG00741/assemblies/year1_f1_assembly_v2_genbank/HG00741.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG00741/assemblies/year1_f1_assembly_v2_genbank/HG00741.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01071",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01071/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01071",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01071/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2026.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2026.bam",
+        "coverage": "3.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "10.29"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2026.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2026.bam",
+        "coverage": "4.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "13.59"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2026.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2026.bam",
+        "coverage": "4.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "13.89"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2026.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2026.bam",
+        "coverage": "4.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "13.78"
+      },
+      {
+        "filename": "m64136_200702_173125.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m64136_200702_173125.ccs.bam",
+        "coverage": "9.5",
+        "deepconsensus_coverage": "11.63",
+        "total_gbp": "29.39"
+      },
+      {
+        "filename": "m64136_200703_234438.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m64136_200703_234438.ccs.bam",
+        "coverage": "8.1",
+        "deepconsensus_coverage": "10.41",
+        "total_gbp": "25.13"
+      },
+      {
+        "filename": "m64136_200705_061033.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m64136_200705_061033.ccs.bam",
+        "coverage": "8.7",
+        "deepconsensus_coverage": "10.92",
+        "total_gbp": "26.99"
+      },
+      {
+        "filename": "m64136_200706_123635.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/PacBio_HiFi/m64136_200706_123635.ccs.bam",
+        "coverage": "8.8",
+        "deepconsensus_coverage": "10.97",
+        "total_gbp": "27.43"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01071.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01071/raw_data/Illumina/child/HG01071.final.cram",
+      "coverage": "37.31",
+      "total_gbp": "115.66"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01071/assemblies/year1_f1_assembly_v2_genbank/HG01071.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01071/assemblies/year1_f1_assembly_v2_genbank/HG01071.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01106",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01106/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01106",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01106/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200625_174853.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01106/raw_data/PacBio_HiFi/m64043_200625_174853.ccs.bam",
+        "coverage": "12.3",
+        "deepconsensus_coverage": "14.76",
+        "total_gbp": "38.03"
+      },
+      {
+        "filename": "m64043_200627_000137.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01106/raw_data/PacBio_HiFi/m64043_200627_000137.ccs.bam",
+        "coverage": "11.1",
+        "deepconsensus_coverage": "13.11",
+        "total_gbp": "34.47"
+      },
+      {
+        "filename": "m64043_200628_062711.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01106/raw_data/PacBio_HiFi/m64043_200628_062711.ccs.bam",
+        "coverage": "11.6",
+        "deepconsensus_coverage": "14.04",
+        "total_gbp": "35.85"
+      },
+      {
+        "filename": "m64043_200629_125238.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01106/raw_data/PacBio_HiFi/m64043_200629_125238.ccs.bam",
+        "coverage": "11.9",
+        "deepconsensus_coverage": "14.38",
+        "total_gbp": "36.77"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01106.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01106/raw_data/Illumina/child/HG01106.final.cram",
+      "coverage": "36.86",
+      "total_gbp": "114.26"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01106/assemblies/year1_f1_assembly_v2_genbank/HG01106.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01106/assemblies/year1_f1_assembly_v2_genbank/HG01106.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01123",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01123/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01123",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01123/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_230724_203319_s4.hifi_reads.bc2055.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01123/raw_data/PacBio_HiFi/m84046_230724_203319_s4.hifi_reads.bc2055.bam",
+        "coverage": "11.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "36.56"
+      },
+      {
+        "filename": "m84046_231202_090949_s3.hifi_reads.bc2055.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01123/raw_data/PacBio_HiFi/m84046_231202_090949_s3.hifi_reads.bc2055.bam",
+        "coverage": "14.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "45.09"
+      },
+      {
+        "filename": "m54329U_200201_051510.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01123/raw_data/PacBio_HiFi/m54329U_200201_051510.ccs.bam",
+        "coverage": "11.1",
+        "deepconsensus_coverage": "13.0",
+        "total_gbp": "34.55"
+      },
+      {
+        "filename": "m54329U_200203_181235.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01123/raw_data/PacBio_HiFi/m54329U_200203_181235.ccs.bam",
+        "coverage": "8.7",
+        "deepconsensus_coverage": "10.57",
+        "total_gbp": "27.01"
+      },
+      {
+        "filename": "m54329U_200205_002609.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01123/raw_data/PacBio_HiFi/m54329U_200205_002609.ccs.bam",
+        "coverage": "7.7",
+        "deepconsensus_coverage": "9.53",
+        "total_gbp": "23.97"
+      },
+      {
+        "filename": "m54329U_200206_215926.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01123/raw_data/PacBio_HiFi/m54329U_200206_215926.ccs.bam",
+        "coverage": "10.9",
+        "deepconsensus_coverage": "12.54",
+        "total_gbp": "33.87"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01123-111121_S1_L001_R2_001.fastq.gz",
+      "path": "s3://human-pangenomics/working/HPRC/HG01123/raw_data/Illumina/child/HG01123-111121_S1_L001_R2_001.fastq.gz",
+      "coverage": "39.8",
+      "total_gbp": "123.39"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01123/assemblies/year1_f1_assembly_v2_genbank/HG01123.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01123/assemblies/year1_f1_assembly_v2_genbank/HG01123.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01175",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01175/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01175",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01175/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2025.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2025.bam",
+        "coverage": "3.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "10.14"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2025.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2025.bam",
+        "coverage": "4.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "13.43"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2025.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2025.bam",
+        "coverage": "4.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "13.72"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2025.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2025.bam",
+        "coverage": "4.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "13.65"
+      },
+      {
+        "filename": "m64043_200618_201934.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m64043_200618_201934.ccs.bam",
+        "coverage": "8.8",
+        "deepconsensus_coverage": "11.48",
+        "total_gbp": "27.34"
+      },
+      {
+        "filename": "m64043_200620_173220.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m64043_200620_173220.ccs.bam",
+        "coverage": "10.7",
+        "deepconsensus_coverage": "12.92",
+        "total_gbp": "33.31"
+      },
+      {
+        "filename": "m64043_200621_234442.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m64043_200621_234442.ccs.bam",
+        "coverage": "8.1",
+        "deepconsensus_coverage": "10.59",
+        "total_gbp": "25.09"
+      },
+      {
+        "filename": "m64043_200623_060946.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/PacBio_HiFi/m64043_200623_060946.ccs.bam",
+        "coverage": "8.5",
+        "deepconsensus_coverage": "10.92",
+        "total_gbp": "26.2"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01175.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01175/raw_data/Illumina/child/HG01175.final.cram",
+      "coverage": "34.96",
+      "total_gbp": "108.37"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01175/assemblies/year1_f1_assembly_v2_genbank/HG01175.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01175/assemblies/year1_f1_assembly_v2_genbank/HG01175.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01258",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01258/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01258",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01258/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_231202_090949_s3.hifi_reads.bc2054.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01258/raw_data/PacBio_HiFi/m84046_231202_090949_s3.hifi_reads.bc2054.bam",
+        "coverage": "16.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "50.29"
+      },
+      {
+        "filename": "m64076_200306_185917.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01258/raw_data/PacBio_HiFi_Swap_Fixed/m64076_200306_185917.ccs.bam",
+        "coverage": "8.4",
+        "deepconsensus_coverage": "10.12",
+        "total_gbp": "26.04"
+      },
+      {
+        "filename": "m64076_200308_194406.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01258/raw_data/PacBio_HiFi_Swap_Fixed/m64076_200308_194406.ccs.bam",
+        "coverage": "9.5",
+        "deepconsensus_coverage": "11.49",
+        "total_gbp": "29.31"
+      },
+      {
+        "filename": "m64076_200310_015720.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01258/raw_data/PacBio_HiFi_Swap_Fixed/m64076_200310_015720.ccs.bam",
+        "coverage": "8.6",
+        "deepconsensus_coverage": "10.04",
+        "total_gbp": "26.51"
+      },
+      {
+        "filename": "m64076_200311_082315.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01258/raw_data/PacBio_HiFi_Swap_Fixed/m64076_200311_082315.ccs.bam",
+        "coverage": "9.4",
+        "deepconsensus_coverage": "11.19",
+        "total_gbp": "29.29"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01258.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01258/raw_data/Illumina/child/HG01258.final.cram",
+      "coverage": "37.17",
+      "total_gbp": "115.23"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01258/assemblies/year1_f1_assembly_v2_genbank/HG01258.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01258/assemblies/year1_f1_assembly_v2_genbank/HG01258.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01358",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01358/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01358",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01358/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_231202_071034_s1.hifi_reads.bc2053.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01358/raw_data/PacBio_HiFi/m84046_231202_071034_s1.hifi_reads.bc2053.bam",
+        "coverage": "7.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "23.73"
+      },
+      {
+        "filename": "m84046_231202_110908_s4.hifi_reads.bc2053.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01358/raw_data/PacBio_HiFi/m84046_231202_110908_s4.hifi_reads.bc2053.bam",
+        "coverage": "7.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "22.54"
+      },
+      {
+        "filename": "m64076_200201_051547.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01358/raw_data/PacBio_HiFi/m64076_200201_051547.ccs.bam",
+        "coverage": "9.7",
+        "deepconsensus_coverage": "11.44",
+        "total_gbp": "30.07"
+      },
+      {
+        "filename": "m64076_200203_181219.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01358/raw_data/PacBio_HiFi/m64076_200203_181219.ccs.bam",
+        "coverage": "10.5",
+        "deepconsensus_coverage": "12.55",
+        "total_gbp": "32.63"
+      },
+      {
+        "filename": "m64076_200206_215943.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01358/raw_data/PacBio_HiFi/m64076_200206_215943.ccs.bam",
+        "coverage": "9.1",
+        "deepconsensus_coverage": "10.96",
+        "total_gbp": "28.27"
+      },
+      {
+        "filename": "m64076_200208_041234.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01358/raw_data/PacBio_HiFi/m64076_200208_041234.ccs.bam",
+        "coverage": "8.4",
+        "deepconsensus_coverage": "10.15",
+        "total_gbp": "26.04"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01358.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01358/raw_data/Illumina/child/HG01358.final.cram",
+      "coverage": "38.25",
+      "total_gbp": "118.56"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01358/assemblies/year1_f1_assembly_v2_genbank/HG01358.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01358/assemblies/year1_f1_assembly_v2_genbank/HG01358.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01361",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01361/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01361",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01361/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_230724_203319_s4.hifi_reads.bc2056.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/PacBio_HiFi/m84046_230724_203319_s4.hifi_reads.bc2056.bam",
+        "coverage": "13.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "42.05"
+      },
+      {
+        "filename": "m84046_231202_071034_s1.hifi_reads.bc2052.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/PacBio_HiFi/m84046_231202_071034_s1.hifi_reads.bc2052.bam",
+        "coverage": "24.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "75.65"
+      },
+      {
+        "filename": "m54329U_200306_185930.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/PacBio_HiFi_Swap_Fixed/m54329U_200306_185930.ccs.bam",
+        "coverage": "10.7",
+        "deepconsensus_coverage": "12.57",
+        "total_gbp": "33.29"
+      },
+      {
+        "filename": "m64076_200221_234426.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/PacBio_HiFi_Swap_Fixed/m64076_200221_234426.ccs.bam",
+        "coverage": "2.2",
+        "deepconsensus_coverage": "2.66",
+        "total_gbp": "6.76"
+      },
+      {
+        "filename": "m54329U_200308_194417.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/PacBio_HiFi_Swap_Fixed/m54329U_200308_194417.ccs.bam",
+        "coverage": "10.7",
+        "deepconsensus_coverage": "12.65",
+        "total_gbp": "33.24"
+      },
+      {
+        "filename": "m54329U_200310_015838.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/PacBio_HiFi_Swap_Fixed/m54329U_200310_015838.ccs.bam",
+        "coverage": "9.2",
+        "deepconsensus_coverage": "10.89",
+        "total_gbp": "28.42"
+      },
+      {
+        "filename": "m54329U_200311_082605.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/PacBio_HiFi_Swap_Fixed/m54329U_200311_082605.ccs.bam",
+        "coverage": "9.1",
+        "deepconsensus_coverage": "10.91",
+        "total_gbp": "28.28"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01361.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01361/raw_data/Illumina/child/HG01361.final.cram",
+      "coverage": "38.14",
+      "total_gbp": "118.24"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01361/assemblies/year1_f1_assembly_v2_genbank/HG01361.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01361/assemblies/year1_f1_assembly_v2_genbank/HG01361.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01891",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01891/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01891",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01891/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_230712_224626_s1.hifi_reads.bc2066.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01891/raw_data/PacBio_HiFi/m84046_230712_224626_s1.hifi_reads.bc2066.bam",
+        "coverage": "21.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "65.72"
+      },
+      {
+        "filename": "m54329U_200124_193652.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01891/raw_data/PacBio_HiFi/m54329U_200124_193652.ccs.bam",
+        "coverage": "8.7",
+        "deepconsensus_coverage": "10.29",
+        "total_gbp": "27.12"
+      },
+      {
+        "filename": "m54329U_200127_180554.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01891/raw_data/PacBio_HiFi/m54329U_200127_180554.ccs.bam",
+        "coverage": "9.6",
+        "deepconsensus_coverage": "11.4",
+        "total_gbp": "29.88"
+      },
+      {
+        "filename": "m54329U_200129_001928.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01891/raw_data/PacBio_HiFi/m54329U_200129_001928.ccs.bam",
+        "coverage": "9.7",
+        "deepconsensus_coverage": "11.36",
+        "total_gbp": "30.2"
+      },
+      {
+        "filename": "m54329U_200130_064539.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01891/raw_data/PacBio_HiFi/m54329U_200130_064539.ccs.bam",
+        "coverage": "9.0",
+        "deepconsensus_coverage": "10.54",
+        "total_gbp": "27.92"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01891.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01891/raw_data/Illumina/child/HG01891.final.cram",
+      "coverage": "36.83",
+      "total_gbp": "114.19"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01891/assemblies/year1_f1_assembly_v2_genbank/HG01891.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01891/assemblies/year1_f1_assembly_v2_genbank/HG01891.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01928",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01928/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01928",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01928/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2022.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2022.bam",
+        "coverage": "4.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "12.39"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2022.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2022.bam",
+        "coverage": "5.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "16.38"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2022.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2022.bam",
+        "coverage": "5.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "16.77"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2022.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2022.bam",
+        "coverage": "5.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "16.63"
+      },
+      {
+        "filename": "m64043_200612_200936.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m64043_200612_200936.ccs.bam",
+        "coverage": "9.2",
+        "deepconsensus_coverage": "10.85",
+        "total_gbp": "28.48"
+      },
+      {
+        "filename": "m64043_200614_191756.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m64043_200614_191756.ccs.bam",
+        "coverage": "8.9",
+        "deepconsensus_coverage": "10.95",
+        "total_gbp": "27.53"
+      },
+      {
+        "filename": "m64043_200616_013031.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m64043_200616_013031.ccs.bam",
+        "coverage": "8.1",
+        "deepconsensus_coverage": "9.89",
+        "total_gbp": "25.23"
+      },
+      {
+        "filename": "m64043_200617_075530.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/PacBio_HiFi/m64043_200617_075530.ccs.bam",
+        "coverage": "8.9",
+        "deepconsensus_coverage": "10.69",
+        "total_gbp": "27.66"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01928.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01928/raw_data/Illumina/child/HG01928.final.cram",
+      "coverage": "38.32",
+      "total_gbp": "118.78"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01928/assemblies/year1_f1_assembly_v2_genbank/HG01928.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01928/assemblies/year1_f1_assembly_v2_genbank/HG01928.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01952",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01952/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01952",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01952/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2029.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2029.bam",
+        "coverage": "1.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "5.69"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2029.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2029.bam",
+        "coverage": "2.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.56"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2029.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2029.bam",
+        "coverage": "2.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.71"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2029.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2029.bam",
+        "coverage": "2.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.62"
+      },
+      {
+        "filename": "m64136_200612_201033.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m64136_200612_201033.ccs.bam",
+        "coverage": "10.2",
+        "deepconsensus_coverage": "12.62",
+        "total_gbp": "31.77"
+      },
+      {
+        "filename": "m64136_200614_192134.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m64136_200614_192134.ccs.bam",
+        "coverage": "10.5",
+        "deepconsensus_coverage": "12.62",
+        "total_gbp": "32.65"
+      },
+      {
+        "filename": "m64136_200616_013426.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m64136_200616_013426.ccs.bam",
+        "coverage": "10.5",
+        "deepconsensus_coverage": "12.51",
+        "total_gbp": "32.55"
+      },
+      {
+        "filename": "m64136_200617_080019.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/PacBio_HiFi/m64136_200617_080019.ccs.bam",
+        "coverage": "10.0",
+        "deepconsensus_coverage": "11.86",
+        "total_gbp": "30.89"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01952.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01952/raw_data/Illumina/child/HG01952.final.cram",
+      "coverage": "36.69",
+      "total_gbp": "113.75"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01952/assemblies/year1_f1_assembly_v2_genbank/HG01952.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01952/assemblies/year1_f1_assembly_v2_genbank/HG01952.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01978",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG01978/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01978",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG01978/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2021.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2021.bam",
+        "coverage": "1.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "5.16"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2021.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2021.bam",
+        "coverage": "2.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "6.81"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2021.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2021.bam",
+        "coverage": "2.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.02"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2021.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2021.bam",
+        "coverage": "2.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "6.94"
+      },
+      {
+        "filename": "m64136_200530_164818.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m64136_200530_164818.ccs.bam",
+        "coverage": "8.9",
+        "deepconsensus_coverage": "12.25",
+        "total_gbp": "27.71"
+      },
+      {
+        "filename": "m64136_200602_153012.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m64136_200602_153012.ccs.bam",
+        "coverage": "9.2",
+        "deepconsensus_coverage": "12.17",
+        "total_gbp": "28.57"
+      },
+      {
+        "filename": "m64136_200603_214308.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m64136_200603_214308.ccs.bam",
+        "coverage": "10.0",
+        "deepconsensus_coverage": "12.98",
+        "total_gbp": "31.15"
+      },
+      {
+        "filename": "m64136_200605_040848.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/PacBio_HiFi/m64136_200605_040848.ccs.bam",
+        "coverage": "9.7",
+        "deepconsensus_coverage": "12.62",
+        "total_gbp": "30.14"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01978.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG01978/raw_data/Illumina/child/HG01978.final.cram",
+      "coverage": "40.31",
+      "total_gbp": "124.97"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG01978/assemblies/year1_f1_assembly_v2_genbank/HG01978.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG01978/assemblies/year1_f1_assembly_v2_genbank/HG01978.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02148",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02148/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02148",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02148/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84081_231222_081401_s1.hifi_reads.bc2023.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m84081_231222_081401_s1.hifi_reads.bc2023.bam",
+        "coverage": "3.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "9.16"
+      },
+      {
+        "filename": "m84081_231222_101332_s2.hifi_reads.bc2023.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m84081_231222_101332_s2.hifi_reads.bc2023.bam",
+        "coverage": "3.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "12.13"
+      },
+      {
+        "filename": "m84081_231222_121301_s3.hifi_reads.bc2023.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m84081_231222_121301_s3.hifi_reads.bc2023.bam",
+        "coverage": "4.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "12.42"
+      },
+      {
+        "filename": "m84081_231222_141231_s4.hifi_reads.bc2023.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m84081_231222_141231_s4.hifi_reads.bc2023.bam",
+        "coverage": "4.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "12.33"
+      },
+      {
+        "filename": "m64136_200618_202033.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m64136_200618_202033.ccs.bam",
+        "coverage": "12.5",
+        "deepconsensus_coverage": "14.68",
+        "total_gbp": "38.81"
+      },
+      {
+        "filename": "m64136_200620_173618.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m64136_200620_173618.ccs.bam",
+        "coverage": "9.5",
+        "deepconsensus_coverage": "11.07",
+        "total_gbp": "29.59"
+      },
+      {
+        "filename": "m64136_200621_234916.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m64136_200621_234916.ccs.bam",
+        "coverage": "8.0",
+        "deepconsensus_coverage": "9.99",
+        "total_gbp": "24.8"
+      },
+      {
+        "filename": "m64136_200623_061529.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/PacBio_HiFi/m64136_200623_061529.ccs.bam",
+        "coverage": "9.7",
+        "deepconsensus_coverage": "11.26",
+        "total_gbp": "30.05"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02148.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG02148/raw_data/Illumina/child/HG02148.final.cram",
+      "coverage": "38.37",
+      "total_gbp": "118.93"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02148/assemblies/year1_f1_assembly_v2_genbank/HG02148.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02148/assemblies/year1_f1_assembly_v2_genbank/HG02148.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02257",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02257/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02257",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02257/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_230628_182559_s4.hifi_reads.bc2064.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02257/raw_data/PacBio_HiFi/m84046_230628_182559_s4.hifi_reads.bc2064.bam",
+        "coverage": "24.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "76.47"
+      },
+      {
+        "filename": "m64076_200125_231256.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02257/raw_data/PacBio_HiFi/m64076_200125_231256.ccs.bam",
+        "coverage": "6.4",
+        "deepconsensus_coverage": "7.99",
+        "total_gbp": "19.71"
+      },
+      {
+        "filename": "m64076_200127_180545.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02257/raw_data/PacBio_HiFi/m64076_200127_180545.ccs.bam",
+        "coverage": "10.3",
+        "deepconsensus_coverage": "12.22",
+        "total_gbp": "31.79"
+      },
+      {
+        "filename": "m64076_200129_001835.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02257/raw_data/PacBio_HiFi/m64076_200129_001835.ccs.bam",
+        "coverage": "9.8",
+        "deepconsensus_coverage": "11.55",
+        "total_gbp": "30.47"
+      },
+      {
+        "filename": "m64076_200130_064345.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02257/raw_data/PacBio_HiFi/m64076_200130_064345.ccs.bam",
+        "coverage": "9.2",
+        "deepconsensus_coverage": "11.13",
+        "total_gbp": "28.67"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02257.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG02257/raw_data/Illumina/child/HG02257.final.cram",
+      "coverage": "37.58",
+      "total_gbp": "116.49"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02257/assemblies/year1_f1_assembly_v2_genbank/HG02257.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02257/assemblies/year1_f1_assembly_v2_genbank/HG02257.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02486",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02486/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02486",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02486/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_230707_195504_s2.hifi_reads.bc2067.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m84046_230707_195504_s2.hifi_reads.bc2067.bam",
+        "coverage": "8.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "26.35"
+      },
+      {
+        "filename": "m84046_230707_202610_s3.hifi_reads.bc2067.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m84046_230707_202610_s3.hifi_reads.bc2067.bam",
+        "coverage": "8.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "25.54"
+      },
+      {
+        "filename": "m54329U_200215_021808.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m54329U_200215_021808.ccs.bam",
+        "coverage": "5.8",
+        "deepconsensus_coverage": "7.08",
+        "total_gbp": "18.06"
+      },
+      {
+        "filename": "m54329U_200313_161638.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m54329U_200313_161638.ccs.bam",
+        "coverage": "8.7",
+        "deepconsensus_coverage": "10.14",
+        "total_gbp": "26.98"
+      },
+      {
+        "filename": "m64076_200211_192227.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m64076_200211_192227.ccs.bam",
+        "coverage": "0.3",
+        "deepconsensus_coverage": "0.4",
+        "total_gbp": "1.03"
+      },
+      {
+        "filename": "m54329U_200315_215927.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m54329U_200315_215927.ccs.bam",
+        "coverage": "8.9",
+        "deepconsensus_coverage": "10.38",
+        "total_gbp": "27.66"
+      },
+      {
+        "filename": "m54329U_200317_041347.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m54329U_200317_041347.ccs.bam",
+        "coverage": "7.7",
+        "deepconsensus_coverage": "9.08",
+        "total_gbp": "23.86"
+      },
+      {
+        "filename": "m54329U_200320_213710.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/PacBio_HiFi/m54329U_200320_213710.ccs.bam",
+        "coverage": "8.5",
+        "deepconsensus_coverage": "10.26",
+        "total_gbp": "26.33"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02486-111121_S6_L002_R2_001.fastq.gz",
+      "path": "s3://human-pangenomics/working/HPRC/HG02486/raw_data/Illumina/child/HG02486-111121_S6_L002_R2_001.fastq.gz",
+      "coverage": "24.96",
+      "total_gbp": "77.36"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02486/assemblies/year1_f1_assembly_v2_genbank/HG02486.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02486/assemblies/year1_f1_assembly_v2_genbank/HG02486.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02559",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02559/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02559",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02559/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_230628_175536_s3.hifi_reads.bc2057.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02559/raw_data/PacBio_HiFi/m84046_230628_175536_s3.hifi_reads.bc2057.bam",
+        "coverage": "15.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "48.11"
+      },
+      {
+        "filename": "m54329U_200211_192235.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02559/raw_data/PacBio_HiFi/m54329U_200211_192235.ccs.bam",
+        "coverage": "2.2",
+        "deepconsensus_coverage": "2.73",
+        "total_gbp": "6.84"
+      },
+      {
+        "filename": "m54329U_200217_055345.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02559/raw_data/PacBio_HiFi/m54329U_200217_055345.ccs.bam",
+        "coverage": "10.4",
+        "deepconsensus_coverage": "13.01",
+        "total_gbp": "32.26"
+      },
+      {
+        "filename": "m54329U_200219_181523.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02559/raw_data/PacBio_HiFi/m54329U_200219_181523.ccs.bam",
+        "coverage": "10.1",
+        "deepconsensus_coverage": "12.37",
+        "total_gbp": "31.28"
+      },
+      {
+        "filename": "m64076_200215_021919.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02559/raw_data/PacBio_HiFi/m64076_200215_021919.ccs.bam",
+        "coverage": "8.6",
+        "deepconsensus_coverage": "10.96",
+        "total_gbp": "26.58"
+      },
+      {
+        "filename": "m64076_200217_055339.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02559/raw_data/PacBio_HiFi/m64076_200217_055339.ccs.bam",
+        "coverage": "10.2",
+        "deepconsensus_coverage": "12.73",
+        "total_gbp": "31.58"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02599_S18_L004_R2_001.fastq.gz",
+      "path": "s3://human-pangenomics/working/HPRC/HG02559/raw_data/Illumina/child/HG02559_S18_L004_R2_001.fastq.gz",
+      "coverage": "1.13",
+      "total_gbp": "3.5"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02559/assemblies/year1_f1_assembly_v2_genbank/HG02559.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02559/assemblies/year1_f1_assembly_v2_genbank/HG02559.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02572",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02572/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02572",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02572/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_230711_233802_s3.hifi_reads.default.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02572/raw_data/PacBio_HiFi/m84046_230711_233802_s3.hifi_reads.default.bam",
+        "coverage": "22.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "70.16"
+      },
+      {
+        "filename": "m54329U_200319_002813.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02572/raw_data/PacBio_HiFi/m54329U_200319_002813.ccs.bam",
+        "coverage": "8.3",
+        "deepconsensus_coverage": "9.85",
+        "total_gbp": "25.59"
+      },
+      {
+        "filename": "m64076_200313_161705.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02572/raw_data/PacBio_HiFi/m64076_200313_161705.ccs.bam",
+        "coverage": "8.7",
+        "deepconsensus_coverage": "10.28",
+        "total_gbp": "26.95"
+      },
+      {
+        "filename": "m64076_200317_041201.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02572/raw_data/PacBio_HiFi/m64076_200317_041201.ccs.bam",
+        "coverage": "6.9",
+        "deepconsensus_coverage": "8.06",
+        "total_gbp": "21.41"
+      },
+      {
+        "filename": "m64076_200318_103811.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02572/raw_data/PacBio_HiFi/m64076_200318_103811.ccs.bam",
+        "coverage": "7.1",
+        "deepconsensus_coverage": "8.65",
+        "total_gbp": "21.93"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02572.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG02572/raw_data/Illumina/child/HG02572.final.cram",
+      "coverage": "36.6",
+      "total_gbp": "113.45"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02572/assemblies/year1_f1_assembly_v2_genbank/HG02572.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02572/assemblies/year1_f1_assembly_v2_genbank/HG02572.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02622",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02622/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02622",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02622/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200530_164723.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02622/raw_data/PacBio_HiFi/m64043_200530_164723.ccs.bam",
+        "coverage": "12.0",
+        "deepconsensus_coverage": "14.4",
+        "total_gbp": "37.23"
+      },
+      {
+        "filename": "m64043_200601_191521.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02622/raw_data/PacBio_HiFi/m64043_200601_191521.ccs.bam",
+        "coverage": "11.9",
+        "deepconsensus_coverage": "14.2",
+        "total_gbp": "36.9"
+      },
+      {
+        "filename": "m64043_200603_012738.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02622/raw_data/PacBio_HiFi/m64043_200603_012738.ccs.bam",
+        "coverage": "11.3",
+        "deepconsensus_coverage": "14.37",
+        "total_gbp": "35.16"
+      },
+      {
+        "filename": "m64043_200604_075218.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02622/raw_data/PacBio_HiFi/m64043_200604_075218.ccs.bam",
+        "coverage": "11.2",
+        "deepconsensus_coverage": "14.08",
+        "total_gbp": "34.7"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02622.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG02622/raw_data/Illumina/child/HG02622.final.cram",
+      "coverage": "39.24",
+      "total_gbp": "121.65"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02622/assemblies/year1_f1_assembly_v2_genbank/HG02622.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02622/assemblies/year1_f1_assembly_v2_genbank/HG02622.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02630",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02630/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02630",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02630/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200501_162248.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02630/raw_data/PacBio_HiFi/m64043_200501_162248.ccs.bam",
+        "coverage": "12.7",
+        "deepconsensus_coverage": "15.04",
+        "total_gbp": "39.4"
+      },
+      {
+        "filename": "m64043_200502_223511.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02630/raw_data/PacBio_HiFi/m64043_200502_223511.ccs.bam",
+        "coverage": "12.1",
+        "deepconsensus_coverage": "14.48",
+        "total_gbp": "37.43"
+      },
+      {
+        "filename": "m64043_200504_050026.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02630/raw_data/PacBio_HiFi/m64043_200504_050026.ccs.bam",
+        "coverage": "12.1",
+        "deepconsensus_coverage": "14.37",
+        "total_gbp": "37.59"
+      },
+      {
+        "filename": "m64043_200505_112554.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02630/raw_data/PacBio_HiFi/m64043_200505_112554.ccs.bam",
+        "coverage": "11.8",
+        "deepconsensus_coverage": "14.11",
+        "total_gbp": "36.59"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02630.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG02630/raw_data/Illumina/child/HG02630.final.cram",
+      "coverage": "39.8",
+      "total_gbp": "123.37"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02630/assemblies/year1_f1_assembly_v2_genbank/HG02630.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02630/assemblies/year1_f1_assembly_v2_genbank/HG02630.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02717",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02717/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02717",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02717/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200403_163826.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02717/raw_data/PacBio_HiFi/m64043_200403_163826.ccs.bam",
+        "coverage": "11.7",
+        "deepconsensus_coverage": "14.04",
+        "total_gbp": "36.34"
+      },
+      {
+        "filename": "m64043_200405_180950.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02717/raw_data/PacBio_HiFi/m64043_200405_180950.ccs.bam",
+        "coverage": "11.1",
+        "deepconsensus_coverage": "13.51",
+        "total_gbp": "34.32"
+      },
+      {
+        "filename": "m64043_200407_002219.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02717/raw_data/PacBio_HiFi/m64043_200407_002219.ccs.bam",
+        "coverage": "11.2",
+        "deepconsensus_coverage": "13.66",
+        "total_gbp": "34.81"
+      },
+      {
+        "filename": "m64043_200408_064651.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02717/raw_data/PacBio_HiFi/m64043_200408_064651.ccs.bam",
+        "coverage": "11.2",
+        "deepconsensus_coverage": "13.4",
+        "total_gbp": "34.82"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02717.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG02717/raw_data/Illumina/child/HG02717.final.cram",
+      "coverage": "38.68",
+      "total_gbp": "119.9"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02717/assemblies/year1_f1_assembly_v2_genbank/HG02717.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02717/assemblies/year1_f1_assembly_v2_genbank/HG02717.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02886",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG02886/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02886",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG02886/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200410_214826.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02886/raw_data/PacBio_HiFi/m64043_200410_214826.ccs.bam",
+        "coverage": "11.0",
+        "deepconsensus_coverage": "13.37",
+        "total_gbp": "34.1"
+      },
+      {
+        "filename": "m64043_200412_040054.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02886/raw_data/PacBio_HiFi/m64043_200412_040054.ccs.bam",
+        "coverage": "11.6",
+        "deepconsensus_coverage": "14.36",
+        "total_gbp": "35.97"
+      },
+      {
+        "filename": "m64043_200413_102554.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02886/raw_data/PacBio_HiFi/m64043_200413_102554.ccs.bam",
+        "coverage": "10.8",
+        "deepconsensus_coverage": "13.27",
+        "total_gbp": "33.57"
+      },
+      {
+        "filename": "m64043_200414_165107.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG02886/raw_data/PacBio_HiFi/m64043_200414_165107.ccs.bam",
+        "coverage": "10.9",
+        "deepconsensus_coverage": "13.51",
+        "total_gbp": "33.76"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02886.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG02886/raw_data/Illumina/child/HG02886.final.cram",
+      "coverage": "40.81",
+      "total_gbp": "126.52"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG02886/assemblies/year1_f1_assembly_v2_genbank/HG02886.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG02886/assemblies/year1_f1_assembly_v2_genbank/HG02886.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG03453",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG03453/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG03453",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG03453/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200508_172634.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03453/raw_data/PacBio_HiFi/m64043_200508_172634.ccs.bam",
+        "coverage": "13.1",
+        "deepconsensus_coverage": "15.13",
+        "total_gbp": "40.65"
+      },
+      {
+        "filename": "m64043_200509_233929.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03453/raw_data/PacBio_HiFi/m64043_200509_233929.ccs.bam",
+        "coverage": "13.4",
+        "deepconsensus_coverage": "15.53",
+        "total_gbp": "41.59"
+      },
+      {
+        "filename": "m64043_200511_060458.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03453/raw_data/PacBio_HiFi/m64043_200511_060458.ccs.bam",
+        "coverage": "12.8",
+        "deepconsensus_coverage": "14.85",
+        "total_gbp": "39.53"
+      },
+      {
+        "filename": "m64043_200512_123035.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03453/raw_data/PacBio_HiFi/m64043_200512_123035.ccs.bam",
+        "coverage": "12.4",
+        "deepconsensus_coverage": "14.46",
+        "total_gbp": "38.49"
+      }
+    ],
+    "illumina": {
+      "filename": "HG03453.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG03453/raw_data/Illumina/child/HG03453.final.cram",
+      "coverage": "35.39",
+      "total_gbp": "109.71"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG03453/assemblies/year1_f1_assembly_v2_genbank/HG03453.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG03453/assemblies/year1_f1_assembly_v2_genbank/HG03453.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG03516",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG03516/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG03516",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG03516/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84046_231202_110908_s4.hifi_reads.bc2056.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03516/raw_data/PacBio_HiFi/m84046_231202_110908_s4.hifi_reads.bc2056.bam",
+        "coverage": "22.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "69.9"
+      },
+      {
+        "filename": "m54329U_200610_234222.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03516/raw_data/PacBio_HiFi/m54329U_200610_234222.ccs.bam",
+        "coverage": "10.6",
+        "deepconsensus_coverage": "13.07",
+        "total_gbp": "33.01"
+      },
+      {
+        "filename": "m54329U_200612_200443.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03516/raw_data/PacBio_HiFi/m54329U_200612_200443.ccs.bam",
+        "coverage": "10.5",
+        "deepconsensus_coverage": "12.82",
+        "total_gbp": "32.63"
+      },
+      {
+        "filename": "m54329U_200614_021746.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03516/raw_data/PacBio_HiFi/m54329U_200614_021746.ccs.bam",
+        "coverage": "6.7",
+        "deepconsensus_coverage": "8.45",
+        "total_gbp": "20.66"
+      },
+      {
+        "filename": "m54329U_200615_084313.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03516/raw_data/PacBio_HiFi/m54329U_200615_084313.ccs.bam",
+        "coverage": "7.7",
+        "deepconsensus_coverage": "10.1",
+        "total_gbp": "23.95"
+      }
+    ],
+    "illumina": {
+      "filename": "HG03516.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG03516/raw_data/Illumina/child/HG03516.final.cram",
+      "coverage": "33.41",
+      "total_gbp": "103.57"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG03516/assemblies/year1_f1_assembly_v2_genbank/HG03516.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG03516/assemblies/year1_f1_assembly_v2_genbank/HG03516.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG03540",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG03540/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG03540",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG03540/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200521_171703.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03540/raw_data/PacBio_HiFi/m64043_200521_171703.ccs.bam",
+        "coverage": "12.7",
+        "deepconsensus_coverage": "15.01",
+        "total_gbp": "39.3"
+      },
+      {
+        "filename": "m64043_200522_232930.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03540/raw_data/PacBio_HiFi/m64043_200522_232930.ccs.bam",
+        "coverage": "12.3",
+        "deepconsensus_coverage": "14.59",
+        "total_gbp": "38.06"
+      },
+      {
+        "filename": "m64043_200524_055430.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03540/raw_data/PacBio_HiFi/m64043_200524_055430.ccs.bam",
+        "coverage": "12.5",
+        "deepconsensus_coverage": "14.66",
+        "total_gbp": "38.6"
+      },
+      {
+        "filename": "m64043_200525_121851.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03540/raw_data/PacBio_HiFi/m64043_200525_121851.ccs.bam",
+        "coverage": "12.1",
+        "deepconsensus_coverage": "14.27",
+        "total_gbp": "37.45"
+      }
+    ],
+    "illumina": {
+      "filename": "HG03540.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG03540/raw_data/Illumina/child/HG03540.final.cram",
+      "coverage": "39.56",
+      "total_gbp": "122.63"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG03540/assemblies/year1_f1_assembly_v2_genbank/HG03540.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG03540/assemblies/year1_f1_assembly_v2_genbank/HG03540.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG03579",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC/HG03579/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG03579",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC/HG03579/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200515_165406.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03579/raw_data/PacBio_HiFi/m64043_200515_165406.ccs.bam",
+        "coverage": "10.8",
+        "deepconsensus_coverage": "12.94",
+        "total_gbp": "33.33"
+      },
+      {
+        "filename": "m64043_200516_230634.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03579/raw_data/PacBio_HiFi/m64043_200516_230634.ccs.bam",
+        "coverage": "12.7",
+        "deepconsensus_coverage": "14.54",
+        "total_gbp": "39.28"
+      },
+      {
+        "filename": "m64043_200518_053124.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03579/raw_data/PacBio_HiFi/m64043_200518_053124.ccs.bam",
+        "coverage": "12.6",
+        "deepconsensus_coverage": "14.68",
+        "total_gbp": "39.17"
+      },
+      {
+        "filename": "m64043_200519_115622.ccs.bam",
+        "path": "s3://human-pangenomics/working/HPRC/HG03579/raw_data/PacBio_HiFi/m64043_200519_115622.ccs.bam",
+        "coverage": "12.3",
+        "deepconsensus_coverage": "14.19",
+        "total_gbp": "38.22"
+      }
+    ],
+    "illumina": {
+      "filename": "HG03579.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC/HG03579/raw_data/Illumina/child/HG03579.final.cram",
+      "coverage": "35.09",
+      "total_gbp": "108.77"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC/HG03579/assemblies/year1_f1_assembly_v2_genbank/HG03579.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC/HG03579/assemblies/year1_f1_assembly_v2_genbank/HG03579.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG002",
+    "in_graph_44": false,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG002",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG002/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64011_190714_120746.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64011_190714_120746.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "8.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "26.13"
+      },
+      {
+        "filename": "m64011_190728_111204.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64011_190728_111204.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "6.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "20.73"
+      },
+      {
+        "filename": "m64011_190830_220126.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64011_190830_220126.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "coverage": "8.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "27.27"
+      },
+      {
+        "filename": "m64011_190901_095311.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64011_190901_095311.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "coverage": "8.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "25.85"
+      },
+      {
+        "filename": "m64012_190920_173625.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64012_190920_173625.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "coverage": "9.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.23"
+      },
+      {
+        "filename": "m64012_190921_234837.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64012_190921_234837.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "coverage": "9.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.76"
+      },
+      {
+        "filename": "m64015_190920_185703.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64015_190920_185703.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "9.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "29.19"
+      },
+      {
+        "filename": "m64015_190922_010918.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64015_190922_010918.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "9.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "27.95"
+      },
+      {
+        "filename": "m64043_211027_183048.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64043_211027_183048.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "11.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "34.75"
+      },
+      {
+        "filename": "m64076_210309_014547.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64076_210309_014547.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "8.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "25.43"
+      },
+      {
+        "filename": "m64076_210310_104300.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m64076_210310_104300.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "9.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "29.41"
+      },
+      {
+        "filename": "m84005_220827_014912_s1.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m84005_220827_014912_s1.hifi_reads.bam",
+        "coverage": "28.1",
+        "deepconsensus_coverage": "",
+        "total_gbp": "87.26"
+      },
+      {
+        "filename": "m84005_220919_232112_s2.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m84005_220919_232112_s2.hifi_reads.bam",
+        "coverage": "29.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "92.32"
+      },
+      {
+        "filename": "m84011_220902_175841_s1.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m84011_220902_175841_s1.hifi_reads.bam",
+        "coverage": "32.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "101.06"
+      },
+      {
+        "filename": "m84039_230117_233243_s1.hifi_reads.default.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/PacBio_HiFi/wMods/m84039_230117_233243_s1.hifi_reads.default.bam",
+        "coverage": "",
+        "deepconsensus_coverage": "",
+        "total_gbp": ""
+      }
+    ],
+    "illumina": {
+      "filename": "HG002.novaseq.pcr-free.30x.R2.fastq.gz",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG002/raw_data/Illumina/child/HG002.novaseq.pcr-free.30x.R2.fastq.gz",
+      "coverage": "17.33",
+      "total_gbp": "53.7"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG002/assemblies/year1_f1_assembly_v2_genbank/HG002.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG002/assemblies/year1_f1_assembly_v2_genbank/HG002.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG005",
+    "in_graph_44": false,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG005",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG005/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64017_200723_190224.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/PacBio_HiFi/wMods/m64017_200723_190224.hifi_reads.bam",
+        "coverage": "6.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "20.3"
+      },
+      {
+        "filename": "m64017_200730_190124.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/PacBio_HiFi/wMods/m64017_200730_190124.hifi_reads.bam",
+        "coverage": "6.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "20.61"
+      },
+      {
+        "filename": "m64017_200801_011415.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/PacBio_HiFi/wMods/m64017_200801_011415.hifi_reads.bam",
+        "coverage": "5.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "17.21"
+      },
+      {
+        "filename": "m64017_200802_073944.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/PacBio_HiFi/wMods/m64017_200802_073944.hifi_reads.bam",
+        "coverage": "4.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "13.44"
+      },
+      {
+        "filename": "m64109_200304_195708.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/PacBio_HiFi/wMods/m64109_200304_195708.hifi_reads.bam",
+        "coverage": "8.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "27.43"
+      },
+      {
+        "filename": "m64109_200309_192110.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/PacBio_HiFi/wMods/m64109_200309_192110.hifi_reads.bam",
+        "coverage": "8.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "26.42"
+      },
+      {
+        "filename": "m64109_200311_013444.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/PacBio_HiFi/wMods/m64109_200311_013444.hifi_reads.bam",
+        "coverage": "8.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "25.27"
+      }
+    ],
+    "illumina": {
+      "filename": "HG005.novaseq.pcr-free.30x.R2.fastq.gz",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG005/raw_data/Illumina/child/HG005.novaseq.pcr-free.30x.R2.fastq.gz",
+      "coverage": "17.68",
+      "total_gbp": "54.8"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG005/assemblies/year1_f1_assembly_v2_genbank/HG005.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG005/assemblies/year1_f1_assembly_v2_genbank/HG005.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG00733",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG00733",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG00733/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64076_211218_173901.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/raw_data/PacBio_HiFi/m64076_211218_173901.hifi_reads.bam",
+        "coverage": "13.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "41.46"
+      },
+      {
+        "filename": "m64076_211214_012715.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/raw_data/PacBio_HiFi/m64076_211214_012715.hifi_reads.bam",
+        "coverage": "12.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "39.25"
+      },
+      {
+        "filename": "m64076_211217_081943.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/raw_data/PacBio_HiFi/m64076_211217_081943.hifi_reads.bam",
+        "coverage": "13.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "43.0"
+      },
+      {
+        "filename": "m64076_211215_225159.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/raw_data/PacBio_HiFi/m64076_211215_225159.hifi_reads.bam",
+        "coverage": "12.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "40.0"
+      },
+      {
+        "filename": "m64076_211221_015212.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/raw_data/PacBio_HiFi/m64076_211221_015212.hifi_reads.bam",
+        "coverage": "13.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "41.06"
+      }
+    ],
+    "illumina": {
+      "filename": "HG00733.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/raw_data/Illumina/child/HG00733.final.cram",
+      "coverage": "34.03",
+      "total_gbp": "112.3"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/assemblies/year1_f1_assembly_v2_genbank/HG00733.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG00733/assemblies/year1_f1_assembly_v2_genbank/HG00733.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01109",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG01109/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01109",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG01109/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200827_191459.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01109/raw_data/PacBio_HiFi/wMods/m64043_200827_191459.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "12.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "39.61"
+      },
+      {
+        "filename": "m64043_200829_012836.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01109/raw_data/PacBio_HiFi/wMods/m64043_200829_012836.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.94"
+      },
+      {
+        "filename": "m64043_200830_075523.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01109/raw_data/PacBio_HiFi/wMods/m64043_200830_075523.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.3"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01109.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01109/raw_data/Illumina/child/HG01109.final.cram",
+      "coverage": "34.91",
+      "total_gbp": "115.2"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG01109/assemblies/year1_f1_assembly_v2_genbank/HG01109.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG01109/assemblies/year1_f1_assembly_v2_genbank/HG01109.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG01243",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG01243",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG01243/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m54313U_211126_191012.5mC.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/wMods/m54313U_211126_191012.5mC.hifi_reads.bam",
+        "coverage": "10.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.99"
+      },
+      {
+        "filename": "m54313U_211208_155922.5mC.hifi_reads.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/wMods/m54313U_211208_155922.5mC.hifi_reads.bam",
+        "coverage": "10.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.53"
+      },
+      {
+        "filename": "m64136_200827_191603.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/wMods/m64136_200827_191603.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "coverage": "13.1",
+        "deepconsensus_coverage": "",
+        "total_gbp": "40.64"
+      },
+      {
+        "filename": "m64136_200829_012933.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/wMods/m64136_200829_012933.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "coverage": "11.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "35.73"
+      },
+      {
+        "filename": "m64136_200830_075556.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/wMods/m64136_200830_075556.hifi_reads.ccs_v6.0.0.pm_v1.4.0.bam",
+        "coverage": "12.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "37.34"
+      },
+      {
+        "filename": "m84039_230303_005138_s2.hifi_reads.bc2009.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/m84039_230303_005138_s2.hifi_reads.bc2009.bam",
+        "coverage": "7.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "24.06"
+      },
+      {
+        "filename": "m84039_230311_024907_s1.hifi_reads.bc2009.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/m84039_230311_024907_s1.hifi_reads.bc2009.bam",
+        "coverage": "4.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "12.97"
+      },
+      {
+        "filename": "m84039_230314_210032_s1.hifi_reads.bc2009.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/m84039_230314_210032_s1.hifi_reads.bc2009.bam",
+        "coverage": "12.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "39.11"
+      },
+      {
+        "filename": "m84039_230316_185945_s1.hifi_reads.bc2009.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/PacBio_HiFi/m84039_230316_185945_s1.hifi_reads.bc2009.bam",
+        "coverage": "8.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "25.77"
+      }
+    ],
+    "illumina": {
+      "filename": "HG01243.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/raw_data/Illumina/child/HG01243.final.cram",
+      "coverage": "32.67",
+      "total_gbp": "107.8"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/assemblies/year1_f1_assembly_v2_genbank/HG01243.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG01243/assemblies/year1_f1_assembly_v2_genbank/HG01243.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02055",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02055",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG02055/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84039_230303_005138_s2.hifi_reads.bc2010.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/raw_data/PacBio_HiFi/m84039_230303_005138_s2.hifi_reads.bc2010.bam",
+        "coverage": "7.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "22.81"
+      },
+      {
+        "filename": "m84039_230311_024907_s1.hifi_reads.bc2010.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/raw_data/PacBio_HiFi/m84039_230311_024907_s1.hifi_reads.bc2010.bam",
+        "coverage": "7.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "23.13"
+      },
+      {
+        "filename": "m84039_230314_210032_s1.hifi_reads.bc2010.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/raw_data/PacBio_HiFi/m84039_230314_210032_s1.hifi_reads.bc2010.bam",
+        "coverage": "10.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.9"
+      },
+      {
+        "filename": "m84039_230316_185945_s1.hifi_reads.bc2010.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/raw_data/PacBio_HiFi/m84039_230316_185945_s1.hifi_reads.bc2010.bam",
+        "coverage": "10.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.94"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02055.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/raw_data/Illumina/child/HG02055.final.cram",
+      "coverage": "34.7",
+      "total_gbp": "114.5"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/assemblies/year1_f1_assembly_v2_genbank/HG02055.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG02055/assemblies/year1_f1_assembly_v2_genbank/HG02055.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02080",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG02080/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02080",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG02080/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "SMRTcell-1784.m64467e_220908_142429.pbccs-6.3.0.hifi_reads.primrose-1.2.0.5mC.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02080/raw_data/PacBio_HiFi/SMRTcell-1784.m64467e_220908_142429.pbccs-6.3.0.hifi_reads.primrose-1.2.0.5mC.bam",
+        "coverage": "11.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "36.79"
+      },
+      {
+        "filename": "SMRTcell-1785.m64467e_220910_093757.pbccs-6.3.0.hifi_reads.primrose-1.2.0.5mC.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02080/raw_data/PacBio_HiFi/SMRTcell-1785.m64467e_220910_093757.pbccs-6.3.0.hifi_reads.primrose-1.2.0.5mC.bam",
+        "coverage": "10.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "33.11"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02080.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02080/raw_data/Illumina/child/HG02080.final.cram",
+      "coverage": "35.0",
+      "total_gbp": "115.5"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG02080/assemblies/year1_f1_assembly_v2_genbank/HG02080.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG02080/assemblies/year1_f1_assembly_v2_genbank/HG02080.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02109",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG02109/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02109",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG02109/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84036_230317_175945_s2.hifi_reads.bc2013.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02109/raw_data/PacBio_HiFi/m84036_230317_175945_s2.hifi_reads.bc2013.bam",
+        "coverage": "9.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "29.58"
+      },
+      {
+        "filename": "m84039_230303_012244_s3.hifi_reads.bc2013.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02109/raw_data/PacBio_HiFi/m84039_230303_012244_s3.hifi_reads.bc2013.bam",
+        "coverage": "7.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "23.49"
+      },
+      {
+        "filename": "m84039_230314_213047_s2.hifi_reads.bc2013.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02109/raw_data/PacBio_HiFi/m84039_230314_213047_s2.hifi_reads.bc2013.bam",
+        "coverage": "8.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "26.9"
+      },
+      {
+        "filename": "m84039_230316_193003_s2.hifi_reads.bc2013.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02109/raw_data/PacBio_HiFi/m84039_230316_193003_s2.hifi_reads.bc2013.bam",
+        "coverage": "9.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "29.57"
+      }
+    ],
+    "illumina": null,
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG02109/assemblies/year1_f1_assembly_v2_genbank/HG02109.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG02109/assemblies/year1_f1_assembly_v2_genbank/HG02109.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02145",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02145",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG02145/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84036_230317_175945_s2.hifi_reads.bc2014.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/raw_data/PacBio_HiFi/m84036_230317_175945_s2.hifi_reads.bc2014.bam",
+        "coverage": "10.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.2"
+      },
+      {
+        "filename": "m84039_230303_012244_s3.hifi_reads.bc2014.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/raw_data/PacBio_HiFi/m84039_230303_012244_s3.hifi_reads.bc2014.bam",
+        "coverage": "7.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "23.73"
+      },
+      {
+        "filename": "m84039_230314_213047_s2.hifi_reads.bc2014.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/raw_data/PacBio_HiFi/m84039_230314_213047_s2.hifi_reads.bc2014.bam",
+        "coverage": "9.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "29.07"
+      },
+      {
+        "filename": "m84039_230316_193003_s2.hifi_reads.bc2014.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/raw_data/PacBio_HiFi/m84039_230316_193003_s2.hifi_reads.bc2014.bam",
+        "coverage": "10.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.19"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02145.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/raw_data/Illumina/child/HG02145.final.cram",
+      "coverage": "34.09",
+      "total_gbp": "112.5"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/assemblies/year1_f1_assembly_v2_genbank/HG02145.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG02145/assemblies/year1_f1_assembly_v2_genbank/HG02145.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02723",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02723",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG02723/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m84036_230317_175945_s2.hifi_reads.bc2012.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/raw_data/PacBio_HiFi/m84036_230317_175945_s2.hifi_reads.bc2012.bam",
+        "coverage": "9.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.38"
+      },
+      {
+        "filename": "m84039_230303_012244_s3.hifi_reads.bc2012.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/raw_data/PacBio_HiFi/m84039_230303_012244_s3.hifi_reads.bc2012.bam",
+        "coverage": "7.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "24.06"
+      },
+      {
+        "filename": "m84039_230314_213047_s2.hifi_reads.bc2012.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/raw_data/PacBio_HiFi/m84039_230314_213047_s2.hifi_reads.bc2012.bam",
+        "coverage": "8.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "27.66"
+      },
+      {
+        "filename": "m84039_230316_193003_s2.hifi_reads.bc2012.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/raw_data/PacBio_HiFi/m84039_230316_193003_s2.hifi_reads.bc2012.bam",
+        "coverage": "9.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.26"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02723.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/raw_data/Illumina/child/HG02723.final.cram",
+      "coverage": "36.42",
+      "total_gbp": "120.2"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/assemblies/year1_f1_assembly_v2_genbank/HG02723.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG02723/assemblies/year1_f1_assembly_v2_genbank/HG02723.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG02818",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG02818",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG02818/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200206_173947.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/PacBio_HiFi/wMods/m64043_200206_173947.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "2.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.29"
+      },
+      {
+        "filename": "m64043_200207_235213.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/PacBio_HiFi/wMods/m64043_200207_235213.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "2.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.97"
+      },
+      {
+        "filename": "m64043_200209_061852.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/PacBio_HiFi/wMods/m64043_200209_061852.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "2.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "7.91"
+      },
+      {
+        "filename": "m64043_200314_004623.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/PacBio_HiFi/wMods/m64043_200314_004623.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "8.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "26.58"
+      },
+      {
+        "filename": "m64043_200315_071057.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/PacBio_HiFi/wMods/m64043_200315_071057.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "8.3",
+        "deepconsensus_coverage": "",
+        "total_gbp": "25.61"
+      },
+      {
+        "filename": "m64043_200316_214923.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/PacBio_HiFi/wMods/m64043_200316_214923.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "9.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "27.76"
+      },
+      {
+        "filename": "m64043_200318_040100.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/PacBio_HiFi/wMods/m64043_200318_040100.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "5.1",
+        "deepconsensus_coverage": "",
+        "total_gbp": "15.72"
+      }
+    ],
+    "illumina": {
+      "filename": "HG02818.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/raw_data/Illumina/child/HG02818.final.cram",
+      "coverage": "35.39",
+      "total_gbp": "116.8"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/assemblies/year1_f1_assembly_v2_genbank/HG02818.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG02818/assemblies/year1_f1_assembly_v2_genbank/HG02818.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG03098",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG03098/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG03098",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG03098/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_201123_083343.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03098/raw_data/PacBio_HiFi/wMods/m64043_201123_083343.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "12.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "40.12"
+      },
+      {
+        "filename": "m64043_201128_031055.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03098/raw_data/PacBio_HiFi/wMods/m64043_201128_031055.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "12.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "38.96"
+      },
+      {
+        "filename": "m64043_201203_004011.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03098/raw_data/PacBio_HiFi/wMods/m64043_201203_004011.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.9",
+        "deepconsensus_coverage": "",
+        "total_gbp": "33.86"
+      }
+    ],
+    "illumina": {
+      "filename": "HG03098.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03098/raw_data/Illumina/child/HG03098.final.cram",
+      "coverage": "34.03",
+      "total_gbp": "112.3"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG03098/assemblies/year1_f1_assembly_v2_genbank/HG03098.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG03098/assemblies/year1_f1_assembly_v2_genbank/HG03098.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG03486",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG03486",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG03486/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200424_162541.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/raw_data/PacBio_HiFi/wMods/m64043_200424_162541.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.4",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.2"
+      },
+      {
+        "filename": "m64043_200425_223840.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/raw_data/PacBio_HiFi/wMods/m64043_200425_223840.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.76"
+      },
+      {
+        "filename": "m64043_200428_155222.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/raw_data/PacBio_HiFi/wMods/m64043_200428_155222.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.67"
+      },
+      {
+        "filename": "m64043_200429_220517.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/raw_data/PacBio_HiFi/wMods/m64043_200429_220517.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "9.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "30.06"
+      }
+    ],
+    "illumina": {
+      "filename": "HG03486.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/raw_data/Illumina/child/HG03486.final.cram",
+      "coverage": "34.85",
+      "total_gbp": "115.0"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/assemblies/year1_f1_assembly_v2_genbank/HG03486.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG03486/assemblies/year1_f1_assembly_v2_genbank/HG03486.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "HG03492",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/HG03492/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=HG03492",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/HG03492/raw_data/",
+    "hifi_runs": [],
+    "illumina": null,
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/HG03492/assemblies/year1_f1_assembly_v2_genbank/HG03492.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/HG03492/assemblies/year1_f1_assembly_v2_genbank/HG03492.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "NA18906",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=NA18906",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/NA18906/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64136_200521_171936.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/raw_data/PacBio_HiFi/wMods/m64136_200521_171936.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "11.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "34.14"
+      },
+      {
+        "filename": "m64136_200523_195722.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/raw_data/PacBio_HiFi/wMods/m64136_200523_195722.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "11.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "35.6"
+      },
+      {
+        "filename": "m64136_200525_021027.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/raw_data/PacBio_HiFi/wMods/m64136_200525_021027.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.72"
+      },
+      {
+        "filename": "m64136_200526_083627.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/raw_data/PacBio_HiFi/wMods/m64136_200526_083627.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "11.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "34.77"
+      }
+    ],
+    "illumina": {
+      "filename": "NA18906.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/raw_data/Illumina/child/NA18906.final.cram",
+      "coverage": "33.09",
+      "total_gbp": "109.2"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/assemblies/year1_f1_assembly_v2_genbank/NA18906.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/NA18906/assemblies/year1_f1_assembly_v2_genbank/NA18906.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "NA19240",
+    "in_graph_44": false,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=NA19240",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/NA19240/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_200128_181438.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/raw_data/PacBio_HiFi/wMods/m64043_200128_181438.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "11.1",
+        "deepconsensus_coverage": "",
+        "total_gbp": "34.51"
+      },
+      {
+        "filename": "m64043_200130_175216.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/raw_data/PacBio_HiFi/wMods/m64043_200130_175216.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.5",
+        "deepconsensus_coverage": "",
+        "total_gbp": "32.58"
+      },
+      {
+        "filename": "m64043_200201_000449.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/raw_data/PacBio_HiFi/wMods/m64043_200201_000449.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "31.15"
+      },
+      {
+        "filename": "m64043_200202_062937.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/raw_data/PacBio_HiFi/wMods/m64043_200202_062937.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "31.71"
+      }
+    ],
+    "illumina": {
+      "filename": "NA19240.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/raw_data/Illumina/child/NA19240.final.cram",
+      "coverage": "33.03",
+      "total_gbp": "109.0"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/assemblies/year1_f1_assembly_v2_genbank/NA19240.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/NA19240/assemblies/year1_f1_assembly_v2_genbank/NA19240.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "NA20129",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=NA20129",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/NA20129/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_191227_185626.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/raw_data/PacBio_HiFi/wMods/m64043_191227_185626.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "9.6",
+        "deepconsensus_coverage": "",
+        "total_gbp": "29.8"
+      },
+      {
+        "filename": "m64043_191229_010753.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/raw_data/PacBio_HiFi/wMods/m64043_191229_010753.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "31.53"
+      },
+      {
+        "filename": "m64043_191230_073311.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/raw_data/PacBio_HiFi/wMods/m64043_191230_073311.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "31.47"
+      },
+      {
+        "filename": "m64043_200111_140530.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/raw_data/PacBio_HiFi/wMods/m64043_200111_140530.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "3.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "9.41"
+      },
+      {
+        "filename": "m64043_200114_192155.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/raw_data/PacBio_HiFi/wMods/m64043_200114_192155.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "5.8",
+        "deepconsensus_coverage": "",
+        "total_gbp": "17.83"
+      }
+    ],
+    "illumina": {
+      "filename": "NA20129.final.cram",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/raw_data/Illumina/child/NA20129.final.cram",
+      "coverage": "34.09",
+      "total_gbp": "112.5"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/assemblies/year1_f1_assembly_v2_genbank/NA20129.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/NA20129/assemblies/year1_f1_assembly_v2_genbank/NA20129.maternal.f1_assembly_v2_genbank.fa.gz"
+  },
+  {
+    "sample_id": "NA21309",
+    "in_graph_44": true,
+    "hprc_bucket": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/raw_data",
+    "portal": "https://humanpangenome.org/data/?sample=NA21309",
+    "raw_data_browser": "https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/HPRC_PLUS/NA21309/raw_data/",
+    "hifi_runs": [
+      {
+        "filename": "m64043_191210_201113.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/raw_data/PacBio_HiFi/wMods/m64043_191210_201113.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "10.7",
+        "deepconsensus_coverage": "",
+        "total_gbp": "33.07"
+      },
+      {
+        "filename": "m64043_191213_191857.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/raw_data/PacBio_HiFi/wMods/m64043_191213_191857.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "12.1",
+        "deepconsensus_coverage": "",
+        "total_gbp": "37.43"
+      },
+      {
+        "filename": "m64043_191215_014401.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/raw_data/PacBio_HiFi/wMods/m64043_191215_014401.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "12.0",
+        "deepconsensus_coverage": "",
+        "total_gbp": "37.28"
+      },
+      {
+        "filename": "m64043_191219_192900.hifi_reads.pm_v1.4.0.bam",
+        "path": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/raw_data/PacBio_HiFi/wMods/m64043_191219_192900.hifi_reads.pm_v1.4.0.bam",
+        "coverage": "6.2",
+        "deepconsensus_coverage": "",
+        "total_gbp": "19.22"
+      }
+    ],
+    "illumina": {
+      "filename": "AATGACGC-AATGACGC_S5_L001_R2_001.fastq.gz",
+      "path": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/raw_data/Illumina/child/AATGACGC-AATGACGC_S5_L001_R2_001.fastq.gz",
+      "coverage": "22.48",
+      "total_gbp": "69.7"
+    },
+    "assembly_hap1": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/assemblies/year1_f1_assembly_v2_genbank/NA21309.paternal.f1_assembly_v2_genbank.fa.gz",
+    "assembly_hap2": "s3://human-pangenomics/working/HPRC_PLUS/NA21309/assemblies/year1_f1_assembly_v2_genbank/NA21309.maternal.f1_assembly_v2_genbank.fa.gz"
+  }
+]

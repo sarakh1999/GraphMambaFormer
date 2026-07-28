@@ -1,0 +1,12 @@
+# The build context is the repo root, which holds ~71 GB under data/. Exclude
+# everything, then re-include only what the image actually copies.
+# (BuildKit prefers <dockerfile>.dockerignore over a root /.dockerignore.)
+*
+!graphmambaformer
+!scripts
+!docker
+!README.md
+!requirements.txt
+
+**/__pycache__
+**/.DS_Store

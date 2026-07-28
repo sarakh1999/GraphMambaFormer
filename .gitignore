@@ -1,0 +1,55 @@
+# --- large data -------------------------------------------------------------
+# data/ holds ~71 GB of references, indexes, BAMs, FASTQs and DeepVariant
+# intermediates. All of it is re-derivable: scripts/fig6/run_all.sh downloads
+# and rebuilds everything from public GIAB/HPRC sources.
+# Kept: data/hprc, the small sample-link manifests the README points at.
+data/*
+!data/hprc/
+# Re-downloaded on demand by scripts/hprc/build_release2_table.py.
+data/hprc/.cache_r2/
+
+# --- local environment ------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- not redistributable ----------------------------------------------------
+papers/
+meetings screenshots/
+
+# --- stray genomics artifacts outside data/ ---------------------------------
+*.bam
+*.bam.bai
+*.bai
+*.cram
+*.crai
+*.sam
+*.fastq
+*.fastq.gz
+*.fq.gz
+*.fa
+*.fai
+*.fasta
+*.fasta.gz
+*.vcf
+*.vcf.gz
+*.tbi
+*.gbz
+*.gfa
+*.vg
+*.dist
+*.min
+*.zipcodes
+*.tfrecord.gz
+
+# --- model checkpoints / generated datasets ---------------------------------
+*.pt
+*.pth
+*.ckpt
+
+# --- os / editor ------------------------------------------------------------
+.DS_Store
+*.swp

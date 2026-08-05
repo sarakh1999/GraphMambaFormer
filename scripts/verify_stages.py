@@ -393,13 +393,20 @@ def print_stage_map() -> None:
         ("1A Graph encoder", "implemented", "pangenome graph (nodes/edges/lap-PE)"),
         ("1B L1 Bi-Mamba-2", "implemented", "seed-chaining labels (true/false seeds)"),
         ("1B L2 Attention", "implemented", "sub/indel context (CIGAR X/I/D)"),
-        ("1B L3 GATv2", "pending (hook)", "graph edge types provided"),
-        ("1C Alignment decoder", "pending", "ref_positions / CIGAR / strand targets"),
-        ("1C MAPQ head", "pending", "mapq targets provided"),
-        ("1C Methylation head", "pending", "methylation labels (bisulfite)"),
+        ("1B L3 GATv2", "implemented", "GATv2Tower in GraphMambaModel"),
+        ("1B Cross-attention", "implemented", "read <-> graph fusion"),
+        ("1C Alignment decoder", "implemented", "seed -> chain -> extend -> CIGAR"),
+        ("1C MAPQ head", "implemented", "MappingHead + margin blend"),
+        ("1C Methylation head", "implemented", "MultiTaskConfig.methylation"),
         ("1C Splice head", "pending", "splice junctions (rna_seq)"),
         ("1C Barcode/UMI head", "pending", "barcode/umi (single-cell/linked)"),
-        ("1C Chimeric head", "pending", "chimeric flag + supplementary aln"),
+        ("1C Chimeric head", "partial", "supplementary records via secondaries"),
+        ("Stage 1 seeding", "implemented", "minimizer / SMEM / DBG / fuzzy / GPU"),
+        ("Stage 2 chaining", "implemented", "affine-gap DP + graph bonus"),
+        ("Stage 3 extension", "implemented", "banded affine SW + WFA"),
+        ("Stage 4 scoring", "implemented", "anchor prune / chain rerank / MAPQ"),
+        ("Losses", "implemented", "AlignmentLoss + Kendall MultiTaskLoss"),
+        ("GPU accel stack", "implemented", "CuPy RawKernels + Triton + AMP"),
         ("1D Stage1 pretrain", "data-ready", "linear ref + simulated reads"),
         ("1D Stage2 graph FT", "data-ready", "pangenome graph + truth CIGAR"),
         ("1D Stage3 LoRA", "pending", "per-modality reads available"),
@@ -407,6 +414,7 @@ def print_stage_map() -> None:
     ]
     for name, status, note in rows:
         print(f"  {name:<24} {status:<16} {note}")
+    print("  (alignment stages verified by scripts/verify_alignment_pipeline.py)")
 
 
 def main() -> None:

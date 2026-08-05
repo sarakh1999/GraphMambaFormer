@@ -124,6 +124,13 @@ class Mamba2Config:
 
     Defaults follow the figure: ``d_state=64``, ``d_inner=1024`` (expand=2 over
     ``d_model=512``), ``d_conv=4``, selective (Delta, B, C).
+
+    ``d_state=64`` is deliberate. ``architecture/GraphMamba_Architecture.html``
+    is self-contradictory here: its forward-pass diagram says ``state_dim=128``,
+    while its own ``.env`` reference says ``D_STATE=64``. Figure 1B and the
+    ``.env`` block agree on 64, and 64 also lands nearer the 14.2M parameter
+    budget the same document quotes (64 -> 14.9M, 128 -> 15.3M), so 64 is the
+    self-consistent reading. See ``scripts/audit_architecture.py``.
     """
 
     d_model: int = 512
@@ -258,6 +265,226 @@ class BlockConfig:
 
 
 @dataclass
+class SequenceEncoderConfig:
+    """GraphMamba SequenceEncoder (architecture: Input Encoding).
+
+    Concatenates four views of each base and projects them down to ``d_model``::
+
+        Base(5 -> 64) + Kmer(k=3 -> 64) + Qual(42 -> 32) + PosEncode(sin/cos -> 96)
+            -> Linear(256 -> D) -> LayerNorm -> Dropout(0.1)
+
+    The five base symbols are ``A C G T N``; ``pad_idx`` is a sixth, always-zero
+    row so padded positions contribute nothing.
+    """
+
+    d_model: int = 256
+    d_base: int = 64
+    d_kmer: int = 64
+    d_qual: int = 32
+    d_pos: int = 96
+    kmer_size: int = 3
+    num_quality_bins: int = 42
+    dropout: float = 0.1
+    num_modalities: int = NUM_MODALITIES
+    # Prepend a modality-conditioning token (kept from the read encoder so the
+    # same modality registry drives both encoders).
+    prepend_modality_token: bool = False
+
+    @property
+    def d_concat(self) -> int:
+        return self.d_base + self.d_kmer + self.d_qual + self.d_pos
+
+
+@dataclass
+class CrossAttentionConfig:
+    """CrossAttentionFusion — the read <-> graph bidirectional attention bridge.
+
+    Read->Graph attention (Q=read, K=V=graph) and Graph->Read attention
+    (Q=graph, K=V=read) run in parallel, are concatenated, and pass through an
+    FFN (D -> 4D -> D) whose first half is the fused LN+Linear+GELU kernel.
+    """
+
+    d_model: int = 256
+    n_heads: int = 8
+    d_head: int = 32  # 8 * 32 = 256 = d_model
+    d_ff_mult: int = 4
+    dropout: float = 0.1
+    # Pool the fused (B, L+N, D) sequence down to a single (B, D) vector for the
+    # routing / mapping heads: "mean" | "max" | "attention".
+    pooling: str = "attention"
+
+
+@dataclass
+class RouterConfig:
+    """ComplexityRouter — adaptive compute routing over three cost tiers.
+
+    A lightweight MLP scores each read's difficulty and routes it to the
+    ``fast`` / ``medium`` / ``full`` compute path, which saves 30-50% of the
+    FLOPs on uniquely-mapping, repeat-free reads.
+    """
+
+    d_model: int = 256
+    d_hidden: int = 64
+    num_routes: int = 3
+    dropout: float = 0.0
+    # Relative cost of each route, used by the load-balancing loss term.
+    route_costs: tuple[float, ...] = (0.35, 0.65, 1.0)
+    route_names: tuple[str, ...] = ("fast", "medium", "full")
+    # Straight-through Gumbel sampling during training keeps the router
+    # differentiable while still taking hard decisions.
+    gumbel_tau: float = 1.0
+
+
+@dataclass
+class MappingHeadConfig:
+    """MappingHead — where does this read go, and how sure are we?
+
+    Three sibling MLPs over the fused embedding: a node classifier, a
+    within-node position regressor, and a MAPQ estimator.
+    """
+
+    d_model: int = 256
+    max_nodes: int = 4096  # node-classifier output width (graph is padded to this)
+    max_mapq: int = 60
+    dropout: float = 0.1
+
+
+@dataclass
+class SeedScoringConfig:
+    """Neural seed / chain scoring (Stage 4, feeding back into Stages 1-2).
+
+    The seed scorer decides which anchors survive into chaining; the chain
+    scorer re-ranks the DP chains. Both consume geometric features alongside the
+    backbone's read and graph representations.
+    """
+
+    d_model: int = 256
+    d_hidden: int = 128
+    num_seed_features: int = 12  # matches Seed.features from the synthetic data
+    num_chain_features: int = 10
+    dropout: float = 0.1
+    # Anchors scoring below this survive only if the chain needs them; see
+    # ScoringConfig.min_anchors_kept.
+    seed_keep_threshold: float = 0.5
+
+
+@dataclass
+class MultiTaskConfig:
+    """Which of the 10 multi-task heads to build (architecture: Multi-Task Heads).
+
+    Heads are opt-in because each one needs its own labels; the shared backbone
+    is unchanged either way, so enabling a head costs one branching MLP.
+    """
+
+    d_model: int = 256
+    d_hidden: int = 128
+    dropout: float = 0.1
+
+    variant_calling: bool = False
+    sv_genotyping: bool = False
+    haplotype: bool = False
+    hla_typing: bool = False
+    bqsr: bool = False
+    methylation: bool = False
+    ancestry: bool = False
+    copy_number: bool = False
+    somatic: bool = False
+    pgx: bool = False
+
+    # Output widths for the enabled heads.
+    num_genotypes: int = 3  # 0/0, 0/1, 1/1
+    num_sv_types: int = 5  # DEL, INS, DUP, INV, TRA
+    num_hla_alleles: int = 128
+    num_quality_bins: int = 42
+    num_populations: int = 5
+    num_cn_states: int = 6  # CN 0-5
+    num_somatic_classes: int = 4  # germline / somatic / artifact / absent
+    num_pgx_alleles: int = 32
+
+    def enabled(self) -> tuple[str, ...]:
+        """Names of the heads that are switched on, in declaration order."""
+        names = (
+            "variant_calling",
+            "sv_genotyping",
+            "haplotype",
+            "hla_typing",
+            "bqsr",
+            "methylation",
+            "ancestry",
+            "copy_number",
+            "somatic",
+            "pgx",
+        )
+        return tuple(n for n in names if getattr(self, n))
+
+
+@dataclass
+class GraphMambaConfig:
+    """GraphMambaModel — the core neural model (architecture: Core Model).
+
+    Forward pass::
+
+        SequenceEncoder ---> BiMamba2 x 6 ----.
+                                              +--> CrossAttentionFusion
+        GraphEncoder ------> GATv2Conv x 3 ---'          |
+                                                         v
+                                          ComplexityRouter -> MappingHead
+                                                         |
+                                                         +-> multi-task heads
+
+    Defaults reproduce the reference configuration: ``d_model=256``, 6 BiMamba2
+    layers, 3 GATv2 layers, ~14.2M parameters.
+    """
+
+    d_model: int = 256
+    n_mamba_layers: int = 6
+    n_gat_layers: int = 3
+    dropout: float = 0.1
+    # Wrap each BiMamba2 layer in a pre-norm residual + FFN (transformer-style).
+    mamba_ffn: bool = True
+    d_ff: int = 1024
+
+    sequence_encoder: SequenceEncoderConfig = field(default_factory=SequenceEncoderConfig)
+    graph_encoder: GraphEncoderConfig = field(default_factory=GraphEncoderConfig)
+    mamba: Mamba2Config = field(default_factory=Mamba2Config)
+    gat: GATConfig = field(default_factory=GATConfig)
+    cross_attention: CrossAttentionConfig = field(default_factory=CrossAttentionConfig)
+    router: RouterConfig = field(default_factory=RouterConfig)
+    mapping_head: MappingHeadConfig = field(default_factory=MappingHeadConfig)
+    seed_scoring: SeedScoringConfig = field(default_factory=SeedScoringConfig)
+    multi_task: MultiTaskConfig = field(default_factory=MultiTaskConfig)
+
+    # Turn the router off to always run the full path (useful for ablations).
+    use_router: bool = True
+
+    def __post_init__(self) -> None:
+        d = self.d_model
+        self.sequence_encoder.d_model = d
+        self.graph_encoder.d_model = d
+        self.mamba.d_model = d
+        self.gat.d_model = d
+        self.gat.d_edge = self.graph_encoder.d_edge
+        self.gat.num_edge_types = self.graph_encoder.num_edge_types
+        self.cross_attention.d_model = d
+        self.router.d_model = d
+        self.mapping_head.d_model = d
+        self.seed_scoring.d_model = d
+        self.multi_task.d_model = d
+        # Mamba-2 keeps expand=2 relative to d_model. Shrink headdim rather than
+        # rejecting the config, so scaling d_model down for a CPU run just works.
+        self.mamba.d_inner = 2 * d
+        while self.mamba.headdim > 1 and self.mamba.d_inner % self.mamba.headdim != 0:
+            self.mamba.headdim //= 2
+
+        # Cross-attention must reconstruct exactly d_model, so derive d_head.
+        heads = self.cross_attention.n_heads
+        while heads > 1 and d % heads != 0:
+            heads //= 2
+        self.cross_attention.n_heads = heads
+        self.cross_attention.d_head = d // heads
+
+
+@dataclass
 class ModelConfig:
     """Top-level GraphMambaFormer encoder configuration.
 
@@ -287,3 +514,324 @@ class ModelConfig:
         self.mambaformer.mamba.d_model = self.d_model
         self.mambaformer.mamba1.d_model = self.d_model
         self.mambaformer.attention.d_model = self.d_model
+
+
+# --------------------------------------------------------------------------- #
+# GPU acceleration stack
+# --------------------------------------------------------------------------- #
+@dataclass
+class AccelConfig:
+    """Switches for the 5-tier GPU acceleration stack.
+
+    Everything here degrades safely: a flag that the host cannot honour is
+    ignored rather than raising, so the same config runs on an H100 and on a
+    laptop CPU.
+    """
+
+    device: str | None = None  # None / "auto" -> best available
+    apply_global_switches: bool = True
+
+    # Tier switches.
+    tf32: bool = True  # TF32 matmul on Ampere+
+    flash_sdp: bool = True  # Flash / mem-efficient scaled_dot_product_attention
+    allow_math_sdp: bool = True  # keep the math fallback for masked attention
+    cudnn_benchmark: bool = True
+    cuda_rawkernels: bool = True  # CuPy RawKernel tier for the DP stages
+    triton_kernels: bool = True  # fused LN+Linear+GELU
+    cuda_graphs: bool = False  # static capture; needs fixed shapes
+
+    # Mixed precision: "auto" | "bf16" | "fp16".
+    amp: bool = True
+    amp_dtype: str = "auto"
+
+    # torch.compile.
+    compile: bool = False
+    compile_mode: str = "max-autotune"
+
+    # Per-stage kernel override: "auto" | "torch" | "cuda_rawkernel".
+    stage_backends: dict[str, str] = field(
+        default_factory=lambda: {"seeding": "auto", "chaining": "auto", "extension": "auto"}
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Alignment pipeline stages 1-3
+# --------------------------------------------------------------------------- #
+SEEDING_MODES: tuple[str, ...] = (
+    "minimizer",
+    "smem",
+    "fmindex",
+    "dbg",
+    "fuzzy",
+    "multiplex_dbg",
+    "gpu_kmer",
+)
+
+
+@dataclass
+class SeedingConfig:
+    """Stage 1 — Seeding.
+
+    ``modes`` lists the indices to query; their anchors are merged and
+    deduplicated, so combining e.g. SMEM with a fuzzy spaced-seed index recovers
+    anchors in regions where exact matching fails. Defaults follow the
+    architecture: ``min_seed=13``, ``max_occ=200``, minimizers at ``k=15, w=10``,
+    De Bruijn at ``k=21``, MultiplexDBG over ``k=15, 21, 31``.
+    """
+
+    modes: tuple[str, ...] = ("smem", "minimizer")
+
+    # Minimizer sketch.
+    kmer: int = 15
+    window: int = 10
+
+    # SMEM / FM-index.
+    min_seed_len: int = 13
+    max_occ: int = 200  # drop k-mers occurring more often than this (repeats)
+    fm_sa_sample: int = 8  # suffix-array sampling rate
+    fm_occ_sample: int = 64  # rank-checkpoint spacing
+
+    # De Bruijn / multi-k.
+    dbg_kmer: int = 21
+    multiplex_kmers: tuple[int, ...] = (15, 21, 31)
+
+    # Fuzzy spaced seeds: '1' = compared position, '0' = don't-care.
+    spaced_pattern: str = "111010010100110111"
+
+    # Both strands: reads are aligned forward and reverse-complemented.
+    both_strands: bool = True
+    # Hard cap on anchors per read after merging (keeps chaining bounded).
+    max_anchors: int = 5_000
+    # Merge anchors that lie on the same diagonal within this distance.
+    merge_diagonal_slack: int = 4
+
+
+@dataclass
+class ChainingConfig:
+    """Stage 2 — Chaining (minimap2-style affine-gap DP over anchors).
+
+    Score of chaining anchor ``j -> i``::
+
+        f[i] = max(w_i, max_j f[j] + advance(j, i) - penalty(j, i) + graph_bonus)
+        advance = min(min(dq, dr), w_i)
+        penalty = gap_open + gap_extend * gap + log_coeff * log2(gap + 1)
+
+    ``graph_bonus`` rewards pairs whose reference nodes are close in the
+    pangenome graph, and ``ref_path_bias`` additionally rewards anchors sitting
+    on the graph's backbone (reference) path.
+    """
+
+    max_lookback: int = 64  # predecessors considered per anchor
+    max_gap: int = 5_000  # reject anchor pairs separated by more than this
+    gap_open: float = 6.0
+    gap_extend: float = 0.05
+    log_coeff: float = 0.5
+
+    # Graph-distance bonus.
+    graph_bonus: float = 4.0
+    graph_max_hops: int = 3  # bonus decays over this many hops
+    ref_path_bias: float = 1.5  # extra weight for backbone-path anchors
+
+    # Chain selection. A single SMEM can span an entire read, so chains are
+    # filtered on score rather than anchor count; raise ``min_chain_anchors``
+    # only when seeding with a fixed-k index that cannot produce long anchors.
+    min_chain_score: float = 20.0
+    min_chain_anchors: int = 1
+    max_chains: int = 8  # candidate chains kept per read for Stage 3 / re-ranking
+    # A secondary chain is dropped when its read span overlaps the primary's by
+    # more than this fraction.
+    secondary_overlap: float = 0.5
+    # Drop chains scoring below this fraction of the best chain's score.
+    secondary_score_ratio: float = 0.6
+
+
+@dataclass
+class ExtensionConfig:
+    """Stage 3 — Extension (banded affine Smith-Waterman / WFA).
+
+    Defaults follow the architecture's WFA settings (``mismatch=4``,
+    ``gap_open=6``, ``x_drop=600``). ``algorithm`` selects the DP kernel:
+      - ``"banded_sw"``: banded affine Smith-Waterman with traceback (default).
+      - ``"wfa"``: wavefront alignment, O(n·s) in the edit distance ``s``.
+    """
+
+    algorithm: str = "banded_sw"  # "banded_sw" | "wfa"
+
+    match_score: float = 2.0
+    mismatch_penalty: float = 4.0
+    gap_open: float = 6.0
+    gap_extend: float = 2.0
+    x_drop: float = 600.0
+
+    # Band half-width. The chain's diagonal spread is added on top, clipped to
+    # ``max_half_band``, so a chain with large indels widens its own band.
+    half_band: int = 64
+    max_half_band: int = 512
+
+    # Flank beyond the chain's first/last anchor to include in the DP window.
+    flank: int = 100
+    # Cap the DP window so a pathological chain cannot blow up memory.
+    max_window: int = 32_768
+    # WFA only: abandon a wavefront past this edit distance.
+    wfa_max_distance: int = 4_096
+
+
+@dataclass
+class ScoringConfig:
+    """Stage 4 — Neural scoring.
+
+    The backbone's read/graph representations are used three ways: to prune
+    anchors before chaining, to re-rank the DP chains, and to produce a
+    calibrated MAPQ. ``position_rescue`` lets the MappingHead propose a locus for
+    reads that Stages 1-3 failed to place at all.
+    """
+
+    score_seeds: bool = True
+    rerank_chains: bool = True
+    neural_mapq: bool = True
+    position_rescue: bool = True
+
+    # Blend of DP score and neural chain score used for the final ranking.
+    dp_weight: float = 0.5
+    neural_weight: float = 0.5
+
+    # Never prune below this many anchors, however low the seed scores are.
+    min_anchors_kept: int = 8
+    # MAPQ calibration.
+    max_mapq: int = 60
+    mapq_floor: int = 0
+
+
+PIPELINE_MODES: tuple[str, ...] = ("hybrid", "fast", "two_pass")
+
+
+@dataclass
+class PipelineConfig:
+    """Alignment-pipeline configuration.
+
+    ``mode`` selects the pipeline implementation:
+      - ``"hybrid"`` (default): :class:`HybridAlignmentPipeline`, the accuracy
+        path — seed -> chain -> extend -> score -> post. (The architecture's
+        Stages 6-7, repeat/HLA resolution and predictive-genomics aggregation,
+        are not implemented yet.)
+      - ``"fast"``: :class:`FastAlignmentPipeline`, the throughput path — the
+        classical stages only, with MAPQ from the primary/secondary score
+        margin and no neural forward pass at all. (The architecture's fast mode
+        also keeps a batched model pass over precomputed graph embeddings;
+        here the neural work is simply skipped.)
+      - ``"two_pass"``: :class:`TwoPassAligner`, the fast path for easy reads
+        with a hybrid rescue for the hard tail. (The architecture's Pass 1 is a
+        runtime-compiled C extension; this one is the array-programmed Python
+        path, so the reads/sec figures in the spec do not apply.)
+    """
+
+    mode: str = "hybrid"
+
+    seeding: SeedingConfig = field(default_factory=SeedingConfig)
+    chaining: ChainingConfig = field(default_factory=ChainingConfig)
+    extension: ExtensionConfig = field(default_factory=ExtensionConfig)
+    scoring: ScoringConfig = field(default_factory=ScoringConfig)
+    accel: AccelConfig = field(default_factory=AccelConfig)
+
+    # Stage toggles (Stage 3 is skippable when only a locus is needed).
+    run_extension: bool = True
+    run_neural_scoring: bool = True
+
+    # Two-pass: a read is "easy" (and skips the neural pass) when its best chain
+    # covers at least this fraction of the read and its margin over the runner-up
+    # is at least this large.
+    easy_coverage: float = 0.80
+    easy_margin: float = 0.25
+
+    batch_size: int = 16
+    max_read_len: int | None = None  # truncate reads before encoding
+
+    def __post_init__(self) -> None:
+        if self.mode not in PIPELINE_MODES:
+            raise ValueError(
+                f"Unknown pipeline mode {self.mode!r}. Known: {list(PIPELINE_MODES)}"
+            )
+        for m in self.seeding.modes:
+            if m not in SEEDING_MODES:
+                raise ValueError(
+                    f"Unknown seeding mode {m!r}. Known: {list(SEEDING_MODES)}"
+                )
+
+
+# --------------------------------------------------------------------------- #
+# Losses
+# --------------------------------------------------------------------------- #
+@dataclass
+class LossConfig:
+    """Alignment + multi-task loss weighting.
+
+    With ``learnable_weights=True`` the per-task weights follow Kendall et al.
+    (arXiv:1705.07115): each task carries a learned log-variance ``s_i`` and
+    contributes ``exp(-s_i) * L_i + s_i``, so the network balances the tasks
+    itself. The static weights below are the initial scale of each term.
+    """
+
+    learnable_weights: bool = True
+
+    # Stage losses.
+    w_seed: float = 1.0  # per-anchor true/false BCE
+    w_chain: float = 1.0  # listwise chain-ranking cross-entropy
+    w_node: float = 1.0  # MappingHead node classification
+    w_position: float = 1.0  # within-node position regression
+    w_mapq: float = 0.5  # MAPQ regression
+    w_router: float = 0.05  # compute-cost regularizer
+    w_extension: float = 0.5  # alignment-score margin
+
+    # Multi-task head losses (only applied for enabled heads).
+    w_multitask: float = 1.0
+
+    # Class imbalance: the synthetic data has ~20-30% false seeds, so positives
+    # dominate; this scales the positive term in the seed BCE.
+    seed_pos_weight: float = 1.0
+    # Label smoothing for the node classifier (large, noisy label space).
+    node_label_smoothing: float = 0.05
+    # Huber transition point for the position / MAPQ regressions.
+    huber_beta: float = 0.1
+    # Target compute cost for the router (fraction of the full path).
+    router_target_cost: float = 0.6
+
+
+# --------------------------------------------------------------------------- #
+# Core-architecture registry
+# --------------------------------------------------------------------------- #
+#: Selectable core architectures. ``"graphmamba"`` is the default and the one
+#: exercised first; the MambaFormer / hybrid backbones remain available for
+#: ablations against the earlier Figure-1 assembly.
+CORE_ARCHITECTURES: tuple[str, ...] = (
+    "graphmamba",
+    "multitask_graphmamba",
+    "mambaformer",
+    "hybrid",
+)
+
+
+@dataclass
+class CoreModelConfig:
+    """Which core architecture to build, plus each variant's config.
+
+    ``arch`` picks the implementation:
+      - ``"graphmamba"`` (default): :class:`GraphMambaModel`.
+      - ``"multitask_graphmamba"``: the same backbone plus the multi-task heads.
+      - ``"mambaformer"`` / ``"hybrid"``: :class:`GraphMambaFormerEncoder` with
+        the corresponding backbone.
+    """
+
+    arch: str = "graphmamba"
+    graphmamba: GraphMambaConfig = field(default_factory=GraphMambaConfig)
+    encoder: ModelConfig = field(default_factory=ModelConfig)
+
+    def __post_init__(self) -> None:
+        if self.arch not in CORE_ARCHITECTURES:
+            raise ValueError(
+                f"Unknown core architecture {self.arch!r}. "
+                f"Known: {list(CORE_ARCHITECTURES)}"
+            )
+        if self.arch == "mambaformer":
+            self.encoder.backbone = "mambaformer"
+        elif self.arch == "hybrid":
+            self.encoder.backbone = "hybrid"

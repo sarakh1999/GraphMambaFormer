@@ -18,6 +18,14 @@ Current development focus: **long reads** — PacBio HiFi and ONT.
 | MambaFormer backbone | `graphmambaformer/blocks/mambaformer.py` |
 | 1B · Hybrid block (Mamba → attention → GATv2 → FFN, ×N) | `graphmambaformer/blocks/hybrid_block.py` |
 | Top-level assembly | `graphmambaformer/model.py` |
+| **Core model** · GraphMambaModel + multi-task variant | `graphmambaformer/models/graph_mamba.py` |
+| **Stage 1** · Seeding (minimizer / SMEM / DBG / fuzzy / GPU) | `graphmambaformer/alignment/seeding.py` |
+| **Stage 2** · Chaining (affine-gap DP + graph bonus) | `graphmambaformer/alignment/chaining.py` |
+| **Stage 3** · DP extension (banded affine SW + WFA) | `graphmambaformer/alignment/extension.py` |
+| **Stage 4** · Neural scoring bridge | `graphmambaformer/alignment/scoring.py` |
+| Alignment pipeline (hybrid / fast / two-pass) | `graphmambaformer/alignment/pipeline.py` |
+| Losses (alignment + Kendall multi-task) | `graphmambaformer/losses/alignment_loss.py` |
+| GPU acceleration stack | `graphmambaformer/accel/` |
 
 Design details:
 
@@ -40,6 +48,124 @@ Design details:
   symmetric sliding `window` (for the windowed-attention variant) and a `causal`
   flag. The reference MambaFormer attention is causal; alignment uses both
   directions, so the default differs.
+
+## Core model: `GraphMambaModel`
+
+The default core architecture. A read is encoded in **base space** (not k-mer
+tokens) so anchor read positions index the hidden states directly, which is what
+lets the Stage 4 heads look up "the model's view of this locus":
+
+```
+reads  → SequenceEncoder → BiMamba-2 tower ─┐
+                                            ├→ CrossAttentionFusion → pooled
+graph  → GraphEncoder    → GATv2 tower ─────┘        │
+                                                     ├→ ComplexityRouter
+                                                     ├→ MappingHead (node / offset / MAPQ)
+                                                     ├→ SeedScoringHead
+                                                     └→ ChainScoringHead
+```
+
+`MultiTaskGraphMamba` adds ten predictive-genomics heads (variant calling, SV
+genotyping, haplotype, HLA, BQSR, methylation, ancestry, copy number, somatic,
+PGx) as branching MLPs over the *same* forward pass, so they cost one small MLP
+each rather than a second model. Heads are opt-in via `MultiTaskConfig` because
+each needs its own labels.
+
+### Core architecture modes
+
+`build_core_model` selects the architecture; **`"graphmamba"` is the default**.
+
+| `arch` | Model | Alignment heads |
+| --- | --- | --- |
+| `"graphmamba"` | `GraphMambaModel` | yes |
+| `"multitask_graphmamba"` | `+ the ten task heads` | yes |
+| `"mambaformer"` | `GraphMambaFormerEncoder`, MambaFormer backbone | no (ablation baseline) |
+| `"hybrid"` | `GraphMambaFormerEncoder`, hybrid block stack | no (ablation baseline) |
+
+The two encoder baselines are sequence-only. Selecting one is reported through
+`CoreModelSpec.supports_alignment_heads`, and the pipeline then runs its
+classical path instead of failing — so architecture and pipeline mode vary
+independently.
+
+## Alignment pipeline
+
+Five stages, with the neural core woven into the classical ones rather than
+bolted on the end:
+
+| Stage | What it does | Key implementation notes |
+| --- | --- | --- |
+| **1 · Seeding** | reference → candidate anchors | minimizer sketch, FM-index SMEMs, De Bruijn, spaced/fuzzy seeds, multiplex-DBG, GPU k-mer table. Several modes can run together; anchors are merged and collapsed on shared diagonals. |
+| **2 · Chaining** | anchors → collinear chains | minimap2-style affine-gap DP, plus a graph-hop bonus and a reference-path bias from the pangenome graph. Batched DP on GPU. |
+| **3 · Extension** | chains → base-level CIGARs | banded affine Smith-Waterman (band widened by the chain's own diagonal spread, so a chain containing a large indel aligns through it) or WFA for low-divergence pairs. |
+| **4 · Scoring** | neural refinement | anchor pruning **before** chaining, chain re-ranking **after** the DP, then MAPQ and a rescue locus for unplaced reads. |
+| **5 · Post** | records | primary/secondary selection, soft clips, `AlignmentRecord` per read. |
+
+Stage ordering is deliberate: pruning before Stage 2 shrinks the DP input and
+biases anchor weights, re-ranking after Stage 2 lets the head see complete
+chains, and MAPQ comes last, once the primary/secondary margin exists.
+
+### Pipeline modes
+
+`build_pipeline` selects the mode; **`"hybrid"` is the default**.
+
+| `mode` | Class | Behaviour |
+| --- | --- | --- |
+| `"hybrid"` | `HybridAlignmentPipeline` | Full accuracy path with all four stages plus neural scoring. |
+| `"fast"` | `FastAlignmentPipeline` | Classical only, MAPQ from the score margin. The throughput baseline. |
+| `"two_pass"` | `TwoPassAligner` | Fast path first, hybrid re-alignment only for reads that are not confidently resolved. |
+
+A read is "easy" (and skips the neural pass in `two_pass`) when its best chain
+covers `easy_coverage` of the read and beats the runner-up by `easy_margin`.
+
+```python
+from graphmambaformer import PipelineConfig, build_pipeline, build_core_model
+
+model = build_core_model().model              # "graphmamba" by default
+pipeline = build_pipeline(PipelineConfig(), model=model)   # "hybrid" by default
+
+reference = pipeline.build_reference(ref_seq, node_seqs=nodes, node_ref_start=starts)
+results, stats = pipeline.align(reads, reference)
+
+print(results[0].primary.cigar_string, results[0].primary.mapq)
+print(stats.summary())
+```
+
+## Losses
+
+`GraphMambaLoss` covers both halves of the model:
+
+- **`AlignmentLoss`** — per-anchor BCE, *listwise* chain-ranking cross-entropy
+  (the ordering is what inference uses, not the absolute scores), node
+  classification, within-node position and MAPQ Huber terms, a one-sided router
+  compute budget, and an alignment-score margin.
+- **`MultiTaskLoss`** — one term per enabled head, with the objective derived
+  from the head's label space (per-read, per-node, or per-base) plus any
+  auxiliary regression channels.
+
+Terms are balanced by Kendall uncertainty weighting
+([arXiv:1705.07115](https://arxiv.org/abs/1705.07115)): each task learns a
+log-variance `s` and contributes `exp(-s)·L + s`. A term whose labels are absent
+from the batch is **skipped**, not zeroed, so partially-labelled data trains the
+heads it has labels for without diluting the others.
+
+## GPU acceleration stack
+
+`AccelContext` detects what the host supports and hands each stage a backend, so
+the same config runs on an H100 and on a laptop CPU:
+
+| Tier | Used for | Fallback |
+| --- | --- | --- |
+| CuPy `RawKernel` | k-mer lookup, chaining DP, banded SW | batched PyTorch |
+| Triton | fused LayerNorm + Linear + GELU | eager PyTorch |
+| `mamba_ssm` | fused selective scan | pure-PyTorch SSD scan |
+| TF32 / Flash-SDP / cuDNN autotune | matmul + attention | plain kernels |
+| AMP (`bf16`/`fp16`) + CUDA graphs | model forward | full precision |
+
+```python
+from graphmambaformer import AccelContext
+print(AccelContext().summary())
+# tier=torch_cpu | device=cpu | cupy=False | triton=False | amp=off
+```
 
 ## MambaFormer backbone
 
@@ -257,8 +383,79 @@ PYTHONPATH=. .venv/bin/python scripts/verify_stages.py
 ```
 
 It also prints a Figure-1 coverage map showing which components are implemented
-vs. pending (the decoder / heads / LoRA / RLHF), and which ground-truth labels
+vs. pending (splice / barcode heads, LoRA, RLHF), and which ground-truth labels
 the dataset already provides for them.
+
+`scripts/verify_alignment_pipeline.py` covers everything downstream — the four
+alignment stages, the core model, the losses, and all three pipeline modes:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/verify_alignment_pipeline.py
+```
+
+It asserts the properties that matter rather than just shapes: every anchor is a
+real exact match, chain members stay collinear, CIGARs consume exactly the read
+and the reference span they claim, WFA reproduces known edit distances, anchor
+pruning honours both its threshold and its keep-floor, a short training loop
+actually decreases the loss, and all three modes recover the true locus.
+
+### Unit suite (`tests/`)
+
+pytest is **not** a dependency, so `tests/run_all.py` discovers and runs every
+`test_*` function itself, printing a pass/fail table with tracebacks. The test
+modules follow pytest conventions too, so `pytest tests/` works if you have it.
+
+```bash
+PYTHONPATH=. .venv/bin/python tests/run_all.py           # everything
+PYTHONPATH=. .venv/bin/python tests/run_all.py losses    # substring filter
+```
+
+| Module | Covers |
+| --- | --- |
+| `tests/test_alignment_stages.py` | The algorithms cross-checked against independent brute-force references: suffix array vs. Python's suffix sort, FM-index vs. naive substring scan, SMEM maximality, minimizers vs. explicit per-window minima, chaining DP vs. a textbook O(n²) loop, banded SW vs. an unbanded full-matrix affine DP, WFA vs. a Levenshtein matrix. |
+| `tests/test_core_model.py` | Base-space encoding, forward/backward, head masking, multi-task scopes, and that block-diagonal graph collation equals per-graph encoding. |
+| `tests/test_losses.py` | All alignment terms, NaN safety for unmatched/fully-masked chain rows, skipping of unlabelled terms, Kendall vs. static weighting, all 11 task heads at their own scope. |
+| `tests/test_pipeline.py` | The three modes end to end, pruning threshold + floor, two-pass rescue firing only on hard reads, batch-size invariance, MAPQ range, classical fallback. |
+| `tests/test_accel.py` | Capability detection honesty (never claims a CUDA tier without CUDA), fused Triton op equals the composed torch ops, CUDA-graph runner matches eager, CuPy tier declines cleanly. CUDA-only tiers are skipped, not failed, and the exercised tier is printed. |
+
+`scripts/check_gpu.py` is a hardware diagnostic, not a test — it needs a real
+Metal/CUDA device and fails inside a sandboxed or headless session.
+
+### Architecture conformance (`scripts/audit_architecture.py`)
+
+The spec in `architecture/GraphMamba_Architecture.html` states concrete numbers,
+and this script asserts them against the code so drift fails loudly instead of
+being spotted by eye later. Each check names the spec line it came from.
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/audit_architecture.py
+```
+
+It has two halves. **Conformance** (65 assertions, the contract) covers the
+`d=256 / 6 BiMamba2 / 3 GATv2` shape of the core model, the SequenceEncoder
+budget (`64 + 64 + 32 + 96 = 256`), Mamba-2's `conv_dim=4 / headdim=64 /
+expand=2`, cross-attention's `8 heads x 32`, GATv2's 4 heads, the forward-pass
+tensor shapes down to `(B, L+N, D)`, the stage constants (`min_seed=13`,
+`max_occ=200`, DBG `k=21`, multiplex `k=15,21,31`, WFA `mismatch=4 / gap_open=6 /
+x_drop=600`, `max_mapq=60`), the MappingHead's `sigmoid x 60`, all ten multi-task
+heads with their class counts, Kendall log-variance weighting, and the two
+wiring details the spec calls out by name — that the fusion FFN really uses the
+Triton fused LN+Linear+GELU, and that route labels come from `RouterConfig`
+rather than a pipeline-local copy. The parameter budget is checked at ±10% of
+the quoted 14.2M (currently 14,948,647, +5.3%).
+
+**Coverage** walks the 97-feature catalogue and marks each entry implemented /
+partial / missing with the module that provides it; the script verifies that
+every module it names actually exists, so the table cannot overstate itself.
+Roughly 44% are fully implemented and 57% at least partial. The gaps are
+unbuilt scope rather than deviations: pipeline Stages 6–7 (repeat/HLA
+resolution, predictive-genomics aggregation), the ten specialized aligners, the
+C fast path, and all training infrastructure bar the loss.
+
+Where the spec contradicts itself the script prints the resolution. The only
+such case today is `d_state`: the forward-pass diagram says 128 while the same
+document's `.env` reference says 64, so the code follows 64 — it agrees with
+Figure 1B and lands nearer the quoted parameter budget.
 
 ## chr21 mentor benchmark (Giraffe vs ours + DeepVariant + Sniffles)
 

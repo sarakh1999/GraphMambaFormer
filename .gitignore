@@ -19,6 +19,11 @@ __pycache__/
 # --- not redistributable ----------------------------------------------------
 papers/
 meetings screenshots/
+# The architecture spec and its screenshots are reference material, not code:
+# the exported HTML plus ~24 MB of PNGs that duplicate it. scripts/audit_architecture.py
+# encodes the numbers it checks, so it does not read these at runtime.
+architecture/*.html
+architecture/*.png
 
 # --- stray genomics artifacts outside data/ ---------------------------------
 *.bam

@@ -1,0 +1,476 @@
+"""Training objectives for the alignment stages and the multi-task heads.
+
+Two pieces live here:
+
+:class:`AlignmentLoss`
+    The supervision for Stages 1-4 — anchor classification, chain ranking, node
+    classification, within-node position, MAPQ, the router's compute budget, and
+    an alignment-score margin.
+
+:class:`MultiTaskLoss`
+    The ten predictive-genomics heads, each with the loss its label space calls
+    for (classification, ordinal regression, or per-base sequence labelling).
+
+Both are combined by :class:`GraphMambaLoss`. Every term is masked, and a term
+whose labels are absent from the batch is skipped rather than contributing zero,
+so partially-labelled batches train the heads they have labels for without
+diluting the gradient of the others.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from ..config import LossConfig, MultiTaskConfig
+
+__all__ = [
+    "AlignmentLoss",
+    "MultiTaskLoss",
+    "GraphMambaLoss",
+    "LossOutput",
+]
+
+
+@dataclass
+class LossOutput:
+    """Total loss plus the detached per-term breakdown for logging."""
+
+    total: torch.Tensor
+    terms: dict[str, float] = field(default_factory=dict)
+    #: Effective weight applied to each term (after learnable balancing).
+    weights: dict[str, float] = field(default_factory=dict)
+
+    def __float__(self) -> float:
+        return float(self.total.detach())
+
+    def as_dict(self) -> dict[str, float]:
+        return {"total": float(self.total.detach()), **self.terms}
+
+
+def _masked_mean(values: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    """Mean of ``values`` over ``mask``, or an exact zero when nothing is valid.
+
+    Returning a zero that is still attached to the graph keeps the term present
+    with no gradient, which avoids a shape/device dance at the call sites.
+    """
+    if mask is None:
+        return values.mean() if values.numel() else values.sum()
+    mask = mask.to(values.dtype)
+    total = mask.sum()
+    if float(total) == 0.0:
+        return (values * 0.0).sum()
+    return (values * mask).sum() / total.clamp_min(1.0)
+
+
+class KendallWeighting(nn.Module):
+    """Uncertainty weighting from Kendall et al. (arXiv:1705.07115).
+
+    Each task carries a learned log-variance ``s`` and contributes
+    ``exp(-s) * L + s``. The trailing ``+ s`` is what stops the trivial solution
+    of driving every weight to zero. Log-variances are created lazily, on first
+    sight of a task name, so enabling a head does not need a config change here.
+    """
+
+    def __init__(self, initial: dict[str, float] | None = None, enabled: bool = True):
+        super().__init__()
+        self.enabled = enabled
+        self.log_vars = nn.ParameterDict()
+        self._static: dict[str, float] = dict(initial or {})
+
+    def _ensure(self, name: str, device: torch.device) -> None:
+        if name in self.log_vars:
+            return
+        # Start at the log-variance whose implied weight equals the static one:
+        # exp(-s) = w  =>  s = -log(w).
+        weight = max(self._static.get(name, 1.0), 1e-6)
+        start = -torch.log(torch.tensor(weight, device=device))
+        self.log_vars[name] = nn.Parameter(start)
+
+    def combine(
+        self, losses: dict[str, torch.Tensor]
+    ) -> tuple[torch.Tensor, dict[str, float]]:
+        """Reduce per-task losses to a scalar, returning the applied weights."""
+        if not losses:
+            raise ValueError("no loss terms to combine")
+
+        device = next(iter(losses.values())).device
+        total = torch.zeros((), device=device)
+        applied: dict[str, float] = {}
+        for name, value in losses.items():
+            if self.enabled:
+                self._ensure(name, device)
+                log_var = self.log_vars[name]
+                total = total + torch.exp(-log_var) * value + log_var
+                applied[name] = float(torch.exp(-log_var).detach())
+            else:
+                weight = self._static.get(name, 1.0)
+                total = total + weight * value
+                applied[name] = weight
+        return total, applied
+
+
+class AlignmentLoss(nn.Module):
+    """Supervision for the alignment stages.
+
+    Expected ``targets`` keys (all optional — a missing key skips its term):
+
+    ``seed_labels`` (B, A)
+        1.0 for a true anchor, 0.0 for a decoy. Paired with ``anchor_mask``.
+    ``chain_target`` (B,)
+        Index of the correct chain, or -1 when no candidate is correct. Scored
+        listwise over the candidates, which is what the ranking at inference
+        actually needs — the absolute scores do not matter, only the ordering.
+    ``node_target`` (B,)
+        Correct graph node, ``-100`` to ignore.
+    ``position_target`` (B,)
+        True offset within the node, as a fraction in ``[0, 1]``.
+    ``mapq_target`` (B,)
+        Target MAPQ in ``[0, max_mapq]``; normalized internally.
+    ``best_score`` / ``decoy_score`` (B,)
+        Alignment scores for the margin term.
+    """
+
+    def __init__(self, cfg: LossConfig | None = None, max_mapq: int = 60):
+        super().__init__()
+        self.cfg = cfg or LossConfig()
+        self.max_mapq = float(max_mapq)
+
+    # -- individual terms ---------------------------------------------------- #
+    def seed_loss(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        anchor_mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """Per-anchor true/decoy BCE, masked over the padded anchor slots."""
+        pos_weight = torch.as_tensor(
+            self.cfg.seed_pos_weight, device=logits.device, dtype=logits.dtype
+        )
+        per_anchor = F.binary_cross_entropy_with_logits(
+            logits, labels.to(logits.dtype), pos_weight=pos_weight, reduction="none"
+        )
+        return _masked_mean(per_anchor, anchor_mask)
+
+    def chain_loss(
+        self,
+        logits: torch.Tensor,
+        target: torch.Tensor,
+        chain_mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """Listwise cross-entropy over each read's candidate chains.
+
+        Padded candidates are pushed to ``-inf`` so they cannot absorb
+        probability mass, and reads with no correct candidate are dropped.
+        """
+        # The degenerate cases below must return a zero that is still attached to
+        # the graph. -inf * 0 is NaN, and ChainScoringHead already fills padded
+        # candidates with -inf, so the infinities are cleared before scaling.
+        zero = logits.nan_to_num(neginf=0.0, posinf=0.0).sum() * 0.0
+
+        masked = (
+            logits.masked_fill(~chain_mask.bool(), float("-inf"))
+            if chain_mask is not None
+            else logits
+        )
+
+        valid = target >= 0
+        if not bool(valid.any()):
+            return zero
+
+        # A row whose every candidate is masked is an all -inf row, whose
+        # log-softmax is NaN; requiring the target slot to be live drops those.
+        rows = torch.nonzero(valid, as_tuple=True)[0]
+        finite = torch.isfinite(masked[rows, target[rows]])
+        if not bool(finite.any()):
+            return zero
+        rows = rows[finite]
+        return F.cross_entropy(masked[rows], target[rows])
+
+    def node_loss(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return F.cross_entropy(
+            logits,
+            target,
+            ignore_index=-100,
+            label_smoothing=self.cfg.node_label_smoothing,
+        )
+
+    def position_loss(
+        self,
+        fraction: torch.Tensor,
+        target: torch.Tensor,
+        valid: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Huber on the within-node offset; robust to the odd mis-assigned node."""
+        per_read = F.smooth_l1_loss(
+            fraction, target.to(fraction.dtype), beta=self.cfg.huber_beta, reduction="none"
+        )
+        return _masked_mean(per_read, valid)
+
+    def mapq_loss(
+        self,
+        mapq: torch.Tensor,
+        target: torch.Tensor,
+        valid: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Huber on MAPQ, normalized to ``[0, 1]`` to keep the scale comparable."""
+        scale = max(self.max_mapq, 1.0)
+        per_read = F.smooth_l1_loss(
+            mapq / scale,
+            target.to(mapq.dtype) / scale,
+            beta=self.cfg.huber_beta,
+            reduction="none",
+        )
+        return _masked_mean(per_read, valid)
+
+    def router_loss(self, cost: torch.Tensor) -> torch.Tensor:
+        """Pull the expected compute cost toward the configured budget.
+
+        One-sided: cheaper than target is free, so the router is only penalized
+        for spending more than the budget allows.
+        """
+        over = (cost.mean() - self.cfg.router_target_cost).clamp_min(0.0)
+        return over.pow(2)
+
+    def extension_loss(
+        self, best: torch.Tensor, decoy: torch.Tensor, margin: float = 1.0
+    ) -> torch.Tensor:
+        """Hinge pushing the true alignment's score above the best decoy's."""
+        return F.relu(margin - (best - decoy)).mean()
+
+    # -- assembly ------------------------------------------------------------ #
+    def forward(
+        self,
+        outputs,
+        targets: dict[str, torch.Tensor],
+        seed_scores: dict[str, torch.Tensor] | None = None,
+        chain_scores: dict[str, torch.Tensor] | None = None,
+    ) -> dict[str, torch.Tensor]:
+        """Collect every applicable alignment term, keyed by name."""
+        losses: dict[str, torch.Tensor] = {}
+
+        if seed_scores is not None and "seed_labels" in targets:
+            losses["seed"] = self.seed_loss(
+                seed_scores["logits"], targets["seed_labels"], targets.get("anchor_mask")
+            )
+
+        if chain_scores is not None and "chain_target" in targets:
+            losses["chain"] = self.chain_loss(
+                chain_scores["logits"].squeeze(-1)
+                if chain_scores["logits"].dim() == 3
+                else chain_scores["logits"],
+                targets["chain_target"],
+                targets.get("chain_mask"),
+            )
+
+        mapping = getattr(outputs, "mapping", None)
+        if mapping is not None:
+            if "node_target" in targets:
+                losses["node"] = self.node_loss(
+                    mapping["node_logits"], targets["node_target"]
+                )
+            if "position_target" in targets:
+                # Only supervise the offset where the node label is known: the
+                # fraction is meaningless without the node it is relative to.
+                valid = targets.get("position_valid")
+                if valid is None and "node_target" in targets:
+                    valid = targets["node_target"] >= 0
+                losses["position"] = self.position_loss(
+                    mapping["position_fraction"], targets["position_target"], valid
+                )
+            if "mapq_target" in targets:
+                losses["mapq"] = self.mapq_loss(
+                    mapping["mapq"], targets["mapq_target"], targets.get("mapq_valid")
+                )
+
+        router = getattr(outputs, "router", None)
+        if router is not None:
+            losses["router"] = self.router_loss(router["cost"])
+
+        if "best_score" in targets and "decoy_score" in targets:
+            losses["extension"] = self.extension_loss(
+                targets["best_score"], targets["decoy_score"]
+            )
+
+        return losses
+
+    def static_weights(self) -> dict[str, float]:
+        return {
+            "seed": self.cfg.w_seed,
+            "chain": self.cfg.w_chain,
+            "node": self.cfg.w_node,
+            "position": self.cfg.w_position,
+            "mapq": self.cfg.w_mapq,
+            "router": self.cfg.w_router,
+            "extension": self.cfg.w_extension,
+        }
+
+
+@dataclass(frozen=True)
+class TaskSpec:
+    """How to score one multi-task head.
+
+    Heads are classifiers over their leading ``n_classes`` channels, some with
+    extra regression channels trailing behind (genotype quality, SV breakpoint
+    offsets, continuous copy number). ``scope`` says which axis the labels live
+    on, which decides how the logits are flattened before the cross-entropy.
+    """
+
+    #: ``"read"`` -> labels are ``(B,)``; ``"node"`` -> ``(B, N)``; ``"base"`` -> ``(B, L)``.
+    scope: str
+    #: Attribute on :class:`MultiTaskConfig` holding the number of classes.
+    n_classes_field: str
+    #: Trailing regression channels, supervised from ``f"{name}_aux"`` when present.
+    n_regression: int = 0
+
+
+#: Mirrors the head widths built by :class:`MultiTaskHeads`.
+TASK_SPECS: dict[str, TaskSpec] = {
+    "variant_calling": TaskSpec("node", "num_genotypes", n_regression=1),  # + GQ
+    "sv_genotyping": TaskSpec("node", "num_sv_types", n_regression=2),  # + breakpoints
+    "copy_number": TaskSpec("node", "num_cn_states", n_regression=1),  # + continuous CN
+    "ancestry_local": TaskSpec("node", "num_populations"),
+    "haplotype": TaskSpec("read", "_two"),  # phase 0 / 1
+    "hla_typing": TaskSpec("read", "num_hla_alleles"),
+    "ancestry": TaskSpec("read", "num_populations"),
+    "somatic": TaskSpec("read", "num_somatic_classes"),
+    "pgx": TaskSpec("read", "num_pgx_alleles"),
+    "bqsr": TaskSpec("base", "num_quality_bins"),
+    "methylation": TaskSpec("base", "_two"),  # unmethylated / methylated
+}
+
+
+class MultiTaskLoss(nn.Module):
+    """Losses for the enabled predictive-genomics heads.
+
+    Labels go under the head's own name; the objective is derived from
+    :data:`TASK_SPECS` so callers do not choose it. Heads that emit auxiliary
+    regression channels pick those up from ``f"{name}_aux"``, and any head
+    without labels in the batch is skipped.
+
+    Per-element labels (node and base scope) use ``-100`` to ignore a position,
+    which is how a partially-genotyped graph or a soft-clipped read is handled.
+    """
+
+    IGNORE = -100
+
+    def __init__(
+        self, cfg: MultiTaskConfig | None = None, loss_cfg: LossConfig | None = None
+    ):
+        super().__init__()
+        self.cfg = cfg or MultiTaskConfig()
+        self.loss_cfg = loss_cfg or LossConfig()
+
+    def _n_classes(self, spec: TaskSpec) -> int:
+        if spec.n_classes_field == "_two":
+            return 2
+        return int(getattr(self.cfg, spec.n_classes_field))
+
+    def forward(
+        self, predictions: dict[str, torch.Tensor], targets: dict[str, torch.Tensor]
+    ) -> dict[str, torch.Tensor]:
+        losses: dict[str, torch.Tensor] = {}
+        for name, pred in predictions.items():
+            target = targets.get(name)
+            if target is None:
+                continue  # head enabled but unlabelled in this batch
+            spec = TASK_SPECS.get(name)
+            if spec is None:
+                raise ValueError(f"no loss spec registered for task head {name!r}")
+
+            n_classes = self._n_classes(spec)
+            losses[f"task/{name}"] = self._classification(
+                pred[..., :n_classes], target, spec
+            )
+
+            aux_target = targets.get(f"{name}_aux")
+            if spec.n_regression and aux_target is not None:
+                losses[f"task/{name}_aux"] = self._regression(
+                    pred[..., n_classes : n_classes + spec.n_regression],
+                    aux_target,
+                    targets.get(f"{name}_mask"),
+                )
+        return losses
+
+    def _classification(
+        self, logits: torch.Tensor, target: torch.Tensor, spec: TaskSpec
+    ) -> torch.Tensor:
+        if spec.scope == "read":
+            return F.cross_entropy(logits, target.long(), ignore_index=self.IGNORE)
+
+        # Node / base scope: flatten the element axis so one CE covers the batch.
+        flat_logits = logits.reshape(-1, logits.shape[-1])
+        flat_target = target.reshape(-1).long()
+        if not bool((flat_target != self.IGNORE).any()):
+            return flat_logits.sum() * 0.0
+        return F.cross_entropy(flat_logits, flat_target, ignore_index=self.IGNORE)
+
+    def _regression(
+        self,
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        target = target.to(pred.dtype)
+        if target.dim() == pred.dim() - 1:
+            target = target.unsqueeze(-1)
+        per_element = F.smooth_l1_loss(
+            pred, target, beta=self.loss_cfg.huber_beta, reduction="none"
+        ).mean(-1)
+        return _masked_mean(per_element, mask)
+
+
+class GraphMambaLoss(nn.Module):
+    """The full objective: alignment terms plus multi-task terms, balanced.
+
+    With ``LossConfig.learnable_weights`` the balancing is Kendall uncertainty
+    weighting; otherwise the static config weights are used directly.
+    """
+
+    def __init__(
+        self,
+        cfg: LossConfig | None = None,
+        multi_task: MultiTaskConfig | None = None,
+        max_mapq: int = 60,
+    ):
+        super().__init__()
+        self.cfg = cfg or LossConfig()
+        self.alignment = AlignmentLoss(self.cfg, max_mapq=max_mapq)
+        self.multitask = MultiTaskLoss(multi_task, self.cfg)
+
+        static = self.alignment.static_weights()
+        self.weighting = KendallWeighting(static, enabled=self.cfg.learnable_weights)
+        self._task_weight = self.cfg.w_multitask
+
+    def forward(
+        self,
+        outputs,
+        targets: dict[str, torch.Tensor],
+        seed_scores: dict[str, torch.Tensor] | None = None,
+        chain_scores: dict[str, torch.Tensor] | None = None,
+    ) -> LossOutput:
+        losses = self.alignment(
+            outputs, targets, seed_scores=seed_scores, chain_scores=chain_scores
+        )
+
+        predictions = getattr(outputs, "multitask", None)
+        if predictions:
+            for name, value in self.multitask(predictions, targets).items():
+                losses[name] = self._task_weight * value
+
+        if not losses:
+            raise ValueError(
+                "no supervised terms found: targets carried none of the expected keys "
+                "(seed_labels, chain_target, node_target, position_target, mapq_target, "
+                "best_score/decoy_score) and no multi-task labels"
+            )
+
+        total, applied = self.weighting.combine(losses)
+        return LossOutput(
+            total=total,
+            terms={k: float(v.detach()) for k, v in losses.items()},
+            weights=applied,
+        )

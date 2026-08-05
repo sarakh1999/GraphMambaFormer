@@ -23,7 +23,7 @@ across batches, since index construction dominates single-batch cost.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import Iterable, Optional, Sequence
 
 import numpy as np
 import torch
@@ -41,10 +41,84 @@ __all__ = [
     "FastAlignmentPipeline",
     "HybridAlignmentPipeline",
     "PipelineStats",
+    "ReadBatch",
     "ReferenceIndex",
     "TwoPassAligner",
     "build_pipeline",
 ]
+
+
+@dataclass
+class ReadBatch:
+    """Reads plus the per-read metadata the encoder can condition on.
+
+    The pipeline accepts either bare sequence strings or the ``ReadRecord``
+    objects the format readers produce. Records carry Phred qualities and a
+    modality, which feed the encoder's quality embedding and modality token;
+    plain strings carry neither, and the encoder falls back to its defaults.
+    """
+
+    seqs: list[str]
+    ids: list[str]
+    quals: Optional[list[list[int]]] = None
+    modalities: Optional[list[str]] = None
+
+    def __len__(self) -> int:
+        return len(self.seqs)
+
+    def slice(self, start: int, stop: int) -> "ReadBatch":
+        return self.select(range(*slice(start, stop).indices(len(self.seqs))))
+
+    def select(self, rows: Iterable[int]) -> "ReadBatch":
+        """A sub-batch keeping per-read metadata aligned with the chosen rows."""
+        rows = list(rows)
+        return ReadBatch(
+            seqs=[self.seqs[i] for i in rows],
+            ids=[self.ids[i] for i in rows],
+            quals=None if self.quals is None else [self.quals[i] for i in rows],
+            modalities=(
+                None if self.modalities is None else [self.modalities[i] for i in rows]
+            ),
+        )
+
+    @property
+    def modality(self) -> Optional[list[str] | str]:
+        """A single modality when the batch is homogeneous, else one per read."""
+        if not self.modalities:
+            return None
+        unique = set(self.modalities)
+        return self.modalities[0] if len(unique) == 1 else self.modalities
+
+
+def as_read_batch(reads, read_ids: Optional[Sequence[str]] = None) -> ReadBatch:
+    """Normalize ``Sequence[str] | Sequence[ReadRecord]`` into a :class:`ReadBatch`.
+
+    Detection is duck-typed on ``.seq`` so this does not import the data layer
+    (which would be a circular import). Passing an existing :class:`ReadBatch`
+    through is a no-op, so the public entry points can normalize defensively.
+    """
+    if isinstance(reads, ReadBatch):
+        return reads
+    reads = list(reads)
+    if reads and not isinstance(reads[0], str) and hasattr(reads[0], "seq"):
+        seqs = [r.seq for r in reads]
+        quals = [list(getattr(r, "quals", []) or []) for r in reads]
+        modalities = [getattr(r, "modality", None) for r in reads]
+        ids = (
+            list(read_ids)
+            if read_ids is not None
+            else [getattr(r, "read_id", f"read{i}") for i, r in enumerate(reads)]
+        )
+        return ReadBatch(
+            seqs=seqs,
+            ids=ids,
+            quals=quals if any(quals) else None,
+            modalities=modalities if all(m for m in modalities) else None,
+        )
+
+    seqs = [str(r) for r in reads]
+    ids = list(read_ids) if read_ids is not None else [f"read{i}" for i in range(len(seqs))]
+    return ReadBatch(seqs=seqs, ids=ids)
 
 
 @dataclass
@@ -296,18 +370,22 @@ class AlignmentPipeline:
     # ---- public entry point ------------------------------------------------- #
     def align(
         self,
-        reads: Sequence[str],
+        reads: Sequence[str] | Sequence[object],
         reference: ReferenceIndex,
         read_ids: Optional[Sequence[str]] = None,
     ) -> tuple[list[ReadAlignments], PipelineStats]:
-        """Align reads in batches of ``cfg.batch_size``."""
-        ids = list(read_ids) if read_ids is not None else [f"read{i}" for i in range(len(reads))]
+        """Align reads in batches of ``cfg.batch_size``.
+
+        ``reads`` may be plain sequence strings or the ``ReadRecord`` objects
+        returned by the format readers, in which case their Phred qualities and
+        modality are carried through to the model.
+        """
+        batch = as_read_batch(reads, read_ids)
         results: list[ReadAlignments] = []
         stats = PipelineStats()
-        for start in range(0, len(reads), self.cfg.batch_size):
-            chunk = list(reads[start : start + self.cfg.batch_size])
-            chunk_ids = ids[start : start + self.cfg.batch_size]
-            batch_results, batch_stats = self.align_batch(chunk, reference, chunk_ids)
+        for start in range(0, len(batch), self.cfg.batch_size):
+            chunk = batch.slice(start, start + self.cfg.batch_size)
+            batch_results, batch_stats = self.align_batch(chunk, reference, chunk.ids)
             results.extend(batch_results)
             stats.merge(batch_stats)
         return results, stats
@@ -319,7 +397,8 @@ class FastAlignmentPipeline(AlignmentPipeline):
     mode = "fast"
 
     def align_batch(self, reads, reference, read_ids=None):
-        ids = list(read_ids) if read_ids is not None else [f"read{i}" for i in range(len(reads))]
+        batch = as_read_batch(reads, read_ids)
+        reads, ids = batch.seqs, batch.ids
         stats = PipelineStats(n_reads=len(reads))
 
         anchor_sets = self.seed(reads, reference)
@@ -373,7 +452,8 @@ class HybridAlignmentPipeline(AlignmentPipeline):
     mode = "hybrid"
 
     def align_batch(self, reads, reference, read_ids=None):
-        ids = list(read_ids) if read_ids is not None else [f"read{i}" for i in range(len(reads))]
+        batch = as_read_batch(reads, read_ids)
+        reads, ids = batch.seqs, batch.ids
         stats = PipelineStats(n_reads=len(reads))
 
         # Stage 1.
@@ -381,7 +461,7 @@ class HybridAlignmentPipeline(AlignmentPipeline):
         stats.n_anchors = sum(len(a) for a in anchor_sets)
 
         if not self.uses_neural_scoring:
-            fallback = FastAlignmentPipeline.align_batch(self, reads, reference, ids)
+            fallback = FastAlignmentPipeline.align_batch(self, batch, reference, ids)
             for read_alignments in fallback[0]:
                 for record in read_alignments.records:
                     record.pass_name = self.mode
@@ -393,9 +473,20 @@ class HybridAlignmentPipeline(AlignmentPipeline):
         assert scorer is not None
 
         # Stage 4a — one forward pass, reused for anchors, chains, and MAPQ.
-        base_codes, mask = _encode(reads, self.device, self.cfg.max_read_len)
+        # Qualities and modality ride along when the reads came from a file that
+        # carries them (FASTQ/BAM/uBAM/CRAM); they drive the encoder's quality
+        # embedding and modality token.
+        base_codes, mask, qual_tensor = _encode(
+            reads, self.device, self.cfg.max_read_len, quals=batch.quals
+        )
         with torch.inference_mode(), self.accel.autocast():
-            outputs = self.model(base_codes, mask=mask, graph=reference.graph)
+            outputs = self.model(
+                base_codes,
+                mask=mask,
+                graph=reference.graph,
+                qualities=qual_tensor,
+                modality=batch.modality,
+            )
         stats.n_neural_batches = 1
 
         scorer.score_anchors(outputs, anchor_sets)
@@ -536,10 +627,11 @@ class TwoPassAligner(AlignmentPipeline):
         return margin >= self.cfg.easy_margin
 
     def align_batch(self, reads, reference, read_ids=None):
-        ids = list(read_ids) if read_ids is not None else [f"read{i}" for i in range(len(reads))]
+        batch = as_read_batch(reads, read_ids)
+        ids = batch.ids
 
-        first, stats = self.fast.align_batch(reads, reference, ids)
-        stats.per_pass = {"fast": len(reads)}
+        first, stats = self.fast.align_batch(batch, reference, ids)
+        stats.per_pass = {"fast": len(batch)}
 
         hard = [i for i, alignments in enumerate(first) if not self._is_easy(alignments)]
         if not hard or not self.hybrid.uses_neural_scoring:
@@ -548,8 +640,9 @@ class TwoPassAligner(AlignmentPipeline):
                     record.pass_name = self.mode
             return first, stats
 
+        # Subset via select() so the hard reads keep their qualities and modality.
         second, hard_stats = self.hybrid.align_batch(
-            [reads[i] for i in hard], reference, [ids[i] for i in hard]
+            batch.select(hard), reference, [ids[i] for i in hard]
         )
         # The fast pass already counted these reads; keep only the extra work.
         hard_stats.n_reads = 0
@@ -565,10 +658,10 @@ class TwoPassAligner(AlignmentPipeline):
         return first, stats
 
 
-def _encode(reads, device, max_len):
+def _encode(reads, device, max_len, quals=None):
     from .scoring import encode_read_batch
 
-    return encode_read_batch(reads, device=device, max_len=max_len)
+    return encode_read_batch(reads, device=device, max_len=max_len, quals=quals)
 
 
 def _route_names(model, outputs) -> list[str]:

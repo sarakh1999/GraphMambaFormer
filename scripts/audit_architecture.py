@@ -219,6 +219,54 @@ def audit_wiring(audit: Audit) -> None:
     audit.equals("VariantCallingHead genotypes 0/0,0/1,1/1", ten.num_genotypes, 3)
 
 
+def audit_format_contract(audit: Audit) -> None:
+    """The I/O contract, end to end: every input format, every modality, every output."""
+    banner("Format contract  (in: FASTQ/.gz, BAM, uBAM, SAM, CRAM, GFA | out: BAM, CRAM, GFA, GBZ)")
+
+    from graphmambaformer.alignment.pipeline import as_read_batch
+    from graphmambaformer.config import MODALITIES
+    from graphmambaformer.data import (
+        read_fastq,
+        read_gfa,
+        read_reads,
+        write_alignments,
+        write_bam,
+        write_cram,
+        write_gbz,
+        write_gfa_graph,
+    )
+
+    for name, fn in [
+        ("FASTQ reader", read_fastq), ("reads dispatch (BAM/uBAM/SAM/CRAM)", read_reads),
+        ("GFA reader", read_gfa), ("BAM writer", write_bam), ("CRAM writer", write_cram),
+        ("GFA writer", write_gfa_graph), ("GBZ writer", write_gbz),
+        ("pipeline results -> BAM/CRAM", write_alignments),
+    ]:
+        audit.check(f"{name} present", callable(fn))
+
+    audit.equals("7 modalities catalogued", len(MODALITIES), 7)
+    for m in ("illumina", "pacbio_hifi", "ont", "rna_seq", "bisulfite",
+              "single_cell", "linked_reads"):
+        audit.check(f"modality {m!r} supported", m in MODALITIES)
+
+    # The seams that were silently dropping data.
+    class _Rec:
+        seq, quals, modality, read_id = "ACGT", [30, 30, 30, 30], "ont", "r0"
+
+    batch = as_read_batch([_Rec()])
+    audit.check("pipeline carries Phred qualities from the reader",
+                batch.quals is not None and batch.quals[0] == [30, 30, 30, 30])
+    audit.check("pipeline carries modality from the reader", batch.modality == "ont")
+
+    import inspect
+
+    from graphmambaformer.alignment import scoring
+
+    src = inspect.getsource(scoring)
+    audit.check("model is called with qualities=", "qualities=qual_tensor" in src)
+    audit.check("model is called with modality=", "modality=" in src)
+
+
 def audit_spec_contradictions(audit: Audit) -> None:
     """Places the spec disagrees with itself, and which reading the code follows."""
     banner("Resolved spec contradictions")
@@ -400,6 +448,7 @@ def main() -> int:
     audit_forward_shapes(audit)
     audit_stage_constants(audit)
     audit_wiring(audit)
+    audit_format_contract(audit)
     audit_spec_contradictions(audit)
     audit_param_budget(audit)
     yes, partial, no = audit_coverage(audit)

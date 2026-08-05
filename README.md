@@ -380,19 +380,32 @@ in `graph.gfa` / `labels.json`.)
 | **Input** | FASTQ (plain or `.gz`), BAM, **uBAM**, SAM, CRAM, GFA |
 | **Output** | BAM, CRAM, GFA, GBZ |
 
-Reads and graphs each have one entry point that dispatches on the file itself:
+Reads and graphs each have one entry point that dispatches on the file itself,
+and pipeline results go back out through `write_alignments`:
 
 ```python
-from graphmambaformer.data import read_reads, read_gfa, write_bam, write_cram, write_gfa_graph, write_gbz
+from graphmambaformer.data import (read_reads, read_gfa, write_alignments,
+                                   write_gfa_graph, write_gbz)
 
 reads = read_reads("sample.fastq.gz", modality="ont")   # or .bam / .ubam / .sam / .cram
 graph = read_gfa("pangenome.gfa")
 
-write_bam(reads, "out.bam", references=refs)                    # sorted + indexed
-write_cram(reads, "out.cram", "ref.fasta", references=refs)     # reference-compressed
+results, stats = pipeline.align(reads, reference)
+
+write_alignments(results, reads, "out.bam", references=refs)
+write_alignments(results, reads, "out.cram", references=refs,
+                 reference_fasta="ref.fasta")           # reference-compressed
 write_gfa_graph(graph, "out.gfa")
-write_gbz("out.gfa", "out.gbz")                                 # needs the `vg` binary
+write_gbz("out.gfa", "out.gbz")                         # needs the `vg` binary
 ```
+
+Passing `ReadRecord` objects rather than bare strings matters: they carry the
+Phred qualities and modality from the source file, and the pipeline forwards
+both to the encoder (quality is 32 of its 256 input dims). Plain `str` reads
+still work — the encoder falls back to its defaults. `write_alignments` needs
+both the results and the source reads, because an `AlignmentRecord` carries no
+sequence of its own; unmapped reads are written as unmapped records rather than
+dropped, so the read count out matches the count in.
 
 BAM/CRAM go through pysam's bundled htslib, so no external `samtools` is
 required. GBZ is vg's binary graph+haplotype index and has no pure-Python
@@ -425,3 +438,22 @@ pinned them down, and each has a named regression test: gzipped FASTQ raised
 `UnicodeDecodeError` despite `.fastq.gz` being routed to the FASTQ reader, a
 uBAM read back as zero records, and an unrecognized modality string rode along
 on every record to fail much later in the encoder's modality embedding.
+
+### End-to-end coverage
+
+[`tests/test_end_to_end_formats.py`](tests/test_end_to_end_formats.py) runs the
+whole chain — file in, align, file out — because the seams between those steps
+were where the remaining gaps were. It asserts that all 7 modalities survive a
+round trip through the pipeline and back to BAM, that every input format aligns
+and writes, that all three pipeline modes accept `ReadRecord`s *and* plain
+strings, that sub-batching (two-pass rescue, `batch_size` chunking) keeps
+per-read metadata aligned with its rows, and that supplying qualities or a
+modality measurably changes the model's output rather than being accepted and
+ignored.
+
+The reverse direction is worth stating plainly: reading an *aligned* BAM skips
+unmapped records by default, matching samtools semantics. Pass
+`include_unmapped=True` to get them. This only applies to files with `@SQ`
+lines — for a uBAM the unmapped records are the content, and they are included
+automatically.
+

@@ -46,17 +46,23 @@ def encode_read_batch(
     reads: Sequence[str],
     device: torch.device | str = "cpu",
     max_len: Optional[int] = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Pack reads into ``(base_codes, mask)`` for the base-space core model.
+    quals: Optional[Sequence[Sequence[int]]] = None,
+) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """Pack reads into ``(base_codes, mask, qualities)`` for the core model.
 
     Unknown bases become code 4 (``N``); padding is 0 with the mask cleared, so a
     padded column is never confused with a real ``A``.
+
+    ``quals`` are the per-base Phred scores that FASTQ and BAM carry. They feed
+    the encoder's quality embedding, which is 32 of its 256 input dims; when the
+    caller has none (a bare sequence string), ``None`` is returned and the
+    encoder falls back to its default.
     """
     from .seeding import encode_bases
 
     if not reads:
         empty = torch.zeros((0, 0), dtype=torch.long, device=device)
-        return empty, empty.bool()
+        return empty, empty.bool(), None
 
     encoded = [encode_bases(r) for r in reads]
     if max_len is not None:
@@ -70,7 +76,19 @@ def encode_read_batch(
         if n:
             codes[row, :n] = torch.as_tensor(seq.astype(np.int64))
             mask[row, :n] = True
-    return codes.to(device), mask.to(device)
+
+    qual_tensor: Optional[torch.Tensor] = None
+    if quals is not None:
+        qual_tensor = torch.zeros((len(encoded), width), dtype=torch.long)
+        for row, q in enumerate(quals):
+            n = min(len(q), width, len(encoded[row]))
+            if n:
+                qual_tensor[row, :n] = torch.as_tensor(
+                    np.asarray(q[:n], dtype=np.int64)
+                )
+        qual_tensor = qual_tensor.to(device)
+
+    return codes.to(device), mask.to(device), qual_tensor
 
 
 def chain_features(
@@ -391,11 +409,27 @@ class NeuralScorer:
         graph=None,
         backbone: Optional[np.ndarray] = None,
         max_len: Optional[int] = None,
+        quals: Optional[Sequence[Sequence[int]]] = None,
+        modality: Optional[Sequence[str] | str] = None,
     ) -> ScoredBatch:
-        """Score a whole batch in a single forward pass."""
-        base_codes, mask = encode_read_batch(reads, self.device, max_len=max_len)
+        """Score a whole batch in a single forward pass.
+
+        ``quals`` and ``modality`` come from the source file when the reads were
+        loaded from FASTQ/BAM/uBAM/CRAM; they drive the encoder's quality
+        embedding and modality-conditioning token respectively. Both are
+        optional so a bare list of sequence strings still works.
+        """
+        base_codes, mask, qual_tensor = encode_read_batch(
+            reads, self.device, max_len=max_len, quals=quals
+        )
         with self._grad_context(), self._autocast():
-            outputs = self.model(base_codes, mask=mask, graph=graph)
+            outputs = self.model(
+                base_codes,
+                mask=mask,
+                graph=graph,
+                qualities=qual_tensor,
+                modality=list(modality) if isinstance(modality, (list, tuple)) else modality,
+            )
 
         batch = ScoredBatch(outputs=outputs)
         if self.cfg.score_seeds:

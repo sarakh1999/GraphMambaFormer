@@ -281,7 +281,7 @@ def verify_core_model() -> None:
     reads, _ = make_reads(ref, n=4)
     from graphmambaformer.alignment import encode_read_batch
 
-    codes, mask = encode_read_batch(reads)
+    codes, mask, _ = encode_read_batch(reads)
     with torch.no_grad():
         out = model(codes, mask=mask, graph=graph)
 
@@ -335,7 +335,7 @@ def verify_losses() -> None:
 
     from graphmambaformer.alignment import encode_read_batch
 
-    codes, mask = encode_read_batch(reads)
+    codes, mask, _ = encode_read_batch(reads)
     model.train()
     out = model(codes, mask=mask, graph=graph)
 

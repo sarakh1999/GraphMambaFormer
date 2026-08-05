@@ -4,6 +4,11 @@ Generation (pure Python) lives in :mod:`synthetic`; the torch-facing
 ``Dataset`` / collate / (de)serialization live in :mod:`dataset`.
 """
 
+from .alignment_io import (
+    alignment_to_read_record,
+    alignments_to_records,
+    write_alignments,
+)
 from .dataset import (
     AlignmentDataset,
     build_datasets,
@@ -86,6 +91,10 @@ __all__ = [
     "read_reads",
     "is_unaligned_bam",
     "validate_modality",
+    # pipeline results -> BAM / CRAM
+    "write_alignments",
+    "alignments_to_records",
+    "alignment_to_read_record",
     "write_bam",
     "write_cram",
     "write_gfa_graph",

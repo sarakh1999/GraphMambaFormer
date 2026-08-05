@@ -513,7 +513,7 @@ such case today is `d_state`: the forward-pass diagram says 128 while the same
 document's `.env` reference says 64, so the code follows 64 — it agrees with
 Figure 1B and lands nearer the quoted parameter budget.
 
-## chr21 mentor benchmark (Giraffe vs ours + DeepVariant + Sniffles)
+## chr21 benchmark (Giraffe vs ours + DeepVariant + Sniffles)
 
 End-to-end scripts for **one HPRC/GIAB individual on chr21**, then scaling to
 the ~44 graph-training samples:

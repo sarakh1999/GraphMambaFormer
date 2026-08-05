@@ -26,8 +26,10 @@ from .export import (
 from .formats import (
     convert_graph,
     convert_reads,
+    is_unaligned_bam,
     read_fastq,
     read_reads,
+    validate_modality,
     write_bam,
     write_cram,
     write_gbz,
@@ -79,9 +81,11 @@ __all__ = [
     "sam_to_bam",
     "read_bam",
     "read_gfa",
-    # format I/O layer (FASTQ/BAM/GFA in; BAM/CRAM/GFA/GBZ out)
+    # format I/O layer (FASTQ/BAM/uBAM/SAM/CRAM/GFA in; BAM/CRAM/GFA/GBZ out)
     "read_fastq",
     "read_reads",
+    "is_unaligned_bam",
+    "validate_modality",
     "write_bam",
     "write_cram",
     "write_gfa_graph",

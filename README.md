@@ -371,6 +371,61 @@ strand per the SAM spec. `--to-bam` converts to a sorted, indexed BAM when
 is printed. (Seeds and per-head labels have no native BAM column, so they live
 in `graph.gfa` / `labels.json`.)
 
+## Input and output formats
+
+`graphmambaformer/data/formats.py` is the format contract for the pipeline.
+
+| Direction | Formats |
+| --- | --- |
+| **Input** | FASTQ (plain or `.gz`), BAM, **uBAM**, SAM, CRAM, GFA |
+| **Output** | BAM, CRAM, GFA, GBZ |
+
+Reads and graphs each have one entry point that dispatches on the file itself:
+
+```python
+from graphmambaformer.data import read_reads, read_gfa, write_bam, write_cram, write_gfa_graph, write_gbz
+
+reads = read_reads("sample.fastq.gz", modality="ont")   # or .bam / .ubam / .sam / .cram
+graph = read_gfa("pangenome.gfa")
+
+write_bam(reads, "out.bam", references=refs)                    # sorted + indexed
+write_cram(reads, "out.cram", "ref.fasta", references=refs)     # reference-compressed
+write_gfa_graph(graph, "out.gfa")
+write_gbz("out.gfa", "out.gbz")                                 # needs the `vg` binary
+```
+
+BAM/CRAM go through pysam's bundled htslib, so no external `samtools` is
+required. GBZ is vg's binary graph+haplotype index and has no pure-Python
+writer, so `write_gbz` shells out to `vg` and raises an error naming the exact
+command if it is not installed.
+
+### Modalities
+
+Every modality loads from every input format. The canonical keys are
+`illumina`, `pacbio_hifi`, `ont`, `rna_seq`, `bisulfite`, `single_cell`, and
+`linked_reads`, covering short reads, long reads (ONT and PacBio HiFi), and the
+HPRC/GIAB material the benchmark scripts pull down.
+
+`validate_modality` resolves the spellings people actually type — `nanopore`,
+`ont_r10` → `ont`; `hifi`, `pacbio`, `ccs`, `revio` → `pacbio_hifi`; `dnbseq`,
+`ultima`, `short_read` → `illumina`; `10x`, `chromium` → `linked_reads` — and
+raises on anything else. A FASTQ header carrying `mod=<modality>` (as written by
+`write_fastq`) overrides the caller's default per read.
+
+### uBAM
+
+ONT and PacBio deliver **unaligned BAM** natively, because it preserves per-base
+tags such as MM/ML methylation that FASTQ cannot carry. A uBAM has no `@SQ`
+lines and every record is unmapped, so `read_reads` detects the unaligned case
+and includes unmapped records there; a mapped-only read of a uBAM would return
+an empty list. `is_unaligned_bam(path)` exposes the same check.
+
+Three of these paths were silently broken until [`tests/test_formats.py`](tests/test_formats.py)
+pinned them down, and each has a named regression test: gzipped FASTQ raised
+`UnicodeDecodeError` despite `.fastq.gz` being routed to the FASTQ reader, a
+uBAM read back as zero records, and an unrecognized modality string rode along
+on every record to fail much later in the encoder's modality embedding.
+
 ## Per-stage verification
 
 `scripts/verify_stages.py` runs the dataset through every implemented component
@@ -417,6 +472,7 @@ PYTHONPATH=. .venv/bin/python tests/run_all.py losses    # substring filter
 | `tests/test_losses.py` | All alignment terms, NaN safety for unmatched/fully-masked chain rows, skipping of unlabelled terms, Kendall vs. static weighting, all 11 task heads at their own scope. |
 | `tests/test_pipeline.py` | The three modes end to end, pruning threshold + floor, two-pass rescue firing only on hard reads, batch-size invariance, MAPQ range, classical fallback. |
 | `tests/test_accel.py` | Capability detection honesty (never claims a CUDA tier without CUDA), fused Triton op equals the composed torch ops, CUDA-graph runner matches eager, CuPy tier declines cleanly. CUDA-only tiers are skipped, not failed, and the exercised tier is printed. |
+| `tests/test_formats.py` | The format contract: all 7 modalities × FASTQ / gzipped FASTQ / uBAM, plus BAM+CRAM+GFA round trips, gzip detected by magic bytes rather than extension, modality aliases and rejection of unknown ones, and a clear error for GBZ when `vg` is absent. |
 
 `scripts/check_gpu.py` is a hardware diagnostic, not a test — it needs a real
 Metal/CUDA device and fails inside a sandboxed or headless session.

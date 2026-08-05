@@ -2,8 +2,13 @@
 
 Defines the pipeline's file-format contract:
 
-    INPUT   FASTQ | BAM/SAM/CRAM | GFA
-    OUTPUT  BAM   | CRAM         | GFA | GBZ
+    INPUT   FASTQ (plain or .gz) | BAM / uBAM / SAM / CRAM | GFA
+    OUTPUT  BAM | CRAM | GFA | GBZ
+
+Every modality in :data:`~graphmambaformer.config.MODALITIES` can be loaded
+from any of the input formats; :func:`validate_modality` resolves the common
+aliases (``nanopore`` -> ``ont``, ``hifi`` -> ``pacbio_hifi``, ...) and rejects
+anything it does not recognize rather than letting a typo reach the encoder.
 
 Readers turn a file into in-memory objects the pipeline consumes:
   * reads  -> ``list[ReadRecord]``   (FASTQ / BAM / SAM / CRAM)
@@ -23,6 +28,12 @@ yet, so reads carry alignment fields only when they come from an already-aligned
 source (a truth BAM or the synthetic dataset). Reads read from FASTQ are written
 as an *unaligned* BAM/CRAM (uBAM) — a valid reads container. Once the decoder
 lands, the same writers emit the model's predicted alignments unchanged.
+
+NOTE ON uBAM: a uBAM has no ``@SQ`` lines and every record is unmapped, which is
+how ONT and PacBio deliver reads (it preserves per-base tags such as MM/ML that
+FASTQ cannot carry). :func:`read_reads` therefore includes unmapped records when
+the file is unaligned; asking for mapped-only there would silently return an
+empty list.
 """
 
 from __future__ import annotations
@@ -46,21 +57,75 @@ FLAG_UNMAPPED = 0x4
 
 
 # --------------------------------------------------------------------------- #
+# Modalities
+# --------------------------------------------------------------------------- #
+# Spellings people actually type, mapped onto the canonical MODALITIES keys.
+_MODALITY_ALIASES = {
+    "nanopore": "ont", "ont_r9": "ont", "ont_r10": "ont", "oxford_nanopore": "ont",
+    "hifi": "pacbio_hifi", "pacbio": "pacbio_hifi", "pb": "pacbio_hifi",
+    "ccs": "pacbio_hifi", "revio": "pacbio_hifi",
+    "ngs": "illumina", "short_read": "illumina", "dnbseq": "illumina",
+    "mgi": "illumina", "ultima": "illumina", "ion_torrent": "illumina",
+    "rna": "rna_seq", "rnaseq": "rna_seq",
+    "methylation": "bisulfite", "wgbs": "bisulfite",
+    "sc": "single_cell", "scrna": "single_cell",
+    "10x": "linked_reads", "chromium": "linked_reads",
+}
+
+
+def validate_modality(modality: str) -> str:
+    """Resolve a modality name to a canonical :data:`MODALITIES` key.
+
+    A typo would otherwise ride along on every record and only surface much
+    later as a ``KeyError`` in the encoder's modality embedding, so it is worth
+    rejecting at the point the data is read.
+    """
+    from ..config import MODALITIES
+
+    key = str(modality).strip().lower().replace("-", "_")
+    if key in MODALITIES:
+        return key
+    if key in _MODALITY_ALIASES:
+        return _MODALITY_ALIASES[key]
+    raise ValueError(
+        f"unknown modality {modality!r}. Valid: {sorted(MODALITIES)}. "
+        f"Aliases: {sorted(_MODALITY_ALIASES)}"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Readers
 # --------------------------------------------------------------------------- #
+def _open_text(path: str):
+    """Open a text file, transparently decompressing gzip.
+
+    Detection is by magic bytes rather than extension: real FASTQ arrives
+    gzipped far more often than not, and not always with a ``.gz`` suffix.
+    """
+    with open(path, "rb") as probe:
+        gzipped = probe.read(2) == b"\x1f\x8b"
+    if gzipped:
+        import gzip
+
+        return gzip.open(path, "rt")
+    return open(path)
+
+
 def read_fastq(path: str, modality: str = "pacbio_hifi") -> list[ReadRecord]:
     """Parse a FASTQ file into unaligned :class:`ReadRecord` objects.
 
-    If a read header carries a ``mod=<modality>`` field (as written by
-    :func:`write_fastq`), that modality is used; otherwise ``modality`` applies.
+    Plain or gzipped, detected by content. If a read header carries a
+    ``mod=<modality>`` field (as written by :func:`write_fastq`), that modality
+    is used; otherwise ``modality`` applies.
     """
+    modality = validate_modality(modality)
     records: list[ReadRecord] = []
 
     def _flush(name: str, seq: str, qual: str) -> None:
         mod = modality
         for tok in name.split():
             if tok.startswith("mod="):
-                mod = tok[4:]
+                mod = validate_modality(tok[4:])
         quals = [ord(c) - 33 for c in qual] if qual else [0] * len(seq)
         records.append(ReadRecord(
             read_id=name.split()[0] if name else f"read{len(records)}",
@@ -69,7 +134,7 @@ def read_fastq(path: str, modality: str = "pacbio_hifi") -> list[ReadRecord]:
             ref_positions=[-1] * len(seq), mapq=0,
         ))
 
-    with open(path) as fh:
+    with _open_text(path) as fh:
         while True:
             header = fh.readline()
             if not header:
@@ -83,14 +148,39 @@ def read_fastq(path: str, modality: str = "pacbio_hifi") -> list[ReadRecord]:
     return records
 
 
+def is_unaligned_bam(path: str) -> bool:
+    """True when a BAM/SAM/CRAM carries no ``@SQ`` lines, i.e. it is a uBAM.
+
+    ONT and PacBio ship unaligned BAM as their native delivery format (it keeps
+    per-base tags that FASTQ cannot, such as MM/ML methylation), so this is a
+    normal input, not a degenerate one.
+    """
+    import pysam
+
+    from .export import _pysam_read_mode
+
+    with pysam.AlignmentFile(path, _pysam_read_mode(path), check_sq=False) as af:
+        return len(af.references) == 0
+
+
 def read_reads(path: str, modality: str = "pacbio_hifi", **kwargs) -> list[ReadRecord]:
-    """Dispatch a reads file to the right reader by extension."""
+    """Dispatch a reads file to the right reader by extension.
+
+    Handles FASTQ (plain or gzipped) and BAM/SAM/CRAM, aligned or not. For a
+    uBAM every record is unmapped, so unmapped reads are included by default
+    there — otherwise the read would silently yield nothing.
+    """
+    modality = validate_modality(modality)
     low = path.lower()
     if low.endswith((".fastq", ".fq", ".fastq.gz", ".fq.gz")):
         return read_fastq(path, modality=modality)
-    if low.endswith((".bam", ".sam", ".cram")):
+    if low.endswith((".bam", ".sam", ".cram", ".ubam")):
+        kwargs.setdefault("include_unmapped", is_unaligned_bam(path))
         return read_bam(path, modality=modality, **kwargs)
-    raise ValueError(f"unrecognized reads format: {path}")
+    raise ValueError(
+        f"unrecognized reads format: {path}. "
+        "Expected FASTQ (.fastq/.fq, optionally .gz) or BAM/SAM/CRAM."
+    )
 
 
 # --------------------------------------------------------------------------- #

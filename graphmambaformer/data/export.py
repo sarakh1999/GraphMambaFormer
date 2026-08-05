@@ -349,6 +349,16 @@ _CIGAR_CODE_TO_OP: dict[int, str] = {
 }
 
 
+def _pysam_read_mode(path: str) -> str:
+    """pysam open mode for a reads file. ``.ubam`` is binary BAM, not text SAM."""
+    low = path.lower()
+    if low.endswith((".bam", ".ubam")):
+        return "rb"
+    if low.endswith(".cram"):
+        return "rc"
+    return "r"
+
+
 def read_bam(
     bam_path: str,
     region: Optional[str] = None,
@@ -380,8 +390,11 @@ def read_bam(
     """
     import pysam  # local import so pysam stays an optional dependency
 
+    from .formats import validate_modality
+
+    modality = validate_modality(modality)
     records: list[ReadRecord] = []
-    open_mode = "rb" if bam_path.endswith(".bam") else "rc" if bam_path.endswith(".cram") else "r"
+    open_mode = _pysam_read_mode(bam_path)
     # check_sq=False so unaligned BAM/CRAM (no @SQ lines) can still be read.
     with pysam.AlignmentFile(bam_path, open_mode, check_sq=False) as af:
         ref_id_of = {name: i for i, name in enumerate(af.references)}

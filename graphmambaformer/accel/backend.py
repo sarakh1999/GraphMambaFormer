@@ -70,7 +70,13 @@ def mamba_ssm_available() -> bool:
 
 @dataclass(frozen=True)
 class AccelCapabilities:
-    """Immutable snapshot of what the host can accelerate."""
+    """Immutable snapshot of what the host can accelerate.
+
+    Written to span every GPU the code may land on rather than assuming a recent
+    NVIDIA part. PyTorch reports ROCm devices through the same ``torch.cuda``
+    API as CUDA, so ``has_cuda`` alone cannot tell the two apart -- ``vendor``
+    is what the dtype and kernel gates key on.
+    """
 
     device: torch.device
     has_cuda: bool
@@ -80,78 +86,166 @@ class AccelCapabilities:
     has_mamba_ssm: bool
     compute_capability: tuple[int, int] | None
     device_name: str
+    vendor: str = "cpu"
+    has_xpu: bool = False
+    #: ROCm/HIP arch string (e.g. ``gfx90a``); ``None`` off AMD.
+    hip_arch: str | None = None
+
+    @property
+    def is_nvidia(self) -> bool:
+        return self.vendor == "nvidia"
 
     @property
     def tier(self) -> str:
-        if self.has_cuda and self.has_cupy:
+        # CuPy raw kernels are compiled with NVRTC, so they are NVIDIA-only.
+        if self.is_nvidia and self.has_cupy:
             return "cuda_rawkernel"
         if self.has_cuda and self.has_triton:
             return "triton"
         if self.has_cuda:
             return "torch_cuda"
+        if self.has_xpu:
+            return "torch_xpu"
         if self.has_mps:
             return "torch_mps"
         return "torch_cpu"
 
     @property
     def supports_tf32(self) -> bool:
-        """TF32 tensor cores land on Ampere (sm_80) and later."""
-        return self.compute_capability is not None and self.compute_capability[0] >= 8
+        """TF32 tensor cores land on Ampere (sm_80) and later. NVIDIA only."""
+        return (
+            self.is_nvidia
+            and self.compute_capability is not None
+            and self.compute_capability[0] >= 8
+        )
+
+    @property
+    def supports_fp16(self) -> bool:
+        """Half precision that is actually fast, not merely representable.
+
+        Pre-Volta NVIDIA parts (sm_6x and older) have no fp16 tensor cores and
+        run AMP slower than fp32, so they are excluded deliberately.
+        """
+        if self.is_nvidia:
+            return self.compute_capability is not None and self.compute_capability >= (7, 0)
+        if self.vendor == "amd":
+            return True
+        return self.vendor in ("intel", "apple")
 
     @property
     def supports_bf16(self) -> bool:
         if self.has_cuda:
-            return torch.cuda.is_bf16_supported()
-        # CPU bf16 autocast exists but is slower than fp32 for these shapes.
+            # True on NVIDIA sm_80+ and on AMD MI200+; torch answers for both.
+            with contextlib.suppress(Exception):
+                return bool(torch.cuda.is_bf16_supported())
+            return False
+        if self.has_xpu:
+            return True
+        # CPU/MPS bf16 autocast exists but is slower than fp32 for these shapes.
         return False
 
     @property
     def supports_fp8(self) -> bool:
-        """TransformerEngine FP8 needs Hopper (sm_90) or newer."""
-        return self.compute_capability is not None and self.compute_capability[0] >= 9
+        """FP8 arrives with Ada (sm_89), not just Hopper (sm_90)."""
+        return (
+            self.is_nvidia
+            and self.compute_capability is not None
+            and self.compute_capability >= (8, 9)
+        )
+
+    @property
+    def arch_label(self) -> str:
+        """Human-readable microarchitecture, for logs and the doctor script."""
+        if self.vendor == "amd":
+            return self.hip_arch or "rocm"
+        if not self.is_nvidia or self.compute_capability is None:
+            return self.vendor
+        major, minor = self.compute_capability
+        generations = {
+            6: "Pascal", 7: "Volta" if minor == 0 else "Turing",
+            8: "Ampere" if minor < 9 else "Ada", 9: "Hopper",
+            10: "Blackwell", 12: "Blackwell",
+        }
+        return f"{generations.get(major, f'sm_{major}{minor}')} (sm_{major}{minor})"
 
     def summary(self) -> str:
         flags = [
             f"tier={self.tier}",
+            f"vendor={self.vendor}",
             f"device={self.device}",
             f"name={self.device_name}",
+            f"arch={self.arch_label}",
             f"cupy={self.has_cupy}",
             f"triton={self.has_triton}",
             f"mamba_ssm={self.has_mamba_ssm}",
             f"tf32={self.supports_tf32}",
+            f"fp16={self.supports_fp16}",
             f"bf16={self.supports_bf16}",
         ]
         return " | ".join(flags)
 
 
 def detect_capabilities(device: torch.device | str | None = None) -> AccelCapabilities:
-    """Probe the host for every acceleration tier."""
+    """Probe the host for every acceleration tier, on any vendor.
+
+    Every probe is guarded: a torch build without ``torch.xpu``, a ROCm build
+    that reports no arch, or a driver that refuses ``get_device_capability``
+    must degrade to a lower tier rather than raise at import time.
+    """
     has_cuda = torch.cuda.is_available()
     has_mps = torch.backends.mps.is_available() and torch.backends.mps.is_built()
+    has_xpu = False
+    with contextlib.suppress(AttributeError, RuntimeError):
+        has_xpu = bool(torch.xpu.is_available())  # type: ignore[attr-defined]
+
+    # A ROCm build exposes AMD GPUs through the torch.cuda namespace, so the
+    # HIP version string is the only reliable discriminator.
+    is_rocm = bool(getattr(torch.version, "hip", None))
 
     if device is None:
-        resolved = torch.device("cuda" if has_cuda else "mps" if has_mps else "cpu")
+        resolved = torch.device(
+            "cuda" if has_cuda else "xpu" if has_xpu else "mps" if has_mps else "cpu"
+        )
     else:
         resolved = torch.device(device)
 
     capability: tuple[int, int] | None = None
+    hip_arch: str | None = None
     name = "cpu"
-    if has_cuda:
-        capability = torch.cuda.get_device_capability(0)
-        name = torch.cuda.get_device_name(0)
-    elif has_mps:
-        name = "apple-silicon-mps"
+    vendor = "cpu"
 
+    if has_cuda:
+        vendor = "amd" if is_rocm else "nvidia"
+        with contextlib.suppress(Exception):
+            name = torch.cuda.get_device_name(0)
+        if is_rocm:
+            with contextlib.suppress(Exception):
+                hip_arch = torch.cuda.get_device_properties(0).gcnArchName
+        else:
+            with contextlib.suppress(Exception):
+                capability = torch.cuda.get_device_capability(0)
+    elif has_xpu:
+        vendor, name = "intel", "intel-xpu"
+        with contextlib.suppress(Exception):
+            name = torch.xpu.get_device_name(0)  # type: ignore[attr-defined]
+    elif has_mps:
+        vendor, name = "apple", "apple-silicon-mps"
+
+    # CuPy raw kernels need NVRTC, and mamba-ssm ships CUDA-only kernels, so
+    # neither is claimed off NVIDIA. Triton does support ROCm.
+    is_nvidia = vendor == "nvidia"
     return AccelCapabilities(
         device=resolved,
         has_cuda=has_cuda,
         has_mps=has_mps,
-        # cupy/triton only matter on CUDA; don't pay the import cost otherwise.
-        has_cupy=has_cuda and cupy_module() is not None,
+        has_cupy=is_nvidia and cupy_module() is not None,
         has_triton=has_cuda and triton_module() is not None,
-        has_mamba_ssm=has_cuda and mamba_ssm_available(),
+        has_mamba_ssm=is_nvidia and mamba_ssm_available(),
         compute_capability=capability,
         device_name=name,
+        vendor=vendor,
+        has_xpu=has_xpu,
+        hip_arch=hip_arch,
     )
 
 
@@ -187,6 +281,8 @@ class AccelContext:
             with contextlib.suppress(AttributeError, RuntimeError):
                 torch.set_float32_matmul_precision("high")
 
+        # Flash/mem-efficient SDP exist on ROCm too; the suppress() below covers
+        # builds where a given setter is missing.
         if self.cfg.flash_sdp and self.caps.has_cuda:
             for enable, setter in (
                 (True, "enable_flash_sdp"),
@@ -208,11 +304,11 @@ class AccelContext:
         if self.cfg.amp_dtype == "bf16":
             return torch.bfloat16 if self.caps.supports_bf16 else None
         if self.cfg.amp_dtype == "fp16":
-            return torch.float16 if self.caps.has_cuda else None
+            return torch.float16 if self.caps.supports_fp16 else None
         # "auto": prefer bf16 (no GradScaler needed), else fp16, else off.
         if self.caps.supports_bf16:
             return torch.bfloat16
-        if self.caps.has_cuda:
+        if self.caps.supports_fp16:
             return torch.float16
         return None
 
@@ -256,7 +352,7 @@ class AccelContext:
         override = self.cfg.stage_backends.get(stage)
         if override and override != "auto":
             return override
-        if self.caps.has_cuda and self.caps.has_cupy and self.cfg.cuda_rawkernels:
+        if self.caps.is_nvidia and self.caps.has_cupy and self.cfg.cuda_rawkernels:
             return "cuda_rawkernel"
         return "torch"
 

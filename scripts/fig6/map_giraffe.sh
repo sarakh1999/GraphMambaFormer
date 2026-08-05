@@ -18,8 +18,8 @@ if [ -s "$OUT" ] && [ -s "$OUT.bai" ] && [ -f "$COMPAT_MARKER" ]; then
   exit 0
 fi
 
-require "$CHR_PREFIX.giraffe.gbz" "run build_chr20_giraffe.sh first"
-require "$CHR_PREFIX.dist"        "run build_chr20_giraffe.sh first"
+require "$CHR_PREFIX.giraffe.gbz" "run build_giraffe.sh first"
+require "$CHR_PREFIX.dist"        "run build_giraffe.sh first"
 require "$R1"; require "$R2"
 
 MIN_HOST=""
@@ -46,7 +46,7 @@ ZIP_ARG=""
 [ -n "$ZIP_HOST" ] && ZIP_ARG="-z $(inwork "$ZIP_HOST")"
 
 # HPRC chr graphs include both CHM13 and GRCh38. Restrict BAM surjection to
-# GRCh38, then remove the PanSN prefix so the BAM matches the chr20 FASTA.
+# GRCh38, then remove the PanSN prefix so the BAM matches the $CHR FASTA.
 printf 'GRCh38#0#%s\n' "$CHR" > "$REF_PATHS"
 REF_PATHSW="$(inwork "$REF_PATHS")"
 RG="ID:${SAMPLE} SM:${SAMPLE} PL:ILLUMINA LB:${SAMPLE}"

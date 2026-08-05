@@ -24,6 +24,9 @@ meetings screenshots/
 # encodes the numbers it checks, so it does not read these at runtime.
 architecture/*.html
 architecture/*.png
+# Exported slide deck: a binary rebuild artifact of the same material.
+# architecture/build_pptx.py regenerates it.
+architecture/*.pptx
 
 # --- stray genomics artifacts outside data/ ---------------------------------
 *.bam

@@ -37,6 +37,83 @@ from graphmambaformer.config import AccelConfig
 HAS_CUDA = torch.cuda.is_available()
 
 
+def _caps(vendor, cc=None, *, cupy=False, triton=False, mps=False, xpu=False,
+          hip=None):
+    """Synthesize a capability snapshot for a GPU this host may not have.
+
+    The dtype and kernel gates are pure functions of vendor + compute
+    capability, so they can be verified for every generation from one machine.
+    Anything that needs a live driver (``is_bf16_supported``) is not asserted
+    here -- see ``test_capability_detection`` for the real host.
+    """
+    return AccelCapabilities(
+        device=torch.device("cpu"),
+        has_cuda=vendor in ("nvidia", "amd"),
+        has_mps=mps,
+        has_cupy=cupy,
+        has_triton=triton,
+        has_mamba_ssm=False,
+        compute_capability=cc,
+        device_name=f"synthetic-{vendor}",
+        vendor=vendor,
+        has_xpu=xpu,
+        hip_arch=hip,
+    )
+
+
+def test_dtype_gates_across_every_gpu_generation():
+    """TF32/fp16/fp8 must follow the actual hardware, not merely 'is CUDA'."""
+    # (label, caps, expect_tf32, expect_fp16, expect_fp8)
+    matrix = [
+        ("Pascal sm_61", _caps("nvidia", (6, 1)), False, False, False),
+        ("Volta sm_70", _caps("nvidia", (7, 0)), False, True, False),
+        ("Turing sm_75", _caps("nvidia", (7, 5)), False, True, False),
+        ("Ampere sm_80", _caps("nvidia", (8, 0)), True, True, False),
+        ("Ada sm_89", _caps("nvidia", (8, 9)), True, True, True),
+        ("Hopper sm_90", _caps("nvidia", (9, 0)), True, True, True),
+        ("Blackwell sm_100", _caps("nvidia", (10, 0)), True, True, True),
+        ("AMD gfx90a", _caps("amd", hip="gfx90a"), False, True, False),
+        ("Intel XPU", _caps("intel", xpu=True), False, True, False),
+        ("Apple MPS", _caps("apple", mps=True), False, True, False),
+        ("CPU", _caps("cpu"), False, False, False),
+    ]
+    for label, caps, tf32, fp16, fp8 in matrix:
+        assert caps.supports_tf32 is tf32, f"{label}: tf32 {caps.supports_tf32} != {tf32}"
+        assert caps.supports_fp16 is fp16, f"{label}: fp16 {caps.supports_fp16} != {fp16}"
+        assert caps.supports_fp8 is fp8, f"{label}: fp8 {caps.supports_fp8} != {fp8}"
+        print(f"   {label:18s} arch={caps.arch_label:20s} tier={caps.tier:16s} "
+              f"tf32={tf32!s:5s} fp16={fp16!s:5s} fp8={fp8}")
+    print(f"dtype gates correct for all {len(matrix)} device classes")
+
+
+def test_rocm_is_not_mistaken_for_cuda():
+    """PyTorch reports AMD through torch.cuda, so vendor must do the gating."""
+    amd = _caps("amd", hip="gfx942", cupy=True, triton=True)
+    assert amd.has_cuda, "ROCm builds do surface as torch.cuda"
+    assert not amd.is_nvidia
+    # NVRTC-compiled raw kernels would not load on AMD, so that tier is refused
+    # even though cupy imported; Triton does support ROCm, so it wins instead.
+    assert amd.tier == "triton", amd.tier
+    assert not amd.supports_tf32, "TF32 is an NVIDIA tensor-core feature"
+    assert amd.arch_label == "gfx942"
+
+    nvidia = _caps("nvidia", (9, 0), cupy=True, triton=True)
+    assert nvidia.tier == "cuda_rawkernel", nvidia.tier
+    print("AMD declines NVRTC raw kernels and TF32, falls back to Triton; "
+          "NVIDIA still takes the raw-kernel tier")
+
+
+def test_amp_follows_the_fp16_gate_not_just_cuda():
+    """A pre-Volta card must not be handed fp16 autocast."""
+    ctx = AccelContext(AccelConfig(amp=True, amp_dtype="fp16"))
+    object.__setattr__(ctx, "caps", _caps("nvidia", (6, 1)))
+    assert ctx.autocast_dtype is None, "Pascal has no fp16 tensor cores"
+
+    object.__setattr__(ctx, "caps", _caps("nvidia", (7, 5)))
+    assert ctx.autocast_dtype is torch.float16
+    print("fp16 AMP refused on Pascal sm_61, granted on Turing sm_75")
+
+
 def test_capability_detection():
     caps = detect_capabilities()
     assert isinstance(caps, AccelCapabilities)

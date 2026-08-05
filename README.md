@@ -25,7 +25,8 @@ Current development focus: **long reads** — PacBio HiFi and ONT.
 | **Stage 4** · Neural scoring bridge | `graphmambaformer/alignment/scoring.py` |
 | Alignment pipeline (hybrid / fast / two-pass) | `graphmambaformer/alignment/pipeline.py` |
 | Losses (alignment + Kendall multi-task) | `graphmambaformer/losses/alignment_loss.py` |
-| GPU acceleration stack | `graphmambaformer/accel/` |
+| Training / validation / behaviour probes / plots | `graphmambaformer/training/`, `scripts/train.py` |
+| GPU acceleration stack (NVIDIA · AMD · Intel · Apple · CPU) | `graphmambaformer/accel/` |
 
 Design details:
 
@@ -148,6 +149,66 @@ log-variance `s` and contributes `exp(-s)·L + s`. A term whose labels are absen
 from the batch is **skipped**, not zeroed, so partially-labelled data trains the
 heads it has labels for without diluting the others.
 
+## Training, validation and plots
+
+`scripts/train.py` trains the model, validates it, and writes every figure:
+
+```bash
+# quick CPU run on synthetic data
+PYTHONPATH=. python scripts/train.py --reads 64 --epochs 10
+
+# GPU run, plots into a named directory
+PYTHONPATH=. python scripts/train.py --preset table1 --epochs 40 \
+    --device cuda --out data/training_runs/chr1
+```
+
+Supervision is built from the dataset's **ground truth**, not invented: an anchor
+is positive when its implied diagonal really matches the read's true locus, and
+the chain label is the candidate that best overlaps the true span. Seeding and
+chaining run for real first, so the labels describe the anchors the model is
+actually asked to score.
+
+### Validation measures alignment, not just loss
+
+The objective is a weighted sum of seven terms whose balance shifts as the
+Kendall weights learn, so its absolute value is not comparable across epochs.
+`graphmambaformer/training/metrics.py` reports what the aligner is judged on:
+
+| Metric | Question it answers |
+| --- | --- |
+| `locus_accuracy` | did the **whole pipeline** place the read within 50 bp? |
+| `chain_accuracy` | does the re-ranker pick the correct candidate chain? |
+| `anchor_auc` / precision / recall | can the seed head separate true anchors? |
+| `mapq_mae` | how far off is the predicted MAPQ? |
+| MAPQ **calibration** | does the claimed error rate match the observed one? |
+
+Two deliberate refusals to flatter the model: `chain_accuracy` scores only reads
+with **≥2 candidates** (picking 1 of 1 is not a measurement, and reporting it as
+100% is misleading), and a monitored metric that is unmeasurable on the data
+reports `None` so early stopping falls back to validation loss instead of
+stopping at epoch 0 on a metric that can never move.
+
+### Model behaviour at every step
+
+A falling loss curve is equally consistent with a model that has collapsed, so
+`graphmambaformer/training/probes.py` records what actually happened each step:
+per-tower activation spread (a dead tower shows as `std=0`), gradient norms per
+parameter group plus the all-zero fraction, the router's split across compute
+paths, and each head's output spread (a constant head shows as `std≈0`).
+
+```
+train e02 s0014  loss=4.4033  (chain=0.000 mapq=0.009 position=0.108 seed=0.603)
+                 |g|=0.581  route=fast:100%,medium:0%,full:0%
+epoch 02  train=4.4589  val loss=4.4063 locus=100.0% chain=n/a(<2 candidates)
+          anchorAUC=0.475 mapqMAE=3.1 mapped=100.0%
+```
+
+Six figures are written per run (`--out <dir>/plots`): total loss with the
+per-term breakdown, the learned Kendall weights, validation quality, model
+behaviour, MAPQ calibration, and the supervision actually available per batch.
+matplotlib is optional and imported lazily on the `Agg` backend, so a headless
+run works and a missing install skips the plots instead of failing the training.
+
 ## GPU acceleration stack
 
 `AccelContext` detects what the host supports and hands each stage a backend, so
@@ -164,8 +225,29 @@ the same config runs on an H100 and on a laptop CPU:
 ```python
 from graphmambaformer import AccelContext
 print(AccelContext().summary())
-# tier=torch_cpu | device=cpu | cupy=False | triton=False | amp=off
+# tier=torch_cpu | vendor=cpu | device=cpu | arch=cpu | tf32=False | amp=off
 ```
+
+### Every GPU, not just recent NVIDIA
+
+PyTorch reports AMD GPUs through the same `torch.cuda` API as NVIDIA, so
+`has_cuda` alone cannot tell them apart. Detection keys on a `vendor` field
+instead, and each capability is gated on the hardware that really has it:
+
+| Vendor | Detected via | TF32 | fp16 AMP | bf16 | Raw kernels |
+| --- | --- | --- | --- | --- | --- |
+| NVIDIA | `torch.cuda`, no HIP | sm_80+ | sm_70+ | sm_80+ | CuPy/NVRTC |
+| AMD (ROCm) | `torch.version.hip` | no | yes | MI200+ | no — Triton instead |
+| Intel | `torch.xpu` | no | yes | yes | no |
+| Apple | `torch.backends.mps` | no | yes | no | no |
+| CPU | fallback | no | no | no | no |
+
+Consequences that matter in practice: a Pascal card (sm_61) is **not** given
+fp16 autocast, because it has no fp16 tensor cores and would run slower than
+fp32; FP8 is gated at sm_89 (Ada), not sm_90, since Ada supports it; and CuPy
+raw kernels are refused on AMD even when CuPy imports, because they are compiled
+with NVRTC. `tests/test_accel.py` pins this across 11 simulated device classes
+from Pascal to Blackwell, so the gates are verified without needing each GPU.
 
 ## MambaFormer backbone
 
@@ -237,10 +319,11 @@ with the model stack *and* the full genomics benchmark preinstalled — PyTorch
 1.6.1 with its models:
 
 ```bash
-docker/build.sh                                  # graphmambaformer:latest
+docker/build.sh                                  # graphmambaformer:latest (CPU)
 docker/run.sh gmf-doctor                         # verify every tool
 docker/run.sh gmf-python scripts/smoke_test.py   # model smoke test
-SAMPLE=HG002 docker/run.sh scripts/fig6/run_all.sh
+docker/run.sh gmf-python scripts/train.py --reads 64   # train + write plots
+SAMPLE=HG002 CHR=chr1 docker/run.sh scripts/fig6/run_all.sh
 ```
 
 The repo is bind-mounted at `/work` and takes precedence over the baked copy,
@@ -248,8 +331,29 @@ so host edits apply immediately and `data/` stays on the host rather than in
 the image. `TARGET=fig6 docker/build.sh` builds a smaller benchmark-only image.
 See `scripts/fig6/README.md` for the one exception (hap.py stays external).
 
-The image is CPU-only and x86-64, so it runs under Rosetta on Apple Silicon and
-provides no MPS/MLX acceleration — for that, use the native venv below.
+### GPU images
+
+`TARGET=gpu` swaps the CPU torch wheel for a GPU build. One image spans GPU
+generations because the vendor and capability detection happens at runtime:
+
+```bash
+TARGET=gpu docker/build.sh                        # NVIDIA, cu124 (default)
+TORCH_CHANNEL=cu121 TARGET=gpu docker/build.sh     # NVIDIA, older drivers
+TORCH_CHANNEL=rocm6.0 TARGET=gpu docker/build.sh   # AMD
+INSTALL_CUPY=1 TARGET=gpu docker/build.sh          # + NVRTC raw-kernel tier
+
+IMAGE=graphmambaformer:gpu docker/run.sh gmf-doctor
+```
+
+`run.sh` adds the device flags automatically (`--gpus all` for NVIDIA,
+`/dev/kfd` + `/dev/dri` for AMD) only when the host actually exposes the device,
+since `--gpus all` on a host without the NVIDIA runtime makes `docker run` fail
+outright. `GPU=0` forces CPU. `gmf-doctor` prints the live tier and **fails** if
+an image built for GPU sees none, so a silent CPU fallback surfaces as an error
+rather than as an unexplained slowdown.
+
+The CPU image is x86-64, so it runs under Rosetta on Apple Silicon. Apple's GPU
+is not reachable from any container — use the native venv below for MPS/MLX.
 
 ## Setup
 

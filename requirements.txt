@@ -10,6 +10,11 @@ numpy>=1.24
 # write sorted+indexed synthetic BAMs and to read real BAMs (e.g. HG002).
 pysam>=0.22
 
+# Training-run figures (loss curves, validation metrics, model behaviour).
+# Imported lazily on the Agg backend, so training still runs without it -- the
+# plots are simply skipped with a message.
+matplotlib>=3.7
+
 # Apple Silicon native stack (Metal + M5 Neural Accelerators when available).
 # Markers keep `pip install -r requirements.txt` working on Linux/x86-64, where
 # no mlx wheel exists (e.g. inside the Docker image).

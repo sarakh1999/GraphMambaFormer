@@ -148,10 +148,15 @@ def write_alignments(
     reference_fasta: Optional[str] = None,
     modality: str = "pacbio_hifi",
     include_secondary: bool = False,
+    contig_names: Optional[dict] = None,
 ) -> str:
     """Write pipeline results to BAM or CRAM, chosen by the output extension.
 
     CRAM is reference-compressed and therefore needs ``reference_fasta``.
+
+    ``contig_names`` maps ``ref_id`` to the ``@SQ`` name to write, so aligning
+    against a real reference emits ``chr21`` (matching the caller's FASTA)
+    instead of the synthetic default ``ref0``.
     """
     records = alignments_to_records(
         results, reads, modality=modality, include_secondary=include_secondary
@@ -160,9 +165,13 @@ def write_alignments(
     if low.endswith(".cram"):
         if not reference_fasta:
             raise ValueError("CRAM output requires reference_fasta=")
-        return write_cram(records, path, reference_fasta, references=references)
+        return write_cram(
+            records, path, reference_fasta, references=references,
+            contig_names=contig_names,
+        )
     if low.endswith((".bam", ".ubam")):
-        return write_bam(records, path, references=references)
+        return write_bam(records, path, references=references,
+                         contig_names=contig_names)
     raise ValueError(
         f"unsupported alignment output format: {path}. Expected .bam or .cram."
     )

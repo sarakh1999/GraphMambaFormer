@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sanity-check the downloaded full-genome HPRC GRCh38 Giraffe indexes:
-# confirm vg runs, the GBZ loads, and show the chr20 reference path name.
+# confirm vg runs, the GBZ loads, and show the $CHR reference path name.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 require "$FULL_GBZ"
 

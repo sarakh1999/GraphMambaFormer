@@ -35,7 +35,7 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--sample", default=os.environ.get("SAMPLE", "HG002"))
-    ap.add_argument("--chr", default=os.environ.get("CHR", "chr20"))
+    ap.add_argument("--chr", default=os.environ.get("CHR", "chr1"))
     ap.add_argument("--type", default="SNP", choices=["SNP", "INDEL"])
     ap.add_argument("--out", default=None)
     ap.add_argument("--xmin", type=float, default=0.996,

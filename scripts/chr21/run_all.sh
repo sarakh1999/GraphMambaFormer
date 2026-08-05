@@ -15,6 +15,7 @@ chmod +x "$D"/*.sh 2>/dev/null || true
 
 step() { echo; echo "############################################################"; echo "# $*"; echo "############################################################"; }
 
+step "0  preflight (tools & deps)";          "$D/preflight.sh"
 step "1  reference (GRCh38 $CHR)";           "$D/fetch_reference.sh"
 if [ "${SKIP_TRUTH:-0}" != "1" ]; then
   step "2  truth (GIAB $SAMPLE $CHR)";       "$D/fetch_truth.sh"
@@ -32,18 +33,25 @@ elif [ "${SKIP_EVAL:-0}" = "1" ]; then
   echo "SKIP_EVAL=1 — skipping hap.py scoring"
 fi
 
+OURS_DONE=0
 if [ "${SKIP_OURS:-0}" != "1" ]; then
-  step "7  map: our implementation"
+  step "7  map: our implementation (GraphMambaFormer)"
   if "$D/map_ours.sh"; then
+    OURS_DONE=1
     step "8  call: DeepVariant (ours)"; "$D/call_deepvariant.sh" ours
     if [ "${SKIP_TRUTH:-0}" != "1" ] && [ "${SKIP_EVAL:-0}" != "1" ]; then
       step "8b eval: hap.py (ours)"; "$D/eval_happy.sh" ours
     fi
   else
-    echo "NOTE: skipping DeepVariant(ours) — decoder BAM not available yet."
+    echo "NOTE: skipping DeepVariant(ours) — 'ours' BAM not produced (see message above)."
   fi
 else
   echo "SKIP_OURS=1 — skipping GraphMambaFormer arm"
+fi
+
+if [ "${SKIP_COMPARE:-0}" != "1" ]; then
+  step "8c compare: Giraffe vs ours"
+  "$D/compare.sh" || echo "NOTE: comparison skipped — need at least one arm's outputs."
 fi
 
 if [ "${SKIP_SNIFFLES:-0}" != "1" ]; then
@@ -59,9 +67,10 @@ fi
 
 echo
 echo "Done. Outputs under: $RUN_DIR"
-echo "  BAM:  $BAM_DIR"
-echo "  VCF:  $VCF_DIR"
-echo "  SV:   $SV_DIR"
+echo "  BAM:      $BAM_DIR"
+echo "  VCF:      $VCF_DIR"
+echo "  SV:       $SV_DIR"
+echo "  COMPARE:  $RUN_DIR/compare  (compare.csv + charts)"
 echo
 echo "40-sample list:  data/hprc/graph_samples_44.txt"
 echo "All links:       data/hprc/SAMPLE_LINKS.md"

@@ -1,10 +1,23 @@
 # Fig 6a CPU baselines (HG002 / HG005)
 
 Reproduce the paper’s **precision–recall** small-variant baselines on **CPU**,
-scoped to **chr20** so it fits a laptop.
+scoped to a single chromosome so it fits a laptop.
 
-Paper figure (page 9) is HG005 whole-genome; we do the same pipelines on
-**HG002 chr20** for a fair local comparison.
+Paper figure (page 9) is HG005 whole-genome; we run the same pipelines on one
+**HG002** chromosome for a fair local comparison.
+
+### Choosing the chromosome
+
+Every path, index and plot label derives from `$CHR`, which defaults to **chr1**:
+
+```bash
+./run_all.sh              # chr1 (default)
+CHR=chr20 ./run_all.sh    # reproduces the earlier chr20 results unchanged
+```
+
+chr1 is ~248 Mb against chr20's ~64 Mb, so expect roughly 4x the download,
+runtime and disk for the default. `CHR=chr20` remains fully supported and is
+the cheaper option for a first run.
 
 ## What we run (CPU-feasible)
 
@@ -92,16 +105,16 @@ the six per-tool images as documented above.
 - `bam/*.giraffe.sorted.bam` / `*.bwa.sorted.bam`
 - `vcf/*.dv.vcf.gz`
 - `eval/{giraffe,bwa}/*.summary.csv` + `*.roc.all.csv.gz`
-- `plots/fig6a_chr20.png` — PR curves with F1
+- `plots/fig6a_$CHR.png` — PR curves with F1
 
 Shared (once): `data/fig6/ref/`, `data/fig6/indexes/`
 
 ## Steps (if you want to run manually)
 
-1. `fetch_reference.sh` — GRCh38 chr20  
+1. `fetch_reference.sh` — GRCh38 `$CHR`  
 2. `fetch_truth.sh` — GIAB v4.2.1  
-3. `fetch_reads.sh` — stream chr20 Illumina from GIAB BAM  
-4. `build_chr20_giraffe.sh` — chr20 Giraffe indexes from HPRC GBZ  
+3. `fetch_reads.sh` — stream `$CHR` Illumina from GIAB BAM  
+4. `build_giraffe.sh` — `$CHR` Giraffe indexes from HPRC GBZ  
 5. `map_giraffe.sh` / `index_bwa.sh` + `map_bwa.sh`  
 6. `call_deepvariant.sh giraffe` + `call_deepvariant.sh bwa`  
 7. `eval_happy.sh giraffe` + `eval_happy.sh bwa`  

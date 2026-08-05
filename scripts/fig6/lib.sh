@@ -39,7 +39,9 @@ PLOT_PY="${PLOT_PY:-$ROOT/.venv/bin/python}"
 # Cap default threads: Apple Silicon runs these images under Rosetta.
 _NCPU="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
 THREADS="${THREADS:-$(( _NCPU > 8 ? 8 : _NCPU ))}"
-CHR="${CHR:-chr20}"
+# Chromosome under test. Every path, index and plot label derives from this, so
+# CHR=chr20 ./run_all.sh reproduces the earlier chr20 results unchanged.
+CHR="${CHR:-chr1}"
 SAMPLE="${SAMPLE:-HG002}"
 
 # ---- tool images -----------------------------------------------------------

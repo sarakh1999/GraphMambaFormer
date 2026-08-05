@@ -61,6 +61,30 @@ print("torch",torch.__version__,"| einops",einops.__version__,
 print("import ok, device:", g.get_device())' 2>&1 | tail -1)"
   printf '  %-11s %s\n' "package" "$imp"
   case "$imp" in *Traceback*|*Error*) miss=1 ;; esac
+
+  # Which acceleration tier is actually live. Printed for every image so a GPU
+  # build that fell back to CPU (missing --gpus, wrong channel, no driver) shows
+  # up here instead of merely running slowly.
+  accel="$(/opt/gmf/bin/python -c \
+    'from graphmambaformer.accel import detect_capabilities
+print(detect_capabilities().summary())' 2>&1 | tail -1)"
+  printf '  %-11s %s\n' "accel" "$accel"
+  case "$accel" in *Traceback*|*Error*) miss=1 ;; esac
+
+  if [ -n "${GMF_GPU_CHANNEL:-}" ]; then
+    printf '  %-11s %s\n' "gpu build" "$GMF_GPU_CHANNEL"
+    case "$accel" in
+      *tier=torch_cpu*)
+        echo "  WARNING: built for $GMF_GPU_CHANNEL but no GPU is visible."
+        echo "           NVIDIA: docker run --gpus all ...; AMD: --device /dev/kfd --device /dev/dri"
+        miss=1 ;;
+    esac
+  fi
+
+  plt="$(/opt/gmf/bin/python -c \
+    'from graphmambaformer.training import plotting_available
+print("available" if plotting_available() else "MISSING (training plots skipped)")' 2>&1 | tail -1)"
+  printf '  %-11s %s\n' "plotting" "$plt"
 fi
 
 echo

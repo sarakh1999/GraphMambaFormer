@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# End-to-end chr20 (default) CPU baselines for Nature HPRC Fig 6a style PR curves.
+# End-to-end single-chromosome CPU baselines for Nature HPRC Fig 6a style PR curves.
+# Chromosome comes from $CHR (default chr1); CHR=chr20 ./run_all.sh reproduces the
+# earlier chr20 run.
 #
 # Arms run here (CPU-feasible):
 #   1) HPRC Giraffe + DeepVariant
@@ -23,7 +25,7 @@ run_or_die() {
 step "1/9  reference (GRCh38 $CHR)";         run_or_die "$D/fetch_reference.sh"
 step "2/9  truth (GIAB $SAMPLE $CHR)";       run_or_die "$D/fetch_truth.sh"
 step "3/9  reads ($SAMPLE $CHR FASTQ)";      run_or_die "$D/fetch_reads.sh"
-step "4/9  build $CHR Giraffe indexes";      run_or_die "$D/build_chr20_giraffe.sh"
+step "4/9  build $CHR Giraffe indexes";      run_or_die "$D/build_giraffe.sh"
 step "5/9  map: Giraffe (graph)";            run_or_die "$D/map_giraffe.sh"
 step "6/9  map: BWA-MEM (linear)";           run_or_die "$D/index_bwa.sh"; run_or_die "$D/map_bwa.sh"
 step "7/9  call: DeepVariant x2";            run_or_die "$D/call_deepvariant.sh" giraffe; run_or_die "$D/call_deepvariant.sh" bwa

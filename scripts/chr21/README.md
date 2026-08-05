@@ -20,10 +20,13 @@ Yes: **one HPRC individual × chr21 first**, then scale the same workflow across
 
 Run from your own Terminal:
 
-- Docker Desktop running
-- AWS CLI optional but recommended for HPRC S3 listing/sync (`brew install awscli`)
+- Docker Desktop running — for the Giraffe, DeepVariant, Sniffles, and hap.py arms
+- AWS CLI — for HPRC S3 read/CRAM download (`brew install awscli`); GIAB https reads work without it
+- Python env — for the `ours` arm and `compare.sh` (`python -m venv .venv && .venv/bin/pip install -r requirements.txt`)
 
-The Cursor agent shell cannot access the Docker socket, so execute the pipeline locally.
+The Cursor agent shell cannot access the Docker socket, so execute the
+Docker-based steps locally. The `ours` arm (`map_ours.sh`) and `compare.sh` are
+pure Python and need no Docker. `preflight.sh` reports exactly what is available.
 
 ## Quick start
 
@@ -64,19 +67,46 @@ Raw S3: https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=w
 
 ## Our implementation arm
 
-GraphMambaFormer does **not** emit BAM yet (Figure 1C decoder pending). `map_ours.sh` is a hook:
+`map_ours.sh` now **runs the GraphMambaFormer alignment pipeline**
+(`graphmambaformer.alignment`, seed → chain → extend → score) on the fetched
+chr21 reads and writes a sorted+indexed BAM whose `@SQ` name is `chr21`, so
+DeepVariant/hap.py accept it exactly like the Giraffe BAM. It runs entirely in
+Python via `pysam` — **no Docker required** for this arm.
 
 ```bash
+# run our aligner (uses the repo .venv if present)
+./scripts/chr21/map_ours.sh
+
+# quick partial pass while iterating
+OURS_MAX_READS=50000 OURS_MODE=fast ./scripts/chr21/map_ours.sh
+
+# or plug in an externally produced BAM
 OURS_BAM=/path/to/ours.sorted.bam ./scripts/chr21/map_ours.sh
-./scripts/chr21/call_deepvariant.sh ours
 ```
 
-Until the decoder lands, Giraffe is the working aligner arm.
+Knobs: `OURS_MODE=fast|hybrid|two_pass` (default `fast`, fully classical, needs
+no trained model), `OURS_MAX_READS=N` (cap reads for speed), `OURS_FORCE=1`
+(rebuild), `PYTHON=...` (interpreter).
+
+> The pipeline is a correct pure-Python reference implementation, not throughput
+> optimized. `hybrid`/`two_pass` only add neural re-ranking when a model with
+> alignment heads is supplied; without one they degrade to the classical path.
+
+### Compare the two arms
+
+```bash
+./scripts/chr21/compare.sh           # giraffe vs ours
+```
+
+Reads the BAMs, DeepVariant VCFs, and hap.py summaries already produced and
+writes `data/chr21/<SAMPLE>/compare/compare.csv` plus bar charts (mapping rate /
+MAPQ, PASS SNP/INDEL counts, and hap.py F1 when a GIAB truth set exists).
 
 ## Pipeline steps
 
 `run_all.sh` runs:
 
+0. `preflight.sh` — report which tools/deps are available and what each blocks  
 1. `fetch_reference.sh` — GRCh38 chr21 FASTA  
 2. `fetch_truth.sh` — GIAB truth (skip with `SKIP_TRUTH=1`)  
 3. `fetch_reads.sh` — stream chr21 Illumina FASTQ from BAM/CRAM  
@@ -84,9 +114,10 @@ Until the decoder lands, Giraffe is the working aligner arm.
 5. `map_giraffe.sh` — Giraffe → sorted BAM  
 6. `call_deepvariant.sh giraffe` — small variants  
 6b. `eval_happy.sh giraffe` — hap.py vs GIAB truth (skip with `SKIP_EVAL=1` or `SKIP_TRUTH=1`)  
-7. `map_ours.sh` — optional external BAM  
-8. `call_deepvariant.sh ours` — optional  
-8b. `eval_happy.sh ours` — optional hap.py scoring  
+7. `map_ours.sh` — GraphMambaFormer aligner → sorted BAM (Python; skip with `SKIP_OURS=1`)  
+8. `call_deepvariant.sh ours` — small variants for our arm  
+8b. `eval_happy.sh ours` — hap.py scoring for our arm  
+8c. `compare.sh` — Giraffe vs ours table + charts (skip with `SKIP_COMPARE=1`)  
 9. `call_sniffles.sh` — HiFi/ONT → minimap2 → Sniffles2 SVs  
 
 ## Outputs
@@ -94,9 +125,10 @@ Until the decoder lands, Giraffe is the working aligner arm.
 `data/chr21/<SAMPLE>/`
 
 - `bam/*.giraffe.sorted.bam` — Giraffe  
-- `bam/*.ours.sorted.bam` — our aligner (when provided)  
+- `bam/*.ours.sorted.bam` — our aligner  
 - `vcf/*.dv.vcf.gz` — DeepVariant  
 - `sv/*.sniffles.vcf.gz` — Sniffles  
+- `compare/compare.csv` + `compare/*.png` — Giraffe vs ours comparison  
 
 ## Key resources
 

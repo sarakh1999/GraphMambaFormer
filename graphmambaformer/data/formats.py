@@ -190,11 +190,24 @@ def _cigar_query_len(cigar: list[tuple[str, int]]) -> int:
     return sum(n for op, n in cigar if op in _QUERY_OPS)
 
 
-def _sq_from_references(references: Optional[dict[int, Reference]]):
+def _sq_from_references(
+    references: Optional[dict[int, Reference]],
+    contig_names: Optional[dict[int, str]] = None,
+):
+    """Build the SAM ``@SQ`` header and a ``ref_id -> row`` index.
+
+    ``contig_names`` overrides the default synthetic ``ref{rid}`` names so a run
+    against a real reference (e.g. GRCh38 ``chr21``) emits contig names that
+    match the FASTA a downstream caller like DeepVariant is given.
+    """
     if not references:
         return [], {}
+    names = contig_names or {}
     order = sorted(references)
-    sq = [{"SN": f"ref{rid}", "LN": len(references[rid].seq)} for rid in order]
+    sq = [
+        {"SN": names.get(rid, f"ref{rid}"), "LN": len(references[rid].seq)}
+        for rid in order
+    ]
     ref_index = {rid: i for i, rid in enumerate(order)}
     return sq, ref_index
 
@@ -246,16 +259,21 @@ def write_bam(
     references: Optional[dict[int, Reference]] = None,
     sort: bool = True,
     index: bool = True,
+    contig_names: Optional[dict[int, str]] = None,
 ) -> str:
     """Write reads to a (sorted, indexed) BAM via pysam.
 
     Mapped records (from a truth BAM / the synthetic dataset) are written with
     their POS/CIGAR/MAPQ; records with no alignment become unmapped BAM records.
+
+    ``contig_names`` maps ``ref_id`` to the ``@SQ`` name to emit, so a run
+    against a real reference writes ``chr21`` (matching the caller's FASTA)
+    rather than the synthetic default ``ref0``.
     """
     import pysam
 
     records = list(records)
-    sq, ref_index = _sq_from_references(references)
+    sq, ref_index = _sq_from_references(references, contig_names)
     header = {"HD": {"VN": "1.6", "SO": "coordinate" if sort else "unsorted"}}
     if sq:
         header["SQ"] = sq
@@ -283,6 +301,7 @@ def write_cram(
     reference_fasta: str,
     references: Optional[dict[int, Reference]] = None,
     sort: bool = True,
+    contig_names: Optional[dict[int, str]] = None,
 ) -> str:
     """Write reads to CRAM (reference-compressed) via pysam.
 
@@ -296,7 +315,10 @@ def write_cram(
         pysam.faidx(reference_fasta)
 
     tmp_bam = path + ".tmp.bam"
-    write_bam(records, tmp_bam, references=references, sort=sort, index=False)
+    write_bam(
+        records, tmp_bam, references=references, sort=sort, index=False,
+        contig_names=contig_names,
+    )
     with pysam.AlignmentFile(tmp_bam, "rb") as bam, \
             pysam.AlignmentFile(path, "wc", template=bam,
                                 reference_filename=reference_fasta) as cram:

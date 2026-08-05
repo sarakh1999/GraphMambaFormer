@@ -5,14 +5,24 @@
 #
 #   docker/build.sh                 -> graphmambaformer:latest (target: full)
 #   TARGET=fig6 docker/build.sh     -> fig6-runner:1.6.1       (benchmark only)
+#   TARGET=gpu docker/build.sh      -> graphmambaformer:gpu    (CUDA by default)
 #
 # Stages:
 #   htsbuild  samtools / bcftools 1.19 compiled against libcurl
 #   fig6      + vg, BWA, DeepVariant: the Fig 6a CPU benchmark stack
 #   full      + PyTorch (CPU) and the graphmambaformer package  [default]
+#   gpu       full, with torch swapped for a GPU build (CUDA or ROCm)
 #
 # Everything is linux/amd64: DeepVariant publishes no arm64 build, so on Apple
-# Silicon this runs under Rosetta (correct, but slower).
+# Silicon this runs under Rosetta (correct, but slower). Apple's own GPU is not
+# reachable from a container at all -- run natively on the host for MPS.
+#
+# The GPU stage is vendor-agnostic via TORCH_CHANNEL:
+#   cu124 / cu121  NVIDIA; the pip wheels bundle the CUDA runtime, so only a
+#                  host driver and `--gpus all` are needed
+#   rocm6.0        AMD; needs --device /dev/kfd --device /dev/dri
+# The code itself detects the vendor at runtime (graphmambaformer/accel), so one
+# image works across GPU generations without a rebuild.
 # ---------------------------------------------------------------------------
 ARG DV_IMAGE=google/deepvariant:1.6.1
 
@@ -117,12 +127,14 @@ LABEL org.opencontainers.image.title="graphmambaformer" \
       org.opencontainers.image.description="GraphMambaFormer + PyTorch (CPU) + the full Fig 6a genomics stack"
 
 # A dedicated venv keeps PyTorch away from DeepVariant's pinned TensorFlow/numpy.
+# matplotlib lives here too (not only in /opt/plotenv) because the training run
+# plots its own losses, validation metrics and model behaviour.
 RUN python3 -m venv /opt/gmf \
     && /opt/gmf/bin/pip install --no-cache-dir --upgrade "pip<24.1" \
     && /opt/gmf/bin/pip install --no-cache-dir \
         --index-url https://download.pytorch.org/whl/cpu "torch==${TORCH_VERSION}" \
     && /opt/gmf/bin/pip install --no-cache-dir \
-        "einops>=0.7" "numpy<2" "pysam>=0.22"
+        "einops>=0.7" "numpy<2" "pysam>=0.22" "matplotlib==3.7.5"
 
 # Baked so the image is self-contained; a bind-mounted /work takes precedence
 # via PYTHONPATH, so live edits on the host still win.
@@ -133,7 +145,45 @@ COPY README.md requirements.txt /opt/graphmambaformer/
 RUN ln -sf /opt/gmf/bin/python /usr/local/bin/gmf-python
 
 ENV PYTHONPATH=/work:/opt/graphmambaformer \
-    GMF_HOME=/opt/graphmambaformer
+    GMF_HOME=/opt/graphmambaformer \
+    MPLBACKEND=Agg
+
+WORKDIR /work
+CMD ["bash"]
+
+# --- stage 4: GPU-enabled (NVIDIA CUDA or AMD ROCm) -------------------------
+FROM full AS gpu
+
+# cu124 covers Volta through Blackwell. Use cu121 for older drivers, or
+# rocm6.0 for AMD. Pinning torch>=2.4 keeps the accel stack's SDP and
+# bf16 paths available.
+ARG TORCH_CHANNEL=cu124
+ARG GPU_TORCH_VERSION=2.4.1
+#: Triton powers the fused LN+Linear+GELU kernel; it supports CUDA and ROCm.
+ARG INSTALL_TRITON=1
+#: CuPy provides the NVRTC raw kernels, which are NVIDIA-only by construction.
+ARG INSTALL_CUPY=0
+
+LABEL org.opencontainers.image.title="graphmambaformer-gpu" \
+      org.opencontainers.image.description="GraphMambaFormer + GPU PyTorch (CUDA or ROCm) + the Fig 6a genomics stack"
+
+# Replace the CPU wheel in place; the venv layout and PATH are unchanged, so
+# nothing downstream has to know which channel was used.
+RUN /opt/gmf/bin/pip install --no-cache-dir --force-reinstall \
+        --index-url "https://download.pytorch.org/whl/${TORCH_CHANNEL}" \
+        "torch==${GPU_TORCH_VERSION}" \
+    && if [ "$INSTALL_TRITON" = "1" ]; then \
+         /opt/gmf/bin/pip install --no-cache-dir "triton" || \
+         echo "triton unavailable for this channel; the torch fallback is used"; \
+       fi \
+    && if [ "$INSTALL_CUPY" = "1" ]; then \
+         /opt/gmf/bin/pip install --no-cache-dir "cupy-cuda12x" || \
+         echo "cupy unavailable; raw-kernel tier stays off"; \
+       fi
+
+# Surfaced by gmf-doctor so a container that silently fell back to CPU is
+# obvious rather than merely slow.
+ENV GMF_GPU_CHANNEL=${TORCH_CHANNEL}
 
 WORKDIR /work
 CMD ["bash"]

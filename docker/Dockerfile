@@ -76,8 +76,8 @@ LABEL org.opencontainers.image.source="https://github.com/sarakh1999/GraphMambaF
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bwa bzip2 ca-certificates curl gawk git jq less parallel procps \
-        python3-venv \
+        bwa bzip2 ca-certificates curl gawk git jq less nano parallel procps \
+        python3-venv tree vim \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=htsbuild /usr/local/bin/ /usr/local/bin/
@@ -142,9 +142,22 @@ COPY graphmambaformer/ /opt/graphmambaformer/graphmambaformer/
 COPY scripts/ /opt/graphmambaformer/scripts/
 COPY README.md requirements.txt /opt/graphmambaformer/
 
-RUN ln -sf /opt/gmf/bin/python /usr/local/bin/gmf-python
+RUN ln -sf /opt/gmf/bin/python /usr/local/bin/gmf-python \
+    && printf '%s\n' \
+         '#!/bin/sh' \
+         'if [ "$#" -lt 1 ]; then' \
+         '  echo "usage: gmf-script <script.py> [args...]" >&2' \
+         '  exit 2' \
+         'fi' \
+         'script=$1; shift' \
+         'exec gmf-python "/opt/graphmambaformer/scripts/$script" "$@"' \
+       > /usr/local/bin/gmf-script \
+    && chmod +x /usr/local/bin/gmf-script
 
-ENV PYTHONPATH=/work:/opt/graphmambaformer \
+# Scripts stay reachable without a bind-mounted clone (gmf-script smoke_test.py).
+# /work still wins on PYTHONPATH when the repo is mounted via docker/run.sh.
+ENV PATH=/usr/local/bin:/opt/fig6/scripts/fig6:/opt/graphmambaformer/scripts:${PATH} \
+    PYTHONPATH=/work:/opt/graphmambaformer \
     GMF_HOME=/opt/graphmambaformer \
     MPLBACKEND=Agg
 

@@ -311,72 +311,50 @@ flags in `BlockConfig`; built-in factories supply the modules (or pass a custom
 Not yet implemented (future): the cross-attention alignment decoder, output heads
 (CIGAR/MAPQ/etc.), LoRA adapters, training.
 
-## Docker (nothing to install)
+## Docker (nothing to install on the host except Docker)
 
-### Quick start — pull the prebuilt image
+The image is at **`ghcr.io/sarakh1999/graphmambaformer:latest`** (already
+pushed). Collaborator **pvats13** has **write** access on this repo.
 
-Anyone with Docker can run the full stack (model + vg + BWA + samtools/bcftools
-1.19 + DeepVariant) without building:
+**One click from the owner (required once):** make the package Public (or add
+`pvats13` under package access) at
+https://github.com/users/sarakh1999/packages/container/package/graphmambaformer/settings
+→ **Change visibility → Public** (or invite `pvats13` with Read/Admin on the package).
+
+Then the collaborator runs:
 
 ```bash
 docker pull ghcr.io/sarakh1999/graphmambaformer:latest
-
-# verify tools
-docker run --rm -it --platform linux/amd64 \
-  ghcr.io/sarakh1999/graphmambaformer:latest gmf-doctor
-
-# model smoke test (baked into the image — no repo clone required)
-docker run --rm -it --platform linux/amd64 \
-  ghcr.io/sarakh1999/graphmambaformer:latest \
-  gmf-python /opt/graphmambaformer/scripts/smoke_test.py
-```
-
-With a clone of this repo, `docker/run.sh` bind-mounts the working tree at
-`/work` (host edits win over the baked copy) and falls back to the GHCR image
-when no local `graphmambaformer:latest` exists:
-
-```bash
 git clone https://github.com/sarakh1999/GraphMambaFormer.git
 cd GraphMambaFormer
-docker/run.sh gmf-doctor
-docker/run.sh gmf-python scripts/smoke_test.py
-docker/run.sh gmf-python scripts/train.py --reads 64
-SAMPLE=HG002 CHR=chr1 docker/run.sh scripts/fig6/run_all.sh
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-doctor
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-python scripts/smoke_test.py
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-python scripts/train.py --reads 64
 ```
 
-Tags: `:latest` (CPU full stack), `:gpu` (CUDA/ROCm), `:fig6-1.6.1` (benchmark
-only), `:arm64` / `:xpu` (model-only variants). The CPU image is `linux/amd64`
-(Rosetta on Apple Silicon).
-
-### Build from source
+If the package is still private, they log in to GHCR once first:
 
 ```bash
-docker/build.sh                                  # graphmambaformer:latest (CPU)
-docker/run.sh gmf-doctor                         # verify every tool
-docker/run.sh gmf-python scripts/smoke_test.py   # model smoke test
-docker/run.sh gmf-python scripts/train.py --reads 64   # train + write plots
-SAMPLE=HG002 CHR=chr1 docker/run.sh scripts/fig6/run_all.sh
+echo THEIR_GITHUB_PAT | docker login ghcr.io -u pvats13 --password-stdin
+# PAT needs read:packages
+docker pull ghcr.io/sarakh1999/graphmambaformer:latest
 ```
 
-The repo is bind-mounted at `/work` and takes precedence over the baked copy,
-so host edits apply immediately and `data/` stays on the host rather than in
-the image. `TARGET=fig6 docker/build.sh` builds a smaller benchmark-only image.
-See `scripts/fig6/README.md` for the one exception (hap.py stays external).
+### Build from source (optional fallback)
+
+```bash
+docker/build.sh
+docker/run.sh gmf-doctor
+```
+
+`TARGET=fig6` is benchmark-only; `TARGET=arm` is a smaller native arm64
+model-only image. See `scripts/fig6/README.md` for the hap.py exception.
 
 ### Publish (maintainers)
 
-After a local build, push to GHCR so others can pull:
-
 ```bash
-gh auth login
-gh auth refresh -h github.com -s write:packages
-docker/publish.sh                    # → ghcr.io/<you>/graphmambaformer:latest
-TARGET=gpu docker/publish.sh         # → …:gpu
-TAG=v0.1.0 docker/publish.sh         # also tag a release
+docker/publish.sh   # → ghcr.io/sarakh1999/graphmambaformer:latest
 ```
-
-Or use **Actions → Docker publish → Run workflow**. After the first push, set
-the package to public under GitHub → Packages if anonymous pulls fail.
 
 ### GPU images
 

@@ -96,21 +96,7 @@ Current development focus: **long reads** — PacBio HiFi and ONT.
 | chr21 ours vs Giraffe | `scripts/chr21/` (`align_ours.py`, `compare.sh`, `map_ours.sh`, …) |
 | Smoke / verify | `scripts/smoke_test.py`, `verify_stages.py`, `verify_alignment_pipeline.py` |
 
-### 11. Docker
-
-| Piece | File(s) |
-| --- | --- |
-| Image definition (full / fig6 / gpu) | `docker/Dockerfile` |
-| Build / run / doctor | `docker/build.sh`, `docker/run.sh`, `docker/gmf-doctor` |
-
-### 12. Architecture docs / slides
-
-| Piece | File(s) |
-| --- | --- |
-| Architecture HTML | `architecture/GraphMamba_Architecture.html` |
-| PPTX builder | `architecture/build_pptx.py` → `GraphMamba_Slides.pptx` |
-
-### 13. Tests
+### 11. Tests
 
 | Piece | File(s) |
 | --- | --- |

@@ -167,16 +167,17 @@ CMD ["bash"]
 # --- stage 4: GPU-enabled (NVIDIA CUDA or AMD ROCm) -------------------------
 FROM full AS gpu
 
-# Default cu124 + torch 2.5.x covers the datacentre cards this project targets
-# with one image (no per-SKU rebuild):
+# Default cu124 + torch 2.4.1: DeepVariant's base is Python 3.8, and the
+# cu124 index only publishes 2.4.0/2.4.1 for that ABI. Still covers the
+# datacentre cards this project targets with one image (no per-SKU rebuild):
 #   V100 (sm_70) · T4 (sm_75) · A100 (sm_80) · A6000 (sm_86) · L40 (sm_89)
 #   H100 / H200 (sm_90)
-# Blackwell (B100/B200, sm_100+) needs a newer wheel:
+# Blackwell (B100/B200, sm_100+) needs a newer wheel + newer Python image:
 #   TORCH_CHANNEL=cu126 GPU_TORCH_VERSION=2.6.0 TARGET=gpu docker/build.sh
 # Older host drivers: TORCH_CHANNEL=cu121
 # AMD:                  TORCH_CHANNEL=rocm6.0
 ARG TORCH_CHANNEL=cu124
-ARG GPU_TORCH_VERSION=2.5.1
+ARG GPU_TORCH_VERSION=2.4.1
 #: Triton powers the fused LN+Linear+GELU kernel; it supports CUDA and ROCm.
 ARG INSTALL_TRITON=1
 #: CuPy provides the NVRTC raw kernels, which are NVIDIA-only by construction.

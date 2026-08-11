@@ -55,8 +55,10 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer a classic PAT (repo secret GHCR_TOKEN with write:packages) when the
+          # package is not linked to this repository — GITHUB_TOKEN then gets 403.
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Resolve target / tags
         id: meta
@@ -98,6 +100,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           provenance: false
+          # DeepVariant base = Python 3.8; cu124 only has torch 2.4.x for that ABI.
+          build-args: |
+            TORCH_CHANNEL=cu124
+            GPU_TORCH_VERSION=2.4.1
+            INSTALL_TRITON=1
+            INSTALL_CUPY=0
 
       - name: Summary
         run: |

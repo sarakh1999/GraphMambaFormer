@@ -629,8 +629,15 @@ model-only image. See `scripts/fig6/README.md` for the hap.py exception.
 ### Publish (maintainers)
 
 ```bash
+# Local (recommended — full control, uses your GHCR credentials):
+./scripts/rebuild_and_publish_images.sh
+# or step-by-step:
 docker/build.sh && docker/publish.sh                 # → :latest
 TARGET=gpu docker/build.sh && TARGET=gpu docker/publish.sh   # → :gpu
+
+# Or GitHub Actions: Actions → Docker publish → Run workflow (target=full|gpu).
+# Needs repo secret GHCR_TOKEN (classic PAT with write:packages) when the
+# package is not linked to this repository.
 ```
 
 ### GPU images

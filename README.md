@@ -567,49 +567,61 @@ Not yet implemented (future): the cross-attention alignment decoder, output head
 
 ## Docker (nothing to install on the host except Docker)
 
-Published images:
+Published images (anonymous pull once the package is **Public**):
 
 | Tag | Purpose |
 | --- | --- |
 | `ghcr.io/sarakh1999/graphmambaformer:latest` | full stack + CPU PyTorch |
 | `ghcr.io/sarakh1999/graphmambaformer:gpu` | same + CUDA PyTorch (`--gpus all`) |
 
-Collaborator **pvats13** has **write** access on this repo.
+Package page: https://github.com/users/sarakh1999/packages/container/package/graphmambaformer  
 
-**One click from the owner (required once):** make the package Public (or add
-`pvats13` under package access) at
-https://github.com/users/sarakh1999/packages/container/package/graphmambaformer/settings
-→ **Change visibility → Public** (or invite `pvats13` with Read/Admin on the package).
+**Owner (one-time, UI only — GitHub has no API for this):** package settings → Danger Zone → **Change visibility → Public**.  
+Until then, collaborators log in with a PAT (`read:packages`) or are added under package **Manage access**. Collaborator **pvats13** has **write** on this repo.
 
-### Pull and run (collaborators)
+### Quick start (collaborators)
 
 ```bash
+# 1) pull images (no login if the package is Public)
 docker pull ghcr.io/sarakh1999/graphmambaformer:latest
-# or GPU:
 docker pull ghcr.io/sarakh1999/graphmambaformer:gpu
 
+# 2) clone + bind-mount via docker/run.sh
 git clone https://github.com/sarakh1999/GraphMambaFormer.git
 cd GraphMambaFormer
 
-# doctor + smoke
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-doctor
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-python scripts/smoke_test.py
 
-# real-data train (after Stage 1 prepare on the host; data/ is bind-mounted)
+# 3) prepare real HG002 inputs on the host (Stage 1)
+chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
+./scripts/prepare_real_hg002.sh
+
+# 4) train on all GPUs (Stage 2 / 4) — paths are /work/... inside the container
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
   docker/run.sh gmf-python scripts/train.py --data real \
   --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
   --gfa /work/data/chr21/HG002/chr21.gfa \
   --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
   --region chr21:5000000-6000000 --ref-mode both \
-  --device cuda --devices all --epochs 20 --d-model 256 \
+  --device cuda --devices all --epochs 20 --batch-size 8 --d-model 256 \
   --out /work/data/training_runs/hg002_both
+
+# 5) eval (Stage 3)
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/eval.py --data real \
+  --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --gfa /work/data/chr21/HG002/chr21.gfa \
+  --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  --region chr21:5000000-6000000 --ref-mode both --mode hybrid \
+  --checkpoint /work/data/training_runs/hg002_both/checkpoint.pt \
+  --device cuda --out /work/data/eval_runs/hg002_both
 ```
 
-If the package is still private, log in to GHCR once first:
+If pulls are still 403 (package private), log in once:
 
 ```bash
-echo THEIR_GITHUB_PAT | docker login ghcr.io -u pvats13 --password-stdin
+echo THEIR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
 # PAT needs read:packages
 docker pull ghcr.io/sarakh1999/graphmambaformer:latest
 docker pull ghcr.io/sarakh1999/graphmambaformer:gpu

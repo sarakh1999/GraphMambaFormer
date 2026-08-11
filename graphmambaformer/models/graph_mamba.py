@@ -362,6 +362,11 @@ class GraphMambaModel(nn.Module):
     ) -> GraphMambaOutput:
         """Run the full model on a batch of reads against a pangenome graph."""
         batch_size = base_codes.shape[0]
+        # Multi-GPU (DataParallel) scatters ``base_codes`` per replica; move the
+        # shared GraphBatch onto that replica's device so GAT/fusion stay local.
+        if graph is not None:
+            graph = graph.to(base_codes.device)
+
         read_hidden, read_mask = self.encode_read(
             base_codes, qualities=qualities, mask=mask, modality=modality
         )

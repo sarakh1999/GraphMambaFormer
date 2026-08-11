@@ -15,12 +15,15 @@
 # Knobs:
 #   OURS_MODE=fast|hybrid|two_pass   (default fast)
 #   OURS_MAX_READS=N                 (cap reads for a quick pass; 0/unset = all)
+#   OURS_CHECKPOINT=/path/checkpoint.pt  (for hybrid/two_pass neural scoring)
+#   OURS_FORCE=1                     (rebuild even if BAM exists)
 #   PYTHON=/path/to/python           (default: repo .venv, else python3)
 #
 # usage:
 #   ./scripts/chr21/map_ours.sh
 #   OURS_MAX_READS=50000 ./scripts/chr21/map_ours.sh
 #   OURS_BAM=/path/to/ours.sorted.bam ./scripts/chr21/map_ours.sh
+#   OURS_MODE=hybrid OURS_CHECKPOINT=data/training_runs/latest/checkpoint.pt ./scripts/chr21/map_ours.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 D="$(dirname "${BASH_SOURCE[0]}")"
 
@@ -80,11 +83,17 @@ fi
 echo "GraphMambaFormer mapping ($CHR, mode=${OURS_MODE:-fast}) -> $OUT"
 [ -n "${OURS_MAX_READS:-}" ] && [ "${OURS_MAX_READS}" != "0" ] \
   && echo "note: OURS_MAX_READS=${OURS_MAX_READS} (partial pass for speed)"
+[ -n "${OURS_CHECKPOINT:-}" ] && echo "note: OURS_CHECKPOINT=${OURS_CHECKPOINT}"
+
+CKPT_ARGS=()
+[ -n "${OURS_CHECKPOINT:-}" ] && CKPT_ARGS+=(--checkpoint "$OURS_CHECKPOINT")
+[ -n "${OURS_D_MODEL:-}" ] && CKPT_ARGS+=(--d-model "$OURS_D_MODEL")
 
 "$PYTHON" "$D/align_ours.py" \
   --ref "$REF_FA" \
   "${READS_ARGS[@]}" \
   --out "$OUT" \
-  --mode "${OURS_MODE:-fast}"
+  --mode "${OURS_MODE:-fast}" \
+  "${CKPT_ARGS[@]}"
 
 echo "Done: $OUT"

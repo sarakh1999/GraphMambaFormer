@@ -27,6 +27,7 @@ import torch
 
 from ..accel import AccelContext
 from ..config import AccelConfig, LossConfig
+from ..device import resolve_device_ids, unwrap_model, wrap_data_parallel
 from ..losses import GraphMambaLoss
 from .metrics import (
     ValidationMetrics,
@@ -60,6 +61,18 @@ class TrainConfig:
     log_every: int = 1
     seed: int = 0
     out_dir: str = "data/training_runs/latest"
+    #: If set, write ``checkpoint.pt`` (best weights) under ``out_dir``.
+    save_checkpoint: bool = True
+    #: If set, also write ``checkpoints/epoch_XX.pt`` after every epoch, so no
+    #: intermediate state is ever lost (the user can resume/inspect any epoch).
+    save_every_epoch: bool = True
+    #: If set, keep ``last.pt`` pointing at the most recent epoch's weights.
+    save_last: bool = True
+    #: If set, flush ``history.json`` to disk after every epoch (crash-safe log).
+    checkpoint_history: bool = True
+    #: Multi-GPU device list: ``"auto"`` (all visible CUDA/XPU when count>1),
+    #: ``"all"``, ``"0,1"``, or ``"none"`` for single-device.
+    devices: str = "auto"
 
 
 @dataclass
@@ -94,32 +107,48 @@ class Trainer:
                  accel: Optional[AccelContext] = None,
                  verbose: bool = True):
         self.cfg = cfg or TrainConfig()
-        self.model = model
         self.pipeline = pipeline
         self.verbose = verbose
 
         self.accel = accel or AccelContext(AccelConfig())
         self.device = self.accel.caps.device
-        self.model.to(self.device)
+        self.device_ids = resolve_device_ids(self.cfg.devices, primary=self.device)
+        if self.device_ids and self.device.type in ("cuda", "xpu"):
+            # Primary compute device is the first id in the multi-GPU list.
+            self.device = torch.device(self.device.type, int(self.device_ids[0]))
+            if self.device.type == "cuda":
+                torch.cuda.set_device(self.device)
+
+        model = model.to(self.device)
+        self.model = wrap_data_parallel(model, self.device_ids)
+        self.raw_model = unwrap_model(self.model)
 
         self.criterion = GraphMambaLoss(loss_cfg or LossConfig()).to(self.device)
-        self.builder = TargetBuilder(pipeline, model=model)
-        self.probe = BehaviorProbe(model)
+        self.builder = TargetBuilder(pipeline, model=self.raw_model)
+        self.probe = BehaviorProbe(self.raw_model)
 
         # Kendall log-variances are parameters too, so they must be optimized.
-        params = list(model.parameters()) + list(self.criterion.parameters())
+        params = list(self.raw_model.parameters()) + list(self.criterion.parameters())
         self.optimizer = torch.optim.AdamW(
             params, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay
         )
         self.scaler = self.accel.grad_scaler()
+        summary = self.accel.summary()
+        if len(self.device_ids) > 1:
+            summary = f"{summary} | data_parallel=[{','.join(map(str, self.device_ids))}]"
         self.history = TrainHistory(
-            device_summary=self.accel.summary(), config=asdict(self.cfg)
+            device_summary=summary, config=asdict(self.cfg)
         )
         self._step = 0
+        if self.verbose and len(self.device_ids) > 1:
+            print(f"multi-GPU DataParallel on devices {self.device_ids} "
+                  f"(primary {self.device})")
 
     # ---- one forward pass -------------------------------------------------- #
     def _forward(self, sup: Supervision, reference):
         """Model forward plus both scoring heads, on the resolved device."""
+        # DataParallel parallelizes ``forward`` across GPUs; scoring heads stay
+        # on the primary device via ``raw_model`` (gathered outputs live there).
         outputs = self.model(
             sup.base_codes,
             mask=sup.mask,
@@ -127,7 +156,7 @@ class Trainer:
             qualities=sup.qualities,
             modality=sup.modality,
         )
-        seed_scores = self.model.score_seeds(
+        seed_scores = self.raw_model.score_seeds(
             outputs,
             seed_features=sup.seed_features,
             anchor_read_pos=sup.anchor_read_pos,
@@ -135,10 +164,10 @@ class Trainer:
             anchor_mask=sup.anchor_mask,
         )
         b, n_chain, n_members = sup.member_states_shape
-        chain_scores = self.model.score_chains(
+        chain_scores = self.raw_model.score_chains(
             chain_features=sup.chain_feats,
             member_states=torch.zeros(
-                b, n_chain, n_members, self.model.cfg.d_model, device=self.device
+                b, n_chain, n_members, self.raw_model.cfg.d_model, device=self.device
             ),
             member_mask=torch.ones(
                 b, n_chain, n_members, dtype=torch.bool, device=self.device
@@ -209,6 +238,11 @@ class Trainer:
             losses.append(report.total)
             if self.verbose and self._step % self.cfg.log_every == 0:
                 print("  " + report.one_line())
+            # Flush the step log frequently so a crash never loses recent work.
+            if self.cfg.checkpoint_history and (
+                self._step % max(1, self.cfg.log_every) == 0
+            ):
+                self.history.to_json(os.path.join(self.cfg.out_dir, "history.json"))
             self._step += 1
 
         summary = {
@@ -334,6 +368,7 @@ class Trainer:
         torch.manual_seed(self.cfg.seed)
         total_steps = max(1, self.cfg.epochs * len(train_batches))
         best, best_epoch, stale = -math.inf, -1, 0
+        best_state: Optional[dict] = None
         warned_monitor = False
 
         if self.verbose:
@@ -361,9 +396,20 @@ class Trainer:
                 print(f"epoch {epoch:02d}  train={summary['train_loss']:.4f}  "
                       f"{metrics.one_line()}  ({summary['seconds']:.1f}s)")
 
-            if score > best:
+            improved = score > best
+            if improved:
                 best, best_epoch, stale = score, epoch, 0
-            else:
+                best_state = {
+                    k: v.detach().cpu().clone()
+                    for k, v in self.raw_model.state_dict().items()
+                }
+
+            # Persist *every* epoch so nothing is lost mid-run: a per-epoch
+            # checkpoint, a rolling ``last.pt``, and a flushed history.json.
+            self._persist_epoch(epoch=epoch, score=score, is_best=improved,
+                                best_epoch=best_epoch, best_score=best)
+
+            if not improved:
                 stale += 1
                 if stale >= self.cfg.patience:
                     if self.verbose:
@@ -372,7 +418,78 @@ class Trainer:
                               f"{best_epoch})")
                     break
 
+        if best_state is not None:
+            self.raw_model.load_state_dict(best_state)
+            if self.cfg.save_checkpoint:
+                ckpt_path = self.save_checkpoint(
+                    best_epoch=best_epoch, best_score=best
+                )
+                if self.verbose:
+                    print(f"checkpoint -> {ckpt_path}")
+
         self.probe.close()
         if self.verbose:
             print(f"\nbest {self.cfg.monitor}={best:.4f} at epoch {best_epoch}")
         return self.history
+
+    def _checkpoint_payload(self, *, epoch: int, best_epoch: int,
+                            best_score: float) -> dict:
+        payload = {
+            "model": self.raw_model.state_dict(),
+            "loss": self.criterion.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "config": asdict(self.cfg),
+            "epoch": epoch,
+            "best_epoch": best_epoch,
+            "best_score": best_score,
+            "monitor": self.cfg.monitor,
+            "device_summary": self.history.device_summary or self.accel.summary(),
+            "device_ids": list(self.device_ids),
+        }
+        # Preserve model architecture knobs when present (eval needs d_model).
+        if hasattr(self.raw_model, "cfg"):
+            try:
+                payload["model_cfg"] = asdict(self.raw_model.cfg)
+            except TypeError:
+                payload["model_cfg"] = None
+        return payload
+
+    def _persist_epoch(self, *, epoch: int, score: float, is_best: bool,
+                       best_epoch: int, best_score: float) -> None:
+        """Save per-epoch checkpoint, rolling ``last.pt`` and the history log.
+
+        Nothing here gates on ``save_checkpoint`` (that flag is specifically the
+        final *best* weights): this is the "never lose a step" bookkeeping the
+        user asked for, so every epoch is recoverable and inspectable.
+        """
+        os.makedirs(self.cfg.out_dir, exist_ok=True)
+        payload = self._checkpoint_payload(
+            epoch=epoch, best_epoch=best_epoch, best_score=best_score
+        )
+
+        if self.cfg.save_every_epoch:
+            ckpt_dir = os.path.join(self.cfg.out_dir, "checkpoints")
+            os.makedirs(ckpt_dir, exist_ok=True)
+            ep_path = os.path.join(ckpt_dir, f"epoch_{epoch:02d}.pt")
+            torch.save(payload, ep_path)
+            if self.verbose:
+                tag = "  (best)" if is_best else ""
+                print(f"  saved {ep_path}{tag}")
+
+        if self.cfg.save_last:
+            torch.save(payload, os.path.join(self.cfg.out_dir, "last.pt"))
+
+        if self.cfg.checkpoint_history:
+            self.history.to_json(os.path.join(self.cfg.out_dir, "history.json"))
+
+    def save_checkpoint(self, *, best_epoch: int = -1,
+                        best_score: float = float("nan"),
+                        filename: str = "checkpoint.pt") -> str:
+        """Write best weights + training metadata under ``out_dir``."""
+        os.makedirs(self.cfg.out_dir, exist_ok=True)
+        path = os.path.join(self.cfg.out_dir, filename)
+        payload = self._checkpoint_payload(
+            epoch=best_epoch, best_epoch=best_epoch, best_score=best_score
+        )
+        torch.save(payload, path)
+        return path

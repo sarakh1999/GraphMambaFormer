@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional, Sequence
 
-from .formats import validate_modality, write_bam, write_cram
+from .formats import validate_modality, write_bam, write_cram, write_sam
 from .synthetic import ReadRecord
 
 __all__ = [
@@ -150,7 +150,7 @@ def write_alignments(
     include_secondary: bool = False,
     contig_names: Optional[dict] = None,
 ) -> str:
-    """Write pipeline results to BAM or CRAM, chosen by the output extension.
+    """Write pipeline results to BAM, SAM, or CRAM by output extension.
 
     CRAM is reference-compressed and therefore needs ``reference_fasta``.
 
@@ -169,9 +169,14 @@ def write_alignments(
             records, path, reference_fasta, references=references,
             contig_names=contig_names,
         )
+    if low.endswith(".sam"):
+        return write_sam(
+            records, path, references=references, contig_names=contig_names
+        )
     if low.endswith((".bam", ".ubam")):
         return write_bam(records, path, references=references,
                          contig_names=contig_names)
     raise ValueError(
-        f"unsupported alignment output format: {path}. Expected .bam or .cram."
+        f"unsupported alignment output format: {path}. "
+        "Expected .bam / .ubam / .sam / .cram."
     )

@@ -114,7 +114,13 @@ from .heads import (
 )
 from .encoders.sequence_encoder import SequenceEncoder
 from .tokenization import KmerTokenizer
-from .device import device_summary, get_device
+from .device import (
+    device_summary,
+    get_device,
+    resolve_device_ids,
+    unwrap_model,
+    wrap_data_parallel,
+)
 
 __all__ = [
     # configs
@@ -222,4 +228,7 @@ __all__ = [
     # device
     "get_device",
     "device_summary",
+    "resolve_device_ids",
+    "wrap_data_parallel",
+    "unwrap_model",
 ]

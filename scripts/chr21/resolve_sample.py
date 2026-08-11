@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Resolve HPRC read URLs for scripts/chr21 from data/hprc/sample_links.json."""
+"""Resolve sample URLs for scripts/chr21 from data/hprc/sample_links.json.
+
+**Validation sample (GIAB normal):** ``HG002`` only.
+
+Other HPRC individuals can still resolve Illumina/HiFi raw-data paths from
+``sample_links.json`` for training-data fetch, but GIAB truth VCF/BED defaults
+exist solely for HG002.
+"""
 
 from __future__ import annotations
 
@@ -11,21 +18,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LINKS = ROOT / "data/hprc/sample_links.json"
 
+# Sole GIAB validation sample for this project (normal, held out of HPRC graph).
+VALIDATION_SAMPLE = "HG002"
+
 GIAB_DEFAULTS = {
-    "HG005": {
-        "reads_aln_url": (
-            "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/"
-            "ChineseTrio/HG005_NA24631_son/HG005_NA24631_son_HiSeq_300x/"
-            "NHGRI_Illumina300X_Chinesetrio_novoalign_bams/"
-            "HG005.GRCh38_full_plus_hs38d1_analysis_set_minus_alts.300x.bam"
-        ),
-        "truth_base": (
-            "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/"
-            "ChineseTrio/HG005_NA24631_son/NISTv4.2.1/GRCh38"
-        ),
-        "truth_vcf": "HG005_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
-        "truth_bed": "HG005_GRCh38_1_22_v4.2.1_benchmark.bed",
-    },
     "HG002": {
         "reads_aln_url": (
             "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/"
@@ -90,10 +86,18 @@ def main() -> int:
     elif args.field == "raw_bucket":
         value = row.get("hprc_bucket")
     else:
+        # truth_* fields: only HG002 has built-in GIAB defaults.
         value = giab.get(args.field)
 
     if not value:
-        print(f"ERROR: no {args.field} for sample {args.sample}", file=sys.stderr)
+        if args.field.startswith("truth_") and args.sample != VALIDATION_SAMPLE:
+            print(
+                f"ERROR: GIAB truth is only configured for {VALIDATION_SAMPLE} "
+                f"(got {args.sample}). Set GIAB_TRUTH_* overrides or SKIP_TRUTH=1.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"ERROR: no {args.field} for sample {args.sample}", file=sys.stderr)
         return 1
 
     print(value)

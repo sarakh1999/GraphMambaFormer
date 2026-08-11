@@ -2,8 +2,8 @@
 
 Defines the pipeline's file-format contract:
 
-    INPUT   FASTQ (plain or .gz) | BAM / uBAM / SAM / CRAM | GFA
-    OUTPUT  BAM | CRAM | GFA | GBZ
+    INPUT   FASTQ (plain or .gz) | BAM / uBAM / SAM / CRAM | GFA (.gfa / .gfa.gz)
+    OUTPUT  BAM | SAM | CRAM | GFA | GBZ | Giraffe indexes (.gbz/.min/.dist)
 
 Every modality in :data:`~graphmambaformer.config.MODALITIES` can be loaded
 from any of the input formats; :func:`validate_modality` resolves the common
@@ -15,19 +15,19 @@ Readers turn a file into in-memory objects the pipeline consumes:
   * graph  -> ``PangenomeGraph``     (GFA)
 
 Writers serialize them back out:
-  * reads  -> BAM / CRAM             (via pysam's bundled htslib)
-  * graph  -> GFA                    (plain text)  /  GBZ  (via the ``vg`` binary)
+  * reads / alignments -> BAM / SAM / CRAM   (via pysam's bundled htslib)
+  * graph              -> GFA / GBZ / Giraffe indexes (GBZ + indexes need ``vg``)
 
-BAM/CRAM use pysam, so no external ``samtools`` is required. GBZ is vg's binary
-graph index and genuinely requires the ``vg`` executable; :func:`write_gbz`
-shells out to it and raises a clear error (with the exact command) if vg is not
-installed.
+BAM/SAM/CRAM use pysam, so no external ``samtools`` is required. GBZ and
+Giraffe indexes are vg binary formats; :func:`write_gbz` /
+:func:`write_giraffe_indexes` shell out to ``vg`` and raise a clear error
+(with the exact command) if vg is not installed.
 
-NOTE ON ALIGNMENTS: the model's alignment decoder / output heads are not built
-yet, so reads carry alignment fields only when they come from an already-aligned
-source (a truth BAM or the synthetic dataset). Reads read from FASTQ are written
-as an *unaligned* BAM/CRAM (uBAM) — a valid reads container. Once the decoder
-lands, the same writers emit the model's predicted alignments unchanged.
+NOTE ON ALIGNMENTS: predicted alignments come from the seed→chain→extend
+pipeline (:func:`write_alignments`). Reads loaded from FASTQ alone have no
+alignment fields yet and are written as unmapped BAM/SAM/CRAM until aligned.
+Truth BAMs and the synthetic dataset already carry CIGAR/MAPQ through the
+writers unchanged.
 
 NOTE ON uBAM: a uBAM has no ``@SQ`` lines and every record is unmapped, which is
 how ONT and PacBio deliver reads (it preserves per-base tags such as MM/ML that
@@ -328,8 +328,36 @@ def write_cram(
     return path
 
 
+def write_sam(
+    records: Iterable[ReadRecord],
+    path: str,
+    references: Optional[dict[int, Reference]] = None,
+    contig_names: Optional[dict[int, str]] = None,
+) -> str:
+    """Write reads / alignments to plain-text SAM via pysam.
+
+    Same header and record semantics as :func:`write_bam`, but uncompressed
+    text so tools that prefer SAM (or humans inspecting alignments) can use it
+    without a binary decoder.
+    """
+    import pysam
+
+    records = list(records)
+    sq, ref_index = _sq_from_references(references, contig_names)
+    header = {"HD": {"VN": "1.6", "SO": "unsorted"}}
+    if sq:
+        header["SQ"] = sq
+    header["PG"] = [{"ID": "graphmambaformer", "PN": "graphmambaformer",
+                     "DS": "reads/alignments emitted by the format I/O layer"}]
+
+    with pysam.AlignmentFile(path, "w", header=header) as out:
+        for rec in records:
+            out.write(_make_segment(pysam, rec, ref_index))
+    return path
+
+
 # --------------------------------------------------------------------------- #
-# Graph writers — GFA / GBZ
+# Graph writers — GFA / GBZ / Giraffe indexes
 # --------------------------------------------------------------------------- #
 def write_gfa_graph(
     graph: PangenomeGraph, path: str, contig: str = "ref", version: str = "1.0"
@@ -350,6 +378,16 @@ def write_gfa_graph(
     return path
 
 
+def _require_vg(purpose: str, *example_cmds: str) -> None:
+    if shutil.which("vg") is None:
+        lines = "\n".join(f"  {c}" for c in example_cmds)
+        raise RuntimeError(
+            f"{purpose} requires the `vg` binary, which is not installed.\n"
+            "Install vg (https://github.com/vgteam/vg/releases), then run:\n"
+            f"{lines}"
+        )
+
+
 def write_gbz(gfa_path: str, gbz_path: str) -> str:
     """Convert a GFA to GBZ using the ``vg`` binary.
 
@@ -357,14 +395,11 @@ def write_gbz(gfa_path: str, gbz_path: str) -> str:
     writer, so this requires ``vg`` on PATH. Raises ``RuntimeError`` with the
     exact command to run if vg is missing.
     """
-    if shutil.which("vg") is None:
-        raise RuntimeError(
-            "GBZ output requires the `vg` binary, which is not installed.\n"
-            "Install vg (https://github.com/vgteam/vg/releases), then run:\n"
-            f"  vg gbwt -G {gfa_path} --gbz-format -g {gbz_path}\n"
-            "or:\n"
-            f"  vg convert --gfa-in {gfa_path} --gbz-out > {gbz_path}"
-        )
+    _require_vg(
+        "GBZ output",
+        f"vg gbwt -G {gfa_path} --gbz-format -g {gbz_path}",
+        f"vg convert --gfa-in {gfa_path} --gbz-out > {gbz_path}",
+    )
     # Preferred modern command; falls back to `vg convert` on older builds.
     try:
         subprocess.run(["vg", "gbwt", "-G", gfa_path, "--gbz-format",
@@ -376,15 +411,83 @@ def write_gbz(gfa_path: str, gbz_path: str) -> str:
     return gbz_path
 
 
+def write_giraffe_indexes(gfa_path: str, prefix: str) -> dict[str, str]:
+    """Build Giraffe mapping indexes (``.gbz`` / ``.min`` / ``.dist``) from a GFA.
+
+    These are the graph indexes the HPRC Giraffe eval arms consume. Requires
+    ``vg`` on PATH. Returns a dict of ``{kind: path}`` for the files written.
+    """
+    gbz = f"{prefix}.giraffe.gbz"
+    minimizer = f"{prefix}.min"
+    distance = f"{prefix}.dist"
+    _require_vg(
+        "Giraffe index build",
+        f"vg autoindex -w giraffe -g {gfa_path} -p {prefix}",
+        f"vg gbwt -G {gfa_path} --gbz-format -g {gbz} && "
+        f"vg minimizer -d {distance} -o {minimizer} {gbz}",
+    )
+    # Prefer the one-shot autoindex workflow; fall back to stepwise commands.
+    try:
+        subprocess.run(
+            ["vg", "autoindex", "-w", "giraffe", "-g", gfa_path, "-p", prefix],
+            check=True,
+        )
+    except subprocess.CalledProcessError:
+        write_gbz(gfa_path, gbz)
+        subprocess.run(
+            ["vg", "minimizer", "-d", distance, "-o", minimizer, gbz], check=True
+        )
+    out = {"gbz": gbz, "min": minimizer, "dist": distance}
+    missing = [k for k, p in out.items() if not os.path.isfile(p)]
+    if missing:
+        raise RuntimeError(
+            f"Giraffe index build finished but missing files: {missing}. "
+            f"Expected under prefix {prefix!r}."
+        )
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Top-level convenience dispatch
 # --------------------------------------------------------------------------- #
 def convert_graph(in_gfa: str, out_path: str) -> str:
-    """Convert a GFA to GFA (normalized round-trip) or GBZ, by out extension."""
-    graph = read_gfa(in_gfa)
-    if out_path.lower().endswith(".gbz"):
-        return write_gbz(in_gfa, out_path)
-    return write_gfa_graph(graph, out_path)
+    """Convert a GFA to GFA (normalized) / GBZ / Giraffe-index prefix.
+
+    * ``*.gfa``  — rewrite a normalized GFA
+    * ``*.gbz``  — write a GBZ
+    * anything else treated as a prefix → ``.giraffe.gbz`` / ``.min`` / ``.dist``
+    """
+    low = out_path.lower()
+    if low.endswith(".gbz"):
+        # Need a plain GFA on disk for vg; materialize if the input is gzipped.
+        gfa_for_vg = in_gfa
+        tmp = None
+        if in_gfa.lower().endswith(".gz"):
+            graph = read_gfa(in_gfa)
+            tmp = out_path + ".tmp.gfa"
+            write_gfa_graph(graph, tmp)
+            gfa_for_vg = tmp
+        try:
+            return write_gbz(gfa_for_vg, out_path)
+        finally:
+            if tmp and os.path.isfile(tmp):
+                os.remove(tmp)
+    if low.endswith(".gfa"):
+        return write_gfa_graph(read_gfa(in_gfa), out_path)
+    # Prefix path for Giraffe indexes.
+    gfa_for_vg = in_gfa
+    tmp = None
+    if in_gfa.lower().endswith(".gz") or not in_gfa.lower().endswith(".gfa"):
+        graph = read_gfa(in_gfa)
+        tmp = out_path + ".tmp.gfa"
+        write_gfa_graph(graph, tmp)
+        gfa_for_vg = tmp
+    try:
+        paths = write_giraffe_indexes(gfa_for_vg, out_path)
+        return paths["gbz"]
+    finally:
+        if tmp and os.path.isfile(tmp):
+            os.remove(tmp)
 
 
 def convert_reads(
@@ -393,14 +496,27 @@ def convert_reads(
     references: Optional[dict[int, Reference]] = None,
     reference_fasta: Optional[str] = None,
     modality: str = "pacbio_hifi",
+    contig_names: Optional[dict[int, str]] = None,
 ) -> str:
-    """Convert a reads file (FASTQ/BAM/SAM/CRAM) to BAM or CRAM by out extension."""
+    """Convert a reads file (FASTQ/BAM/SAM/CRAM) to BAM, SAM, or CRAM."""
     records = read_reads(in_path, modality=modality)
     low = out_path.lower()
     if low.endswith(".cram"):
         if not reference_fasta:
             raise ValueError("CRAM output requires reference_fasta=")
-        return write_cram(records, out_path, reference_fasta, references=references)
-    if low.endswith(".bam"):
-        return write_bam(records, out_path, references=references)
-    raise ValueError(f"unsupported reads output format: {out_path}")
+        return write_cram(
+            records, out_path, reference_fasta, references=references,
+            contig_names=contig_names,
+        )
+    if low.endswith(".sam"):
+        return write_sam(
+            records, out_path, references=references, contig_names=contig_names
+        )
+    if low.endswith((".bam", ".ubam")):
+        return write_bam(
+            records, out_path, references=references, contig_names=contig_names
+        )
+    raise ValueError(
+        f"unsupported reads output format: {out_path}. "
+        "Expected .bam / .ubam / .sam / .cram."
+    )

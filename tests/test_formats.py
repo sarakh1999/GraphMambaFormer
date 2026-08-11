@@ -2,8 +2,8 @@
 
 The contract under test::
 
-    INPUT   FASTQ (plain or .gz) | BAM / uBAM / SAM / CRAM | GFA
-    OUTPUT  BAM | CRAM | GFA | GBZ
+    INPUT   FASTQ (plain or .gz) | BAM / uBAM / SAM / CRAM | GFA (.gfa / .gfa.gz)
+    OUTPUT  BAM | SAM | CRAM | GFA | GBZ | Giraffe indexes
 
 These tests exist because three of these paths were silently broken: gzipped
 FASTQ raised ``UnicodeDecodeError`` even though ``read_reads`` advertised
@@ -264,3 +264,68 @@ def test_gbz_reports_clearly_when_vg_is_absent():
         print(f"vg present -> GBZ written, {os.path.getsize(out)}B")
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def test_sam_output_round_trips():
+    """SAM writes and reads back with alignments intact (plain-text BAM sibling)."""
+    d = _tmp()
+    try:
+        ds = generate_dataset(preset("tiny"))
+        aligned = list(ds.splits["train"])
+        refs = ds.references
+
+        from graphmambaformer.data.formats import write_sam
+
+        sam = write_sam(aligned, os.path.join(d, "out.sam"), references=refs)
+        assert os.path.getsize(sam) > 0
+        back = read_reads(sam, modality="pacbio_hifi")
+        assert len(back) == len(aligned), (len(back), len(aligned))
+        assert all(r.ref_id >= 0 and r.cigar for r in back), "alignments lost from SAM"
+        print(f"SAM {os.path.getsize(sam)}B (read back {len(back)} aligned reads)")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_gzipped_gfa_loads():
+    """``.gfa.gz`` must parse the same as the plain GFA."""
+    from graphmambaformer.data.export import read_gfa
+    from graphmambaformer.data.formats import write_gfa_graph
+
+    d = _tmp()
+    try:
+        graph = generate_dataset(preset("tiny")).references[0].graph
+        plain = write_gfa_graph(graph, os.path.join(d, "g.gfa"))
+        gz = os.path.join(d, "g.gfa.gz")
+        with open(plain, "rb") as src, gzip.open(gz, "wb") as dst:
+            dst.write(src.read())
+        back = read_gfa(gz)
+        assert list(back.node_seqs) == list(graph.node_seqs)
+        assert len(back.edge_index) == len(graph.edge_index)
+        print(f"gzipped GFA: {len(back.node_seqs)} nodes, {len(back.edge_index)} edges")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_giraffe_indexes_report_clearly_when_vg_is_absent():
+    """Giraffe indexes need vg; the error must name the autoindex command."""
+    from graphmambaformer.data.formats import write_gfa_graph, write_giraffe_indexes
+
+    d = _tmp()
+    try:
+        graph = generate_dataset(preset("tiny")).references[0].graph
+        gfa = write_gfa_graph(graph, os.path.join(d, "g.gfa"))
+        prefix = os.path.join(d, "idx")
+        if shutil.which("vg") is None:
+            try:
+                write_giraffe_indexes(gfa, prefix)
+            except RuntimeError as exc:
+                assert "vg" in str(exc).lower() and "giraffe" in str(exc).lower()
+                print("vg absent -> Giraffe indexes raise a clear error (as designed)")
+                return
+            raise AssertionError("expected RuntimeError when vg is missing")
+        paths = write_giraffe_indexes(gfa, prefix)
+        assert all(os.path.getsize(p) > 0 for p in paths.values())
+        print(f"vg present -> Giraffe indexes: {sorted(paths)}")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+

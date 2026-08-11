@@ -31,16 +31,19 @@
 # (amd64, under Rosetta on Apple Silicon) for the full genomics stack.
 #
 # GPU channel selection (target=gpu only):
-#   TORCH_CHANNEL=cu124 docker/build.sh   # NVIDIA, sm_70..sm_90 (default;
-#                                         #   Blackwell needs newer args, see Dockerfile)
-#   TORCH_CHANNEL=cu121 docker/build.sh   # NVIDIA, older drivers
-#   TORCH_CHANNEL=rocm6.0 docker/build.sh # AMD
-#   INSTALL_CUPY=1 TARGET=gpu docker/build.sh  # + NVRTC raw-kernel tier
+#   TORCH_CHANNEL=cu124 docker/build.sh            # NVIDIA default:
+#                                                  #   A100/A6000/L40/H100/H200
+#   TORCH_CHANNEL=cu126 GPU_TORCH_VERSION=2.6.0 \  # NVIDIA Blackwell (B100/B200)
+#     TARGET=gpu docker/build.sh
+#   TORCH_CHANNEL=cu121 docker/build.sh            # NVIDIA, older drivers
+#   TORCH_CHANNEL=rocm6.0 docker/build.sh          # AMD
+#   INSTALL_CUPY=1 TARGET=gpu docker/build.sh      # + NVRTC raw-kernel tier
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${TARGET:-full}"
 TORCH_CHANNEL="${TORCH_CHANNEL:-cu124}"
+GPU_TORCH_VERSION="${GPU_TORCH_VERSION:-}"
 INSTALL_TRITON="${INSTALL_TRITON:-1}"
 INSTALL_CUPY="${INSTALL_CUPY:-0}"
 
@@ -74,7 +77,10 @@ if [ "$TARGET" = "gpu" ]; then
   build_args+=(--build-arg "TORCH_CHANNEL=$TORCH_CHANNEL"
                --build-arg "INSTALL_TRITON=$INSTALL_TRITON"
                --build-arg "INSTALL_CUPY=$INSTALL_CUPY")
-  echo "Building $IMAGE  (target=gpu, channel=$TORCH_CHANNEL, platform=$PLATFORM)"
+  if [ -n "$GPU_TORCH_VERSION" ]; then
+    build_args+=(--build-arg "GPU_TORCH_VERSION=$GPU_TORCH_VERSION")
+  fi
+  echo "Building $IMAGE  (target=gpu, channel=$TORCH_CHANNEL${GPU_TORCH_VERSION:+, torch=$GPU_TORCH_VERSION}, platform=$PLATFORM)"
 else
   echo "Building $IMAGE  (target=$TARGET, platform=$PLATFORM)"
 fi

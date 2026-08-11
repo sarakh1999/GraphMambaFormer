@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download GIAB benchmark for SAMPLE and subset to $CHR.
-# Supports HG005 / HG002 out of the box, or explicit GIAB_TRUTH_* overrides.
+# Built-in truth defaults are HG002-only; other samples need GIAB_TRUTH_* overrides.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 RESOLVE="$(dirname "${BASH_SOURCE[0]}")/resolve_sample.py"
 

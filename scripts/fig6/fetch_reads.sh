@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ALN="${READS_ALN_URL:-}"
 if [ -z "$ALN" ]; then
-  echo "ERROR: set READS_ALN_URL (or use SAMPLE=HG002 / HG005)." >&2
+  echo "ERROR: set READS_ALN_URL (or use SAMPLE=HG002)." >&2
   exit 1
 fi
 

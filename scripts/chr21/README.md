@@ -8,12 +8,14 @@ One HPRC/GIAB individual on **chr21**:
 
 ## What this task means
 
-Yes: **one HPRC individual × chr21 first**, then scale the same workflow across the ~44 graph-training samples.
+**One GIAB normal sample × chr21** for validation: **HG002** (held out of the
+HPRC pangenome training set). Training-data fetch across HPRC individuals is
+separate (`fetch_hprc_sample.sh` / `graph_samples_44.txt`).
 
 | Stage | Sample choice | Why |
 | --- | --- | --- |
-| Pilot / eval | `HG005` (default) | GIAB truth VCF/BED for chr21 benchmarking |
-| First training sample | `HG00438` | First HPRC core individual in the graph-training set |
+| Validation / eval (default) | `HG002` | Sole GIAB normal truth set for this project |
+| First training sample | `HG00438` | First HPRC core individual in the graph-training set (`SKIP_TRUTH=1`) |
 | Scale-out | `data/hprc/graph_samples_44.txt` | ~44 individuals used to build HPRC v1.1 |
 
 ## Prerequisites
@@ -30,14 +32,15 @@ pure Python and need no Docker. `preflight.sh` reports exactly what is available
 
 ## Quick start
 
-### A. GIAB eval sample (`HG005`, has truth)
+### A. GIAB validation sample (`HG002`, default)
 
 ```bash
 # Giraffe + DeepVariant + Sniffles on chr21
-SAMPLE=HG005 ./scripts/chr21/run_all.sh
+./scripts/chr21/run_all.sh
+# equivalent: SAMPLE=HG002 ./scripts/chr21/run_all.sh
 
 # Giraffe + DeepVariant only (skip our aligner hook + Sniffles)
-SKIP_OURS=1 SKIP_SNIFFLES=1 SAMPLE=HG005 ./scripts/chr21/run_all.sh
+SKIP_OURS=1 SKIP_SNIFFLES=1 ./scripts/chr21/run_all.sh
 ```
 
 ### B. First training sample (`HG00438`, HPRC-only)

@@ -38,7 +38,7 @@ HAS_CUDA = torch.cuda.is_available()
 
 
 def _caps(vendor, cc=None, *, cupy=False, triton=False, mps=False, xpu=False,
-          hip=None):
+          hip=None, name=None):
     """Synthesize a capability snapshot for a GPU this host may not have.
 
     The dtype and kernel gates are pure functions of vendor + compute
@@ -54,24 +54,29 @@ def _caps(vendor, cc=None, *, cupy=False, triton=False, mps=False, xpu=False,
         has_triton=triton,
         has_mamba_ssm=False,
         compute_capability=cc,
-        device_name=f"synthetic-{vendor}",
+        device_name=name or f"synthetic-{vendor}",
         vendor=vendor,
         has_xpu=xpu,
         hip_arch=hip,
+        device_count=1 if vendor != "cpu" else 0,
     )
 
 
 def test_dtype_gates_across_every_gpu_generation():
     """TF32/fp16/fp8 must follow the actual hardware, not merely 'is CUDA'."""
     # (label, caps, expect_tf32, expect_fp16, expect_fp8)
+    # Datacentre SKUs called out explicitly — A6000/A100/H100/H200/… share one
+    # binary; only the CC gates change.
     matrix = [
         ("Pascal sm_61", _caps("nvidia", (6, 1)), False, False, False),
-        ("Volta sm_70", _caps("nvidia", (7, 0)), False, True, False),
-        ("Turing sm_75", _caps("nvidia", (7, 5)), False, True, False),
-        ("Ampere sm_80", _caps("nvidia", (8, 0)), True, True, False),
-        ("Ada sm_89", _caps("nvidia", (8, 9)), True, True, True),
-        ("Hopper sm_90", _caps("nvidia", (9, 0)), True, True, True),
-        ("Blackwell sm_100", _caps("nvidia", (10, 0)), True, True, True),
+        ("Volta V100 sm_70", _caps("nvidia", (7, 0), name="V100-SXM2"), False, True, False),
+        ("Turing T4 sm_75", _caps("nvidia", (7, 5), name="Tesla T4"), False, True, False),
+        ("A100 sm_80", _caps("nvidia", (8, 0), name="NVIDIA A100-SXM4-80GB"), True, True, False),
+        ("A6000 sm_86", _caps("nvidia", (8, 6), name="NVIDIA RTX A6000"), True, True, False),
+        ("L40 sm_89", _caps("nvidia", (8, 9), name="NVIDIA L40"), True, True, True),
+        ("H100 sm_90", _caps("nvidia", (9, 0), name="NVIDIA H100"), True, True, True),
+        ("H200 sm_90", _caps("nvidia", (9, 0), name="NVIDIA H200"), True, True, True),
+        ("B200 sm_100", _caps("nvidia", (10, 0), name="NVIDIA B200"), True, True, True),
         ("AMD gfx90a", _caps("amd", hip="gfx90a"), False, True, False),
         ("Intel XPU", _caps("intel", xpu=True), False, True, False),
         ("Apple MPS", _caps("apple", mps=True), False, True, False),
@@ -81,9 +86,31 @@ def test_dtype_gates_across_every_gpu_generation():
         assert caps.supports_tf32 is tf32, f"{label}: tf32 {caps.supports_tf32} != {tf32}"
         assert caps.supports_fp16 is fp16, f"{label}: fp16 {caps.supports_fp16} != {fp16}"
         assert caps.supports_fp8 is fp8, f"{label}: fp8 {caps.supports_fp8} != {fp8}"
-        print(f"   {label:18s} arch={caps.arch_label:20s} tier={caps.tier:16s} "
-              f"tf32={tf32!s:5s} fp16={fp16!s:5s} fp8={fp8}")
+        # Ampere+ NVIDIA must claim bf16 via the CC gate (even offline).
+        if caps.is_nvidia and caps.compute_capability and caps.compute_capability >= (8, 0):
+            assert caps.supports_bf16, f"{label}: expected bf16 on Ampere+"
+        print(f"   {label:22s} arch={caps.arch_label:32s} tier={caps.tier:16s} "
+              f"tf32={tf32!s:5s} fp16={fp16!s:5s} fp8={fp8} bf16={caps.supports_bf16}")
     print(f"dtype gates correct for all {len(matrix)} device classes")
+
+
+def test_sku_arch_labels():
+    """Common datacentre names must surface in arch_label for logs/doctor."""
+    from graphmambaformer.accel import nvidia_arch_label
+
+    cases = [
+        ((8, 0), "NVIDIA A100-SXM4-80GB", "Ampere/A100 (sm_80)"),
+        ((8, 6), "NVIDIA RTX A6000", "Ampere/A6000 (sm_86)"),
+        ((9, 0), "NVIDIA H100 80GB HBM3", "Hopper/H100 (sm_90)"),
+        ((9, 0), "NVIDIA H200", "Hopper/H200 (sm_90)"),
+        ((8, 9), "NVIDIA L40", "Ada/L40 (sm_89)"),
+        ((10, 0), "NVIDIA B200", "Blackwell/B200 (sm_100)"),
+    ]
+    for cc, name, expect in cases:
+        got = nvidia_arch_label(cc, name)
+        assert got == expect, (cc, name, got, expect)
+        print(f"   {name:28s} -> {got}")
+    print(f"SKU labels correct for {len(cases)} datacentre cards")
 
 
 def test_rocm_is_not_mistaken_for_cuda():
@@ -97,8 +124,9 @@ def test_rocm_is_not_mistaken_for_cuda():
     assert not amd.supports_tf32, "TF32 is an NVIDIA tensor-core feature"
     assert amd.arch_label == "gfx942"
 
-    nvidia = _caps("nvidia", (9, 0), cupy=True, triton=True)
+    nvidia = _caps("nvidia", (9, 0), cupy=True, triton=True, name="NVIDIA H100")
     assert nvidia.tier == "cuda_rawkernel", nvidia.tier
+    assert "H100" in nvidia.arch_label
     print("AMD declines NVRTC raw kernels and TF32, falls back to Triton; "
           "NVIDIA still takes the raw-kernel tier")
 
@@ -117,14 +145,30 @@ def test_amp_follows_the_fp16_gate_not_just_cuda():
 def test_capability_detection():
     caps = detect_capabilities()
     assert isinstance(caps, AccelCapabilities)
-    valid_tiers = {"cuda_rawkernel", "triton", "torch_cuda", "torch_mps", "torch_cpu"}
+    valid_tiers = {
+        "cuda_rawkernel", "triton", "torch_cuda", "torch_xpu", "torch_mps", "torch_cpu",
+    }
     assert caps.tier in valid_tiers, caps.tier
     # Detection must be self-consistent: a CUDA tier requires a CUDA device.
     if caps.tier in ("cuda_rawkernel", "triton", "torch_cuda"):
         assert caps.has_cuda
+        assert caps.device.type == "cuda"
     if not caps.has_cuda:
-        assert caps.tier in ("torch_mps", "torch_cpu")
-    print(f"detected tier={caps.tier} device={caps.device}")
+        assert caps.tier in ("torch_xpu", "torch_mps", "torch_cpu")
+    # ``auto`` / empty must resolve the same as an unset device.
+    assert detect_capabilities("auto").device.type == caps.device.type
+    print(f"detected tier={caps.tier} device={caps.device} arch={caps.arch_label}")
+
+
+def test_list_visible_gpus_is_safe_off_cuda():
+    from graphmambaformer.accel import list_visible_gpus
+
+    gpus = list_visible_gpus()
+    assert isinstance(gpus, list)
+    for g in gpus:
+        assert "index" in g and "name" in g and "vendor" in g
+    print(f"visible GPUs: {len(gpus)}"
+          + (f" ({', '.join(g['name'] for g in gpus)})" if gpus else ""))
 
 
 def test_context_summary_and_default():

@@ -1,10 +1,10 @@
-# Fig 6a CPU baselines (HG002 / HG005)
+# Fig 6a CPU baselines (HG002)
 
 Reproduce the paper’s **precision–recall** small-variant baselines on **CPU**,
 scoped to a single chromosome so it fits a laptop.
 
-Paper figure (page 9) is HG005 whole-genome; we run the same pipelines on one
-**HG002** chromosome for a fair local comparison.
+Paper figure (page 9) is HG005 whole-genome; **this project validates on HG002
+only** (GIAB normal, held out of the HPRC graph).
 
 ### Choosing the chromosome
 
@@ -39,7 +39,6 @@ SAMPLE=HG002 ./scripts/fig6/run_all.sh
 Optional:
 
 ```bash
-SAMPLE=HG005 ./scripts/fig6/run_all.sh          # paper’s sample
 THREADS=8 SAMPLE=HG002 ./scripts/fig6/run_all.sh
 ```
 

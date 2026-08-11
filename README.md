@@ -149,20 +149,228 @@ log-variance `s` and contributes `exp(-s)·L + s`. A term whose labels are absen
 from the batch is **skipped**, not zeroed, so partially-labelled data trains the
 heads it has labels for without diluting the others.
 
-## Training, validation and plots
+## End-to-end: real data (stages 1–4)
 
-`scripts/train.py` trains the model, validates it, and writes every figure:
+These are the production commands (linear / pangenome / both). They were
+smoke-tested end-to-end on real-format FASTA + GFA + truth BAM.
+
+### Stage 1 — prepare HG002 inputs (once, needs Docker)
 
 ```bash
-# quick CPU run on synthetic data
-PYTHONPATH=. python scripts/train.py --reads 64 --epochs 10
-
-# GPU run, plots into a named directory
-PYTHONPATH=. python scripts/train.py --preset table1 --epochs 40 \
-    --device cuda --out data/training_runs/chr1
+chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
+./scripts/prepare_real_hg002.sh
+# writes:
+#   data/chr21/HG002/ref/GRCh38.chr21.fa
+#   data/chr21/HG002/chr21.gfa
+#   data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
 ```
 
-Supervision is built from the dataset's **ground truth**, not invented: an anchor
+### Stage 2 — train (linear | pangenome | both)
+
+```bash
+# LINEAR
+PYTHONPATH=. python scripts/train.py --data real \
+  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  --region chr21:5000000-6000000 --ref-mode linear \
+  --device cuda --devices auto --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/hg002_linear
+
+# PANGENOME
+PYTHONPATH=. python scripts/train.py --data real \
+  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --gfa data/chr21/HG002/chr21.gfa \
+  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  --region chr21:5000000-6000000 --ref-mode pangenome \
+  --device cuda --devices auto --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/hg002_pangenome
+
+# BOTH
+PYTHONPATH=. python scripts/train.py --data real \
+  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --gfa data/chr21/HG002/chr21.gfa \
+  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  --region chr21:5000000-6000000 --ref-mode both \
+  --device cuda --devices auto --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/hg002_both
+```
+
+**Train outputs** under `--out`: `checkpoints/epoch_XX.pt`, `last.pt`,
+`checkpoint.pt` (best), `history.json` (every step), `run_meta.json`, `plots/`.
+
+### Stage 3 — eval
+
+```bash
+PYTHONPATH=. python scripts/eval.py --data real \
+  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --gfa data/chr21/HG002/chr21.gfa \
+  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  --region chr21:5000000-6000000 --ref-mode both --mode hybrid \
+  --checkpoint data/training_runs/hg002_both/checkpoint.pt \
+  --device cuda --out data/eval_runs/hg002_both
+```
+
+**Eval outputs** under `--out/<linear|pangenome>/`: `metrics.json`,
+`pred.real.bam` (+`.bai`), `pred.real.sam`; top-level `metrics.json` +
+`run_meta.json`. Optional `--write-cram`.
+
+### Stage 4 — Docker / GPU (same flags, paths under `/work`)
+
+```bash
+# Build + publish (maintainers)
+docker/build.sh                                    # CPU → graphmambaformer:latest
+TARGET=gpu docker/build.sh                         # CUDA → graphmambaformer:gpu
+docker/publish.sh                                  # → ghcr.io/sarakh1999/graphmambaformer:latest
+TARGET=gpu docker/publish.sh                       # → ghcr.io/sarakh1999/graphmambaformer:gpu
+
+# Run train on all GPUs (local image or GHCR)
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/train.py --data real \
+  --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --gfa /work/data/chr21/HG002/chr21.gfa \
+  --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  --region chr21:5000000-6000000 --ref-mode both \
+  --device cuda --devices all --epochs 20 --batch-size 8 --d-model 256 \
+  --out /work/data/training_runs/hg002_both
+```
+
+## Training and evaluation
+
+`scripts/train.py` and `scripts/eval.py` run on **real** genomics files
+(`--data real` — auto-selected when you pass `--reference-fasta`) or on the
+synthetic dataset (`--data synthetic`, CPU smoke only). Use the same
+`--ref-mode {linear,pangenome,both}` curriculum for either source. Prepare
+HG002 FASTA + GFA + truth BAM once with `./scripts/prepare_real_hg002.sh`, then
+train/eval — that is the path you wrap in Docker and run on GPU.
+
+### Inputs (what each flag feeds in)
+
+| Flag | Applies to | What it is |
+| --- | --- | --- |
+| `--reference-fasta PATH` | real | linear reference **FASTA** (GRCh38 chr21, a windowed contig, …). The `.fai` is built on demand. |
+| `--gfa PATH` | real, pangenome | pangenome **GFA** graph (real HPRC window, or `vg convert -f graph.gbz > graph.gfa`). Attaches real nodes/edges to the graph towers. |
+| `--truth-bam PATH` | real | aligned **BAM/SAM/CRAM** truth. Supplies each read's `ref_start`/`ref_end`/`cigar`/`mapq` — the supervision. **Required to train.** |
+| `--reads-file PATH` | real (inference) | **FASTQ(.gz)/BAM** reads with no truth. Eval will align + write a BAM but cannot score locus/MAPQ. Repeat for R1/R2. |
+| `--region chr:start-end` | real | window the reference (and truth reads) to a manageable span. **Strongly recommended** — the pipeline is a pure-Python reference impl, so indexing a whole chromosome is slow. |
+| `--contig NAME` | real | pick a contig when the FASTA has several (default: first). |
+| `--modality` | real | `illumina` (default) / `pacbio_hifi` / `ont` / … |
+| `--ref-mode` | both | `linear` (FASTA only), `pangenome` (attach GFA), `both` (train each read on each). |
+| `--preset {tiny,long,table1}` | synthetic | dataset scale (see the synthetic section). |
+| `--device cuda\|mps\|cpu` | both | compute device (default: auto-detect). |
+
+### Outputs (everything is saved under `--out`)
+
+Training writes, and **keeps every step**:
+
+| Path | Contents |
+| --- | --- |
+| `checkpoints/epoch_XX.pt` | a checkpoint **after every epoch** (model + optimizer + loss + config + epoch) — nothing is lost mid-run |
+| `last.pt` | rolling copy of the most recent epoch |
+| `checkpoint.pt` | the **best** epoch by the monitored metric (skip with `--no-checkpoint`) |
+| `history.json` | every training step (loss terms, grad norms, router split) + every validation, **flushed every step** |
+| `run_meta.json` | full provenance: data source, file paths, region, read counts, device, artifact map |
+| `plots/01..06_*.png` | loss + per-term breakdown, learned Kendall weights, validation quality, model behaviour, MAPQ calibration, label balance |
+
+Evaluation writes, per `--ref-mode` label, under `--out/<linear|pangenome>/`:
+`metrics.json` (when a truth BAM is supplied), `pred.<split>.bam` (+`.bai`) /
+`pred.<split>.sam`, optional `pred.<split>.cram` (`--write-cram`), plus top-level
+`metrics.json` and `run_meta.json`.
+
+### Prepare real HG002 inputs (once)
+
+```bash
+# Needs Docker on your machine (downloads GRCh38 chr21, GIAB truth, Illumina
+# FASTQ, HPRC GFA + Giraffe indexes, and maps Giraffe → truth BAM).
+chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
+./scripts/prepare_real_hg002.sh
+# → data/chr21/HG002/ref/GRCh38.chr21.fa
+# → data/chr21/HG002/chr21.gfa
+# → data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
+```
+
+### Real data — linear reference
+
+```bash
+# TRAIN on a chr21 window against a GIAB/Giraffe/BWA truth BAM (GPU)
+PYTHONPATH=. python scripts/train.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+    --region chr21:5000000-6000000 --ref-mode linear \
+    --device cuda --epochs 20 --batch-size 8 \
+    --out data/training_runs/chr21_linear
+
+# EVALUATE the trained checkpoint → metrics + predicted BAM/SAM
+PYTHONPATH=. python scripts/eval.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+    --region chr21:5000000-6000000 --ref-mode linear --mode hybrid \
+    --checkpoint data/training_runs/chr21_linear/checkpoint.pt \
+    --out data/eval_runs/chr21_linear
+```
+
+### Real data — pangenome graph
+
+Same reads and truth, plus a real GFA so the GATv2 / graph-encoder towers see
+the pangenome. Get the GFA from the graph you already download in
+`scripts/chr21` (`vg convert -f hprc-*.gbz > chr21.gfa`).
+
+```bash
+PYTHONPATH=. python scripts/train.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --gfa             data/chr21/HG002/chr21.gfa \
+    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+    --region chr21:5000000-6000000 --ref-mode pangenome \
+    --device cuda --epochs 20 --batch-size 8 \
+    --out data/training_runs/chr21_pangenome
+
+PYTHONPATH=. python scripts/eval.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --gfa             data/chr21/HG002/chr21.gfa \
+    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+    --region chr21:5000000-6000000 --ref-mode pangenome --mode hybrid \
+    --checkpoint data/training_runs/chr21_pangenome/checkpoint.pt \
+    --out data/eval_runs/chr21_pangenome
+```
+
+Inference on FASTQ reads with **no** truth (writes a predicted BAM only):
+
+```bash
+PYTHONPATH=. python scripts/eval.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --region chr21:5000000-6000000 --ref-mode linear --mode fast \
+    --reads-file data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \
+    --reads-file data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz \
+    --out data/eval_runs/chr21_infer
+```
+
+### On GPU / in Docker
+
+The same commands run unchanged inside the image — just prefix with `docker/run.sh`
+and point `--device cuda` (see the [GPU images](#gpu-images) section):
+
+```bash
+IMAGE=graphmambaformer:gpu GPU=cuda docker/run.sh gmf-python scripts/train.py --data real \
+    --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --gfa /work/data/chr21/HG002/chr21.gfa \
+    --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+    --region chr21:5000000-6000000 --ref-mode both \
+    --device cuda --devices all --epochs 20 --batch-size 8 --d-model 256 \
+    --out /work/data/training_runs/chr21_both
+```
+
+### Synthetic data (CPU smoke)
+
+```bash
+# both linear + pangenome, tiny scale
+PYTHONPATH=. python scripts/train.py --preset tiny --ref-mode both --epochs 6 \
+    --out data/training_runs/both
+# evaluate → metrics + BAM/SAM (+ truth export)
+PYTHONPATH=. python scripts/eval.py \
+    --checkpoint data/training_runs/both/checkpoint.pt \
+    --ref-mode both --emit-truth --out data/eval_runs/both
+```
+
+Supervision is built from the data's **ground truth**, not invented: an anchor
 is positive when its implied diagonal really matches the read's true locus, and
 the chain label is the candidate that best overlaps the true span. Seeding and
 chaining run for real first, so the labels describe the anchors the model is
@@ -212,7 +420,8 @@ run works and a missing install skips the plots instead of failing the training.
 ## GPU acceleration stack
 
 `AccelContext` detects what the host supports and hands each stage a backend, so
-the same config runs on an H100 and on a laptop CPU:
+the **same binary** runs on an A6000, A100, H100, H200, or a laptop CPU — no
+per-SKU rebuild:
 
 | Tier | Used for | Fallback |
 | --- | --- | --- |
@@ -224,11 +433,55 @@ the same config runs on an H100 and on a laptop CPU:
 
 ```python
 from graphmambaformer import AccelContext
+from graphmambaformer.accel import list_visible_gpus
 print(AccelContext().summary())
-# tier=torch_cpu | vendor=cpu | device=cpu | arch=cpu | tf32=False | amp=off
+print(list_visible_gpus())
+# tier=torch_cuda | vendor=nvidia | device=cuda:0 | name=NVIDIA H100 | arch=Hopper/H100 (sm_90) | …
 ```
 
-### Every GPU, not just recent NVIDIA
+```bash
+# probe whatever this host exposes (NVIDIA / AMD / Intel / Apple / CPU)
+PYTHONPATH=. python scripts/check_gpu.py
+PYTHONPATH=. python scripts/check_gpu.py --device cuda:0
+```
+
+### Supported NVIDIA datacentre GPUs
+
+One CUDA wheel covers every card below. Capability gates (TF32 / AMP dtype /
+Flash SDP) follow the live compute capability, so an A6000 and an H200 take
+different fast paths automatically:
+
+| GPU | Arch | sm | TF32 | bf16 AMP | fp8 |
+| --- | --- | --- | --- | --- | --- |
+| V100 | Volta | 70 | no | no | no |
+| T4 | Turing | 75 | no | no | no |
+| **A100** | Ampere | 80 | yes | yes | no |
+| **A6000** | Ampere | 86 | yes | yes | no |
+| L40 | Ada | 89 | yes | yes | yes |
+| **H100** | Hopper | 90 | yes | yes | yes |
+| **H200** | Hopper | 90 | yes | yes | yes |
+| B100 / B200 | Blackwell | 100+ | yes | yes | yes |
+
+Pick a device with `--device cuda` / `--device cuda:0` / `--device cuda:1`
+(honours `CUDA_VISIBLE_DEVICES`). Multi-GPU hosts use **every visible card by
+default** via `nn.DataParallel` (`--devices auto`). Override with
+`--devices all`, `--devices 0,1,2`, or `--devices none` for single-GPU.
+
+```bash
+# all visible GPUs (default when count > 1)
+PYTHONPATH=. python scripts/train.py --device cuda --devices auto ...
+
+# pin two cards
+PYTHONPATH=. python scripts/train.py --device cuda --devices 0,1 ...
+
+# force single-GPU even on a multi-GPU host
+PYTHONPATH=. python scripts/train.py --device cuda:0 --devices none ...
+
+# Docker: expose every host GPU into the container
+IMAGE=graphmambaformer:gpu GPU=cuda docker/run.sh gmf-python scripts/train.py --device cuda --devices all ...
+```
+
+### Every GPU vendor, not just NVIDIA
 
 PyTorch reports AMD GPUs through the same `torch.cuda` API as NVIDIA, so
 `has_cuda` alone cannot tell them apart. Detection keys on a `vendor` field
@@ -246,8 +499,9 @@ Consequences that matter in practice: a Pascal card (sm_61) is **not** given
 fp16 autocast, because it has no fp16 tensor cores and would run slower than
 fp32; FP8 is gated at sm_89 (Ada), not sm_90, since Ada supports it; and CuPy
 raw kernels are refused on AMD even when CuPy imports, because they are compiled
-with NVRTC. `tests/test_accel.py` pins this across 11 simulated device classes
-from Pascal to Blackwell, so the gates are verified without needing each GPU.
+with NVRTC. `tests/test_accel.py` pins this across A100 / A6000 / H100 / H200 /
+Blackwell (and AMD / Intel / Apple / CPU), so the gates are verified without
+needing each GPU.
 
 ## MambaFormer backbone
 
@@ -313,37 +567,59 @@ Not yet implemented (future): the cross-attention alignment decoder, output head
 
 ## Docker (nothing to install on the host except Docker)
 
-The image is at **`ghcr.io/sarakh1999/graphmambaformer:latest`** (already
-pushed). Collaborator **pvats13** has **write** access on this repo.
+Published images:
+
+| Tag | Purpose |
+| --- | --- |
+| `ghcr.io/sarakh1999/graphmambaformer:latest` | full stack + CPU PyTorch |
+| `ghcr.io/sarakh1999/graphmambaformer:gpu` | same + CUDA PyTorch (`--gpus all`) |
+
+Collaborator **pvats13** has **write** access on this repo.
 
 **One click from the owner (required once):** make the package Public (or add
 `pvats13` under package access) at
 https://github.com/users/sarakh1999/packages/container/package/graphmambaformer/settings
 → **Change visibility → Public** (or invite `pvats13` with Read/Admin on the package).
 
-Then the collaborator runs:
+### Pull and run (collaborators)
 
 ```bash
 docker pull ghcr.io/sarakh1999/graphmambaformer:latest
+# or GPU:
+docker pull ghcr.io/sarakh1999/graphmambaformer:gpu
+
 git clone https://github.com/sarakh1999/GraphMambaFormer.git
 cd GraphMambaFormer
+
+# doctor + smoke
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-doctor
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-python scripts/smoke_test.py
-IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-python scripts/train.py --reads 64
+
+# real-data train (after Stage 1 prepare on the host; data/ is bind-mounted)
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/train.py --data real \
+  --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --gfa /work/data/chr21/HG002/chr21.gfa \
+  --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  --region chr21:5000000-6000000 --ref-mode both \
+  --device cuda --devices all --epochs 20 --d-model 256 \
+  --out /work/data/training_runs/hg002_both
 ```
 
-If the package is still private, they log in to GHCR once first:
+If the package is still private, log in to GHCR once first:
 
 ```bash
 echo THEIR_GITHUB_PAT | docker login ghcr.io -u pvats13 --password-stdin
 # PAT needs read:packages
 docker pull ghcr.io/sarakh1999/graphmambaformer:latest
+docker pull ghcr.io/sarakh1999/graphmambaformer:gpu
 ```
 
 ### Build from source (optional fallback)
 
 ```bash
-docker/build.sh
+docker/build.sh                 # CPU  → graphmambaformer:latest
+TARGET=gpu docker/build.sh      # CUDA → graphmambaformer:gpu
 docker/run.sh gmf-doctor
 ```
 
@@ -353,21 +629,28 @@ model-only image. See `scripts/fig6/README.md` for the hap.py exception.
 ### Publish (maintainers)
 
 ```bash
-docker/publish.sh   # → ghcr.io/sarakh1999/graphmambaformer:latest
+docker/build.sh && docker/publish.sh                 # → :latest
+TARGET=gpu docker/build.sh && TARGET=gpu docker/publish.sh   # → :gpu
 ```
 
 ### GPU images
 
-`TARGET=gpu` swaps the CPU torch wheel for a GPU build. One image spans GPU
-generations because the vendor and capability detection happens at runtime:
+`TARGET=gpu` swaps the CPU torch wheel for a GPU build. **One image spans
+A100 / A6000 / L40 / H100 / H200** because vendor and capability detection
+happen at runtime:
 
 ```bash
-TARGET=gpu docker/build.sh                        # NVIDIA, cu124 (default)
-TORCH_CHANNEL=cu121 TARGET=gpu docker/build.sh     # NVIDIA, older drivers
-TORCH_CHANNEL=rocm6.0 TARGET=gpu docker/build.sh   # AMD
-INSTALL_CUPY=1 TARGET=gpu docker/build.sh          # + NVRTC raw-kernel tier
+TARGET=gpu docker/build.sh                              # NVIDIA cu124 (default)
+TORCH_CHANNEL=cu121 TARGET=gpu docker/build.sh           # NVIDIA, older drivers
+TORCH_CHANNEL=cu126 GPU_TORCH_VERSION=2.6.0 \
+  TARGET=gpu docker/build.sh                             # NVIDIA Blackwell (B100/B200)
+TORCH_CHANNEL=rocm6.0 TARGET=gpu docker/build.sh         # AMD
+INSTALL_CUPY=1 TARGET=gpu docker/build.sh                # + NVRTC raw-kernel tier
 
 IMAGE=graphmambaformer:gpu docker/run.sh gmf-doctor
+IMAGE=graphmambaformer:gpu docker/run.sh gmf-python scripts/check_gpu.py
+IMAGE=graphmambaformer:gpu docker/run.sh gmf-python scripts/train.py \
+    --data real --device cuda --reference-fasta … --truth-bam … --ref-mode linear
 # or the published tag:
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu docker/run.sh gmf-doctor
 ```
@@ -375,9 +658,10 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu docker/run.sh gmf-doctor
 `run.sh` adds the device flags automatically (`--gpus all` for NVIDIA,
 `/dev/kfd` + `/dev/dri` for AMD) only when the host actually exposes the device,
 since `--gpus all` on a host without the NVIDIA runtime makes `docker run` fail
-outright. `GPU=0` forces CPU. `gmf-doctor` prints the live tier and **fails** if
-an image built for GPU sees none, so a silent CPU fallback surfaces as an error
-rather than as an unexplained slowdown.
+outright. `GPU=0` forces CPU. `gmf-doctor` prints the live tier **and every
+visible GPU** (name + sm_XX + memory) and **fails** if an image built for GPU
+sees none, so a silent CPU fallback surfaces as an error rather than as an
+unexplained slowdown.
 
 The CPU image is x86-64, so it runs under Rosetta on Apple Silicon. Apple's GPU
 is not reachable from any container — use the native venv below for MPS/MLX.
@@ -508,26 +792,43 @@ in `graph.gfa` / `labels.json`.)
 
 | Direction | Formats |
 | --- | --- |
-| **Input** | FASTQ (plain or `.gz`), BAM, **uBAM**, SAM, CRAM, GFA |
-| **Output** | BAM, CRAM, GFA, GBZ |
+| **Input** | FASTQ (plain or `.gz`), BAM, **uBAM**, SAM, CRAM, GFA (`.gfa` / `.gfa.gz`) |
+| **Output** | BAM, **SAM**, CRAM, GFA, GBZ, Giraffe indexes (`.giraffe.gbz` / `.min` / `.dist`) |
+| **Checkpoints** | `checkpoint.pt` / `last.pt` / `checkpoints/epoch_XX.pt` from `scripts/train.py` |
+
+**Validation sample:** HG002 only (`scripts/fig6`, `scripts/chr21`).
 
 Reads and graphs each have one entry point that dispatches on the file itself,
 and pipeline results go back out through `write_alignments`:
 
 ```python
 from graphmambaformer.data import (read_reads, read_gfa, write_alignments,
-                                   write_gfa_graph, write_gbz)
+                                   write_gfa_graph, write_gbz,
+                                   write_giraffe_indexes)
 
 reads = read_reads("sample.fastq.gz", modality="ont")   # or .bam / .ubam / .sam / .cram
-graph = read_gfa("pangenome.gfa")
+graph = read_gfa("pangenome.gfa")                       # or .gfa.gz
 
 results, stats = pipeline.align(reads, reference)
 
 write_alignments(results, reads, "out.bam", references=refs)
+write_alignments(results, reads, "out.sam", references=refs)
 write_alignments(results, reads, "out.cram", references=refs,
                  reference_fasta="ref.fasta")           # reference-compressed
 write_gfa_graph(graph, "out.gfa")
 write_gbz("out.gfa", "out.gbz")                         # needs the `vg` binary
+write_giraffe_indexes("out.gfa", "indexes/chr21")       # .gbz/.min/.dist via vg
+```
+
+Or via CLI:
+
+```bash
+PYTHONPATH=. python scripts/convert_formats.py reads.fastq out.bam
+PYTHONPATH=. python scripts/convert_formats.py reads.fastq out.sam
+PYTHONPATH=. python scripts/convert_formats.py reads.fastq out.cram --reference ref.fa
+PYTHONPATH=. python scripts/convert_formats.py graph.gfa out.gfa
+PYTHONPATH=. python scripts/convert_formats.py graph.gfa out.gbz
+PYTHONPATH=. python scripts/convert_formats.py graph.gfa data/indexes/chr21
 ```
 
 Passing `ReadRecord` objects rather than bare strings matters: they carry the

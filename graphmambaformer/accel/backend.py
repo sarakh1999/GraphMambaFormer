@@ -68,6 +68,111 @@ def mamba_ssm_available() -> bool:
     return _try_import("mamba_ssm") is not None
 
 
+def _normalize_device_request(device: torch.device | str | None) -> torch.device | str | None:
+    """Treat ``None`` / ``\"auto\"`` / empty as \"pick the best available\"."""
+    if device is None:
+        return None
+    if isinstance(device, str) and device.strip().lower() in ("", "auto", "best"):
+        return None
+    return device
+
+
+def _cuda_device_index(device: torch.device) -> int:
+    """Index of a ``cuda`` / ``cuda:N`` device (``cuda`` alone → current device)."""
+    if device.type != "cuda":
+        raise ValueError(f"not a CUDA device: {device}")
+    if device.index is not None:
+        return int(device.index)
+    with contextlib.suppress(Exception):
+        return int(torch.cuda.current_device())
+    return 0
+
+
+def nvidia_arch_label(
+    compute_capability: tuple[int, int] | None,
+    device_name: str = "",
+) -> str:
+    """Human-readable NVIDIA microarchitecture + common SKU hint.
+
+    Covers the data-centre cards this project is expected to land on
+    (A100 / A6000 / H100 / H200 / L40 / B200, …) plus consumer Ada/Ampere.
+    """
+    if compute_capability is None:
+        return "nvidia"
+    major, minor = compute_capability
+    sm = f"sm_{major}{minor}"
+    if major == 6:
+        family = "Pascal"
+    elif major == 7:
+        family = "Volta" if minor == 0 else "Turing"
+    elif major == 8:
+        family = "Ampere" if minor < 9 else "Ada"
+    elif major == 9:
+        family = "Hopper"
+    elif major in (10, 12):
+        family = "Blackwell"
+    else:
+        family = sm
+
+    # Prefer the live device name when it already names a known SKU.
+    name = (device_name or "").upper()
+    sku = None
+    for needle, label in (
+        ("H200", "H200"), ("H100", "H100"), ("H800", "H800"),
+        ("B200", "B200"), ("B100", "B100"), ("GB200", "GB200"),
+        ("A100", "A100"), ("A6000", "A6000"), ("A40", "A40"),
+        ("A30", "A30"), ("A10", "A10"), ("L40", "L40"), ("L4", "L4"),
+        ("V100", "V100"), ("T4", "T4"), ("P100", "P100"),
+        ("4090", "RTX 4090"), ("4080", "RTX 4080"),
+        ("3090", "RTX 3090"), ("3080", "RTX 3080"),
+    ):
+        if needle in name:
+            sku = label
+            break
+    if sku:
+        return f"{family}/{sku} ({sm})"
+    return f"{family} ({sm})"
+
+
+def list_visible_gpus() -> list[dict]:
+    """Inventory every GPU torch can see (respects ``CUDA_VISIBLE_DEVICES``).
+
+    Each entry is ``{index, name, compute_capability, total_memory_gb, vendor}``.
+    Empty when no accelerator is visible — callers should not treat that as an
+    error (CPU training is still valid).
+    """
+    out: list[dict] = []
+    is_rocm = bool(getattr(torch.version, "hip", None))
+    if torch.cuda.is_available():
+        vendor = "amd" if is_rocm else "nvidia"
+        for i in range(torch.cuda.device_count()):
+            entry: dict = {"index": i, "vendor": vendor, "name": f"{vendor}:{i}"}
+            with contextlib.suppress(Exception):
+                entry["name"] = torch.cuda.get_device_name(i)
+            with contextlib.suppress(Exception):
+                props = torch.cuda.get_device_properties(i)
+                entry["total_memory_gb"] = round(props.total_memory / (1024 ** 3), 1)
+                if is_rocm:
+                    entry["hip_arch"] = getattr(props, "gcnArchName", None)
+                else:
+                    entry["compute_capability"] = (int(props.major), int(props.minor))
+            out.append(entry)
+        return out
+
+    with contextlib.suppress(AttributeError, RuntimeError):
+        if torch.xpu.is_available():  # type: ignore[attr-defined]
+            for i in range(torch.xpu.device_count()):  # type: ignore[attr-defined]
+                name = "intel-xpu"
+                with contextlib.suppress(Exception):
+                    name = torch.xpu.get_device_name(i)  # type: ignore[attr-defined]
+                out.append({"index": i, "vendor": "intel", "name": name})
+            return out
+
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        out.append({"index": 0, "vendor": "apple", "name": "apple-silicon-mps"})
+    return out
+
+
 @dataclass(frozen=True)
 class AccelCapabilities:
     """Immutable snapshot of what the host can accelerate.
@@ -76,6 +181,10 @@ class AccelCapabilities:
     NVIDIA part. PyTorch reports ROCm devices through the same ``torch.cuda``
     API as CUDA, so ``has_cuda`` alone cannot tell the two apart -- ``vendor``
     is what the dtype and kernel gates key on.
+
+    Datacentre cards covered by the dtype / kernel gates (same binary, no
+    rebuild): A100 (sm_80), A6000 (sm_86), L40 (sm_89), H100 / H200 (sm_90),
+    B100 / B200 (sm_100+).
     """
 
     device: torch.device
@@ -90,6 +199,8 @@ class AccelCapabilities:
     has_xpu: bool = False
     #: ROCm/HIP arch string (e.g. ``gfx90a``); ``None`` off AMD.
     hip_arch: str | None = None
+    #: How many accelerators torch can see (``CUDA_VISIBLE_DEVICES`` aware).
+    device_count: int = 0
 
     @property
     def is_nvidia(self) -> bool:
@@ -112,7 +223,10 @@ class AccelCapabilities:
 
     @property
     def supports_tf32(self) -> bool:
-        """TF32 tensor cores land on Ampere (sm_80) and later. NVIDIA only."""
+        """TF32 tensor cores land on Ampere (sm_80) and later. NVIDIA only.
+
+        True on A100 / A6000 / L40 / H100 / H200 / Blackwell — not on V100.
+        """
         return (
             self.is_nvidia
             and self.compute_capability is not None
@@ -134,8 +248,16 @@ class AccelCapabilities:
 
     @property
     def supports_bf16(self) -> bool:
+        if self.is_nvidia and self.compute_capability is not None:
+            # Ampere+ (A100/A6000/…) have bf16 tensor cores. Prefer the live
+            # torch probe when a real CUDA context exists; fall back to the CC
+            # gate so synthetic capability snapshots stay testable offline.
+            with contextlib.suppress(Exception):
+                if torch.cuda.is_available():
+                    return bool(torch.cuda.is_bf16_supported())
+            return self.compute_capability >= (8, 0)
         if self.has_cuda:
-            # True on NVIDIA sm_80+ and on AMD MI200+; torch answers for both.
+            # ROCm path: torch answers for MI200+.
             with contextlib.suppress(Exception):
                 return bool(torch.cuda.is_bf16_supported())
             return False
@@ -158,15 +280,9 @@ class AccelCapabilities:
         """Human-readable microarchitecture, for logs and the doctor script."""
         if self.vendor == "amd":
             return self.hip_arch or "rocm"
-        if not self.is_nvidia or self.compute_capability is None:
-            return self.vendor
-        major, minor = self.compute_capability
-        generations = {
-            6: "Pascal", 7: "Volta" if minor == 0 else "Turing",
-            8: "Ampere" if minor < 9 else "Ada", 9: "Hopper",
-            10: "Blackwell", 12: "Blackwell",
-        }
-        return f"{generations.get(major, f'sm_{major}{minor}')} (sm_{major}{minor})"
+        if self.is_nvidia:
+            return nvidia_arch_label(self.compute_capability, self.device_name)
+        return self.vendor
 
     def summary(self) -> str:
         flags = [
@@ -175,6 +291,7 @@ class AccelCapabilities:
             f"device={self.device}",
             f"name={self.device_name}",
             f"arch={self.arch_label}",
+            f"gpus={self.device_count}",
             f"cupy={self.has_cupy}",
             f"triton={self.has_triton}",
             f"mamba_ssm={self.has_mamba_ssm}",
@@ -187,6 +304,11 @@ class AccelCapabilities:
 
 def detect_capabilities(device: torch.device | str | None = None) -> AccelCapabilities:
     """Probe the host for every acceleration tier, on any vendor.
+
+    ``device`` may be ``None``/``\"auto\"`` (pick the best available), a bare
+    type (``\"cuda\"``, ``\"mps\"``, ``\"cpu\"``), or an indexed device
+    (``\"cuda:1\"``). The capability probes always target *that* device — not
+    silently device 0 — so multi-GPU hosts and ``CUDA_VISIBLE_DEVICES`` work.
 
     Every probe is guarded: a torch build without ``torch.xpu``, a ROCm build
     that reports no arch, or a driver that refuses ``get_device_capability``
@@ -202,50 +324,83 @@ def detect_capabilities(device: torch.device | str | None = None) -> AccelCapabi
     # HIP version string is the only reliable discriminator.
     is_rocm = bool(getattr(torch.version, "hip", None))
 
-    if device is None:
+    requested = _normalize_device_request(device)
+    if requested is None:
         resolved = torch.device(
             "cuda" if has_cuda else "xpu" if has_xpu else "mps" if has_mps else "cpu"
         )
     else:
-        resolved = torch.device(device)
+        resolved = torch.device(requested)
+        # Honour an explicit request: refuse a silent CPU fall-through when the
+        # caller asked for a GPU that isn't there.
+        if resolved.type == "cuda" and not has_cuda:
+            raise RuntimeError(
+                f"device={resolved} requested but CUDA is not available "
+                "(no driver, wrong torch wheel, or docker run without --gpus)"
+            )
+        if resolved.type == "mps" and not has_mps:
+            raise RuntimeError(f"device={resolved} requested but MPS is not available")
+        if resolved.type == "xpu" and not has_xpu:
+            raise RuntimeError(f"device={resolved} requested but XPU is not available")
+        if resolved.type == "cuda" and resolved.index is not None:
+            n = torch.cuda.device_count()
+            if resolved.index < 0 or resolved.index >= n:
+                raise RuntimeError(
+                    f"device={resolved} out of range — torch sees {n} CUDA device(s). "
+                    "Check CUDA_VISIBLE_DEVICES or pass --device cuda:0."
+                )
 
     capability: tuple[int, int] | None = None
     hip_arch: str | None = None
     name = "cpu"
     vendor = "cpu"
+    device_count = 0
 
-    if has_cuda:
+    if resolved.type == "cuda" and has_cuda:
         vendor = "amd" if is_rocm else "nvidia"
+        idx = _cuda_device_index(resolved)
+        device_count = torch.cuda.device_count()
+        # Pin the current device so subsequent allocations land on the right GPU.
         with contextlib.suppress(Exception):
-            name = torch.cuda.get_device_name(0)
+            torch.cuda.set_device(idx)
+        with contextlib.suppress(Exception):
+            name = torch.cuda.get_device_name(idx)
         if is_rocm:
             with contextlib.suppress(Exception):
-                hip_arch = torch.cuda.get_device_properties(0).gcnArchName
+                hip_arch = torch.cuda.get_device_properties(idx).gcnArchName
         else:
             with contextlib.suppress(Exception):
-                capability = torch.cuda.get_device_capability(0)
-    elif has_xpu:
+                capability = torch.cuda.get_device_capability(idx)
+        # Keep a fully-qualified device so logs show cuda:0, not bare "cuda".
+        resolved = torch.device("cuda", idx)
+    elif resolved.type == "xpu" and has_xpu:
         vendor, name = "intel", "intel-xpu"
         with contextlib.suppress(Exception):
-            name = torch.xpu.get_device_name(0)  # type: ignore[attr-defined]
-    elif has_mps:
-        vendor, name = "apple", "apple-silicon-mps"
+            device_count = int(torch.xpu.device_count())  # type: ignore[attr-defined]
+            name = torch.xpu.get_device_name(resolved.index or 0)  # type: ignore[attr-defined]
+    elif resolved.type == "mps" and has_mps:
+        vendor, name, device_count = "apple", "apple-silicon-mps", 1
+    elif has_cuda and requested is None:
+        # Should not reach here — resolved already preferred cuda above.
+        vendor = "amd" if is_rocm else "nvidia"
+        device_count = torch.cuda.device_count()
 
     # CuPy raw kernels need NVRTC, and mamba-ssm ships CUDA-only kernels, so
     # neither is claimed off NVIDIA. Triton does support ROCm.
     is_nvidia = vendor == "nvidia"
     return AccelCapabilities(
         device=resolved,
-        has_cuda=has_cuda,
+        has_cuda=has_cuda and resolved.type == "cuda",
         has_mps=has_mps,
         has_cupy=is_nvidia and cupy_module() is not None,
-        has_triton=has_cuda and triton_module() is not None,
+        has_triton=(resolved.type == "cuda") and triton_module() is not None,
         has_mamba_ssm=is_nvidia and mamba_ssm_available(),
         compute_capability=capability,
         device_name=name,
         vendor=vendor,
-        has_xpu=has_xpu,
+        has_xpu=has_xpu and resolved.type == "xpu",
         hip_arch=hip_arch,
+        device_count=device_count,
     )
 
 
@@ -262,7 +417,12 @@ class AccelContext:
         device: torch.device | str | None = None,
     ):
         self.cfg = cfg or AccelConfig()
-        self.caps = detect_capabilities(device or self.cfg.device)
+        # Prefer the explicit constructor arg; fall back to AccelConfig.device.
+        # ``"auto"`` / empty are treated as unset so detection picks the best.
+        requested = _normalize_device_request(
+            device if device is not None else self.cfg.device
+        )
+        self.caps = detect_capabilities(requested)
         self._applied = False
         if self.cfg.apply_global_switches:
             self.apply_global_switches()

@@ -209,6 +209,7 @@ def read_gfa(path: str) -> "PangenomeGraph":
     to its :data:`EDGE_TYPES` id (defaulting to ``ref_link`` when absent).
     ``RS:i:`` segment tags populate ``node_ref_start`` (``-1`` if missing).
 
+    Accepts plain ``.gfa`` or gzipped ``.gfa.gz`` (magic-byte detection).
     Works for the synthetic graph, the real HPRC reference-backbone window, and
     any ``vg convert -f`` output.
     """
@@ -228,7 +229,15 @@ def read_gfa(path: str) -> "PangenomeGraph":
                 out[parts[0]] = parts[2]
         return out
 
-    with open(path) as fh:
+    def _open(path: str):
+        with open(path, "rb") as probe:
+            gzipped = probe.read(2) == b"\x1f\x8b"
+        if gzipped:
+            import gzip
+            return gzip.open(path, "rt")
+        return open(path)
+
+    with _open(path) as fh:
         for line in fh:
             if line.startswith("S\t"):
                 f = line.rstrip("\n").split("\t")

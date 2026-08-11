@@ -221,7 +221,7 @@ def audit_wiring(audit: Audit) -> None:
 
 def audit_format_contract(audit: Audit) -> None:
     """The I/O contract, end to end: every input format, every modality, every output."""
-    banner("Format contract  (in: FASTQ/.gz, BAM, uBAM, SAM, CRAM, GFA | out: BAM, CRAM, GFA, GBZ)")
+    banner("Format contract  (in: FASTQ/.gz, BAM, uBAM, SAM, CRAM, GFA | out: BAM, SAM, CRAM, GFA, GBZ, Giraffe idx)")
 
     from graphmambaformer.alignment.pipeline import as_read_batch
     from graphmambaformer.config import MODALITIES
@@ -234,13 +234,17 @@ def audit_format_contract(audit: Audit) -> None:
         write_cram,
         write_gbz,
         write_gfa_graph,
+        write_giraffe_indexes,
+        write_sam,
     )
 
     for name, fn in [
         ("FASTQ reader", read_fastq), ("reads dispatch (BAM/uBAM/SAM/CRAM)", read_reads),
-        ("GFA reader", read_gfa), ("BAM writer", write_bam), ("CRAM writer", write_cram),
+        ("GFA reader", read_gfa), ("BAM writer", write_bam), ("SAM writer", write_sam),
+        ("CRAM writer", write_cram),
         ("GFA writer", write_gfa_graph), ("GBZ writer", write_gbz),
-        ("pipeline results -> BAM/CRAM", write_alignments),
+        ("Giraffe indexes", write_giraffe_indexes),
+        ("pipeline results -> BAM/SAM/CRAM", write_alignments),
     ]:
         audit.check(f"{name} present", callable(fn))
 

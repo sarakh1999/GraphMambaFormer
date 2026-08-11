@@ -3,7 +3,7 @@
 #   Giraffe (+ optional ours) → DeepVariant
 #   long reads → Sniffles
 #
-# Defaults: SAMPLE=HG005 CHR=chr21
+# Defaults: SAMPLE=HG002 CHR=chr21 (single held-out GIAB sample for inference)
 # First training sample listing: SAMPLE=HG00438 ./scripts/chr21/fetch_hprc_sample.sh
 #
 #   ./scripts/chr21/run_all.sh

@@ -64,11 +64,29 @@ print("import ok, device:", g.get_device())' 2>&1 | tail -1)"
 
   # Which acceleration tier is actually live. Printed for every image so a GPU
   # build that fell back to CPU (missing --gpus, wrong channel, no driver) shows
-  # up here instead of merely running slowly.
-  accel="$(/opt/gmf/bin/python -c \
-    'from graphmambaformer.accel import detect_capabilities
-print(detect_capabilities().summary())' 2>&1 | tail -1)"
-  printf '  %-11s %s\n' "accel" "$accel"
+  # up here instead of merely running slowly. Lists every visible GPU so an
+  # A100/H100/H200 host is unambiguous in the log.
+  accel="$(/opt/gmf/bin/python - <<'PY' 2>&1
+from graphmambaformer.accel import detect_capabilities, list_visible_gpus
+caps = detect_capabilities()
+print(caps.summary())
+for g in list_visible_gpus():
+    bits = [g["name"]]
+    cc = g.get("compute_capability")
+    mem = g.get("total_memory_gb")
+    if cc:
+        bits.append(f"sm_{cc[0]}{cc[1]}")
+    if mem:
+        bits.append(f"{mem}GiB")
+    if g.get("hip_arch"):
+        bits.append(g["hip_arch"])
+    print(f"gpu[{g['index']}] " + ", ".join(bits))
+PY
+)"
+  printf '  %-11s %s\n' "accel" "$(printf '%s\n' "$accel" | head -1)"
+  printf '%s\n' "$accel" | tail -n +2 | while IFS= read -r line; do
+    [ -n "$line" ] && printf '  %-11s %s\n' "" "$line"
+  done
   case "$accel" in *Traceback*|*Error*) miss=1 ;; esac
 
   if [ -n "${GMF_GPU_CHANNEL:-}" ]; then

@@ -1,25 +1,52 @@
 #!/usr/bin/env python3
-"""Train the GraphMamba alignment model, validate it, and plot everything.
+"""Train the GraphMamba alignment model on **real** or synthetic references.
 
-Runs on any GPU (NVIDIA of any generation, AMD/ROCm, Intel XPU), on Apple MPS,
-or on CPU -- the device, autocast dtype and kernel tier are all chosen by
-``AccelContext``, and the chosen tier is printed so a CPU run is never mistaken
-for a GPU one.
+Two data sources, one training loop:
 
-    # quick CPU smoke run on synthetic data
+* ``--data real`` — real files on disk: a reference **FASTA** (linear genome),
+  an optional pangenome **GFA** graph, and an aligned **truth BAM/SAM/CRAM**
+  that supplies the ground-truth locus / CIGAR / MAPQ every read is trained to
+  reproduce. This is the mode to use before building the Docker image and
+  running on GPU. (auto-selected when ``--reference-fasta`` is given.)
+* ``--data synthetic`` (default) — the fully-labelled synthetic dataset, handy
+  for a CPU smoke test.
+
+``--ref-mode`` picks the curriculum for either source:
+
+* ``linear``    — index the FASTA sequence only (graph towers idle).
+* ``pangenome`` — also attach the GFA graph (real) / synthetic graph.
+* ``both``      — train each read once on linear and once on pangenome.
+
+Everything is saved under ``--out``: per-epoch checkpoints
+(``checkpoints/epoch_XX.pt``), a rolling ``last.pt``, the best ``checkpoint.pt``,
+``history.json`` (every step + validation), ``run_meta.json`` (full provenance),
+and the plots.
+
+Examples
+--------
+    # REAL linear: chr21 window, GIAB truth BAM, on GPU
+    PYTHONPATH=. python scripts/train.py --data real \
+        --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+        --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+        --region chr21:5000000-6000000 --ref-mode linear \
+        --device cuda --epochs 20 --out data/training_runs/chr21_linear
+
+    # REAL pangenome: same reads, attach the real GFA graph
+    PYTHONPATH=. python scripts/train.py --data real \
+        --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+        --gfa data/chr21/HG002/chr21.gfa \
+        --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+        --region chr21:5000000-6000000 --ref-mode pangenome \
+        --device cuda --epochs 20 --out data/training_runs/chr21_pangenome
+
+    # SYNTHETIC CPU smoke (linear + pangenome)
     PYTHONPATH=. python scripts/train.py --preset tiny --epochs 3
-
-    # longer run, explicit device, plots to a named directory
-    PYTHONPATH=. python scripts/train.py --preset small --epochs 30 \
-        --device cuda --out data/training_runs/chr1
-
-Every step prints the model's behavior, not just its loss: per-term losses,
-gradient norm, and the router's split across compute paths.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from dataclasses import replace
@@ -37,7 +64,14 @@ from graphmambaformer.config import (
     LossConfig,
     PipelineConfig,
 )
-from graphmambaformer.data.synthetic import generate_dataset, preset
+from graphmambaformer.data import (
+    build_batches,
+    build_reference_from_files,
+    build_reference_from_synthetic,
+    generate_dataset,
+    load_real_reads,
+    preset,
+)
 from graphmambaformer.models import build_core_model
 from graphmambaformer.training import TrainConfig, Trainer, plot_all
 
@@ -46,44 +80,241 @@ def chunk(items, size):
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
+def _ref_modes(mode: str) -> list[tuple[str, bool]]:
+    """Return ``(label, with_graph)`` pairs for the chosen curriculum."""
+    if mode == "linear":
+        return [("linear", False)]
+    if mode == "pangenome":
+        return [("pangenome", True)]
+    if mode == "both":
+        return [("linear", False), ("pangenome", True)]
+    raise ValueError(mode)
+
+
+# --------------------------------------------------------------------------- #
+# synthetic data path
+# --------------------------------------------------------------------------- #
+def build_synthetic(args, pipeline, model_cfg):
+    spec = preset(args.preset)
+    if args.reads:
+        spec = replace(spec, n_train=args.reads, n_val=max(2, args.reads // 4),
+                       n_test=max(2, args.reads // 4))
+    ds = generate_dataset(spec)
+    kmer_size = model_cfg.graph_encoder.kmer_size
+    modes = _ref_modes(args.ref_mode)
+
+    references: dict[tuple[str, int], object] = {}
+    for label, with_graph in modes:
+        for ref_id, ref in sorted(ds.references.items()):
+            references[(label, ref_id)] = build_reference_from_synthetic(
+                pipeline, ref, with_graph=with_graph, kmer_size=kmer_size
+            )
+
+    def batches_for(split: str) -> list[tuple]:
+        out: list[tuple] = []
+        by_ref: dict[int, list] = {}
+        for read in ds.splits.get(split, []):
+            by_ref.setdefault(read.ref_id, []).append(read)
+        for label, _ in modes:
+            for ref_id, reads in sorted(by_ref.items()):
+                key = (label, ref_id)
+                if key not in references:
+                    continue
+                for group in chunk(reads, args.batch_size):
+                    out.append((group, references[key]))
+        return out
+
+    train_batches = batches_for("train")
+    val_batches = batches_for("val") or batches_for("test")
+    if not sum(len(r) for r, _ in val_batches):
+        cut = max(1, int(len(train_batches) * 0.8))
+        train_batches, val_batches = train_batches[:cut], train_batches[cut:]
+
+    graph_nodes = [
+        f"{len(r.graph.node_seqs)}n/{len(r.graph.edge_index)}e"
+        for _, r in sorted(ds.references.items())
+    ]
+    info = {
+        "source": "synthetic",
+        "preset": args.preset,
+        "references": {
+            str(rid): {"length": len(ref.seq)}
+            for rid, ref in sorted(ds.references.items())
+        },
+        "pangenome_graphs": graph_nodes,
+    }
+    print(f"source: synthetic  preset={args.preset}")
+    print(f"references: {len(ds.references)} "
+          f"({', '.join(f'{len(r.seq):,}bp' for _, r in sorted(ds.references.items()))})")
+    print(f"pangenome graphs: {', '.join(graph_nodes)}")
+    return train_batches, val_batches, info
+
+
+# --------------------------------------------------------------------------- #
+# real data path (FASTA + optional GFA + truth BAM)
+# --------------------------------------------------------------------------- #
+def build_real(args, pipeline, model_cfg):
+    if not args.reference_fasta:
+        sys.exit("ERROR: --data real needs --reference-fasta")
+    kmer_size = model_cfg.graph_encoder.kmer_size
+    modes = _ref_modes(args.ref_mode)
+    if any(with_graph for _, with_graph in modes) and not args.gfa:
+        sys.exit("ERROR: --ref-mode pangenome/both needs --gfa (a real GFA graph)")
+
+    # Build one reference per curriculum label. They share the same FASTA window,
+    # so the truth-BAM offset (below) is identical for both.
+    references: dict[str, object] = {}
+    for label, with_graph in modes:
+        rr = build_reference_from_files(
+            pipeline, args.reference_fasta,
+            gfa=args.gfa if with_graph else None,
+            contig=args.contig, region=args.region,
+            with_graph=with_graph, kmer_size=kmer_size,
+        )
+        references[label] = rr
+        extra = (f"  graph={rr.n_nodes}n/{rr.n_edges}e" if rr.with_graph else "")
+        print(f"[{label}] reference contig={rr.contig} len={rr.length:,}bp "
+              f"offset={rr.offset}{extra}")
+
+    # Truth reads (required to train). Use any reference for the window frame.
+    anchor_ref = references[modes[0][0]]
+    reads, has_truth = load_real_reads(
+        truth_bam=args.truth_bam, reads=args.reads_files or None,
+        modality=args.modality, region=args.region,
+        max_reads=args.max_reads or None, reference=anchor_ref,
+        require_truth=True,
+    )
+    if not reads:
+        sys.exit("ERROR: no truth reads inside the reference window "
+                 f"({args.region or args.contig or 'full contig'}). "
+                 "Widen --region or check --truth-bam.")
+
+    # Split reads into train / val once, then batch each split under every mode.
+    n_val = max(1, int(len(reads) * args.val_fraction))
+    val_reads, train_reads = reads[:n_val], reads[n_val:]
+    if not train_reads:                      # tiny sets: keep at least one train
+        train_reads, val_reads = reads, reads[:1]
+
+    train_batches: list[tuple] = []
+    val_batches: list[tuple] = []
+    for label, _ in modes:
+        train_batches += build_batches(train_reads, references[label], args.batch_size)
+        val_batches += build_batches(val_reads, references[label], args.batch_size)
+
+    info = {
+        "source": "real",
+        "reference_fasta": os.path.abspath(args.reference_fasta),
+        "gfa": os.path.abspath(args.gfa) if args.gfa else None,
+        "truth_bam": os.path.abspath(args.truth_bam) if args.truth_bam else None,
+        "region": args.region,
+        "contig": {label: references[label].contig for label, _ in modes},
+        "modality": args.modality,
+        "has_truth": has_truth,
+        "n_reads_total": len(reads),
+        "n_train_reads": len(train_reads),
+        "n_val_reads": len(val_reads),
+        "references": {
+            label: {
+                "length": references[label].length,
+                "offset": references[label].offset,
+                "with_graph": references[label].with_graph,
+                "n_nodes": references[label].n_nodes,
+                "n_edges": references[label].n_edges,
+            }
+            for label, _ in modes
+        },
+    }
+    print(f"source: real  reads={len(reads)} truth={has_truth} "
+          f"(train {len(train_reads)} / val {len(val_reads)})")
+    return train_batches, val_batches, info
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--preset", default="tiny",
-                   choices=("tiny", "long", "table1"),
+    p.add_argument("--data", choices=("synthetic", "real"), default=None,
+                   help="data source (default: real if --reference-fasta given, "
+                        "else synthetic)")
+    # --- synthetic knobs --- #
+    p.add_argument("--preset", default="tiny", choices=("tiny", "long", "table1"),
                    help="synthetic dataset preset")
-    p.add_argument("--reads", type=int, default=0,
-                   help="override the preset's read count (0 = use the preset). "
-                        "The stock presets are too small for stable metrics.")
+    p.add_argument("--reads", dest="reads", type=int, default=0,
+                   help="override the synthetic preset's read count (0 = preset)")
+    # --- real-data knobs --- #
+    p.add_argument("--reference-fasta", default=None,
+                   help="real reference FASTA (linear genome / windowed contig)")
+    p.add_argument("--gfa", default=None,
+                   help="real pangenome GFA graph (needed for pangenome/both)")
+    p.add_argument("--truth-bam", default=None,
+                   help="aligned truth BAM/SAM/CRAM (required to TRAIN on real data)")
+    p.add_argument("--reads-file", dest="reads_files", action="append", default=None,
+                   help="FASTQ/BAM reads file(s); repeat for R1/R2 "
+                        "(inference only — training needs --truth-bam)")
+    p.add_argument("--region", default=None,
+                   help="samtools-style window, e.g. chr21:5000000-6000000 "
+                        "(strongly recommended: the reference pipeline is pure "
+                        "Python and indexing a whole chromosome is slow)")
+    p.add_argument("--contig", default=None,
+                   help="named contig when the FASTA has several (default: first)")
+    p.add_argument("--modality", default="illumina",
+                   help="read modality (illumina / pacbio_hifi / ont / ...)")
+    p.add_argument("--max-reads", type=int, default=0,
+                   help="cap number of real reads (0 = all in the window)")
+    p.add_argument("--val-fraction", type=float, default=0.2,
+                   help="fraction of real reads held out for validation")
+    # --- training knobs --- #
     p.add_argument("--epochs", type=int, default=6)
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--d-model", type=int, default=64,
                    help="small by default so a CPU run finishes quickly")
-    p.add_argument("--device", default=None, help="cuda / mps / cpu (default: auto)")
+    p.add_argument("--device", default=None,
+                   help="cuda / cuda:N / mps / xpu / cpu (default: auto)")
+    p.add_argument("--devices", default="auto",
+                   help="multi-GPU device list: 'auto' (all visible CUDA/XPU "
+                        "when count>1), 'all', '0,1,2', or 'none' for single-GPU")
     p.add_argument("--patience", type=int, default=4)
     p.add_argument("--monitor", default="locus_accuracy",
                    help="early-stopping metric (falls back to -val_loss if the "
                         "chosen metric is unmeasurable on this data)")
+    p.add_argument("--ref-mode", default="both",
+                   choices=("linear", "pangenome", "both"),
+                   help="train on linear genome, pangenome graph, or both")
     p.add_argument("--out", default="data/training_runs/latest")
     p.add_argument("--no-plots", action="store_true")
+    p.add_argument("--no-checkpoint", action="store_true",
+                   help="skip writing the best checkpoint.pt (per-epoch and "
+                        "last.pt are still written)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args()
 
+    # Resolve the source: real when a FASTA is supplied, else synthetic.
+    if args.data is None:
+        args.data = "real" if args.reference_fasta else "synthetic"
+
     torch.manual_seed(0)
+    os.makedirs(args.out, exist_ok=True)
 
     print("=" * 74)
     print("Building dataset and model")
     print("=" * 74)
-    spec = preset(args.preset)
-    if args.reads:
-        # The stock presets ship a handful of reads, which makes every validation
-        # metric noise. Scale the splits up so the numbers mean something.
-        spec = replace(spec, n_train=args.reads, n_val=max(2, args.reads // 4),
-                       n_test=max(2, args.reads // 4))
-    ds = generate_dataset(spec)
 
-    accel = AccelContext(AccelConfig(device=args.device))
+    try:
+        accel = AccelContext(AccelConfig(device=args.device))
+    except RuntimeError as exc:
+        sys.exit(f"ERROR: {exc}")
+    print(f"device: {accel.summary()}")
+    from graphmambaformer.accel import list_visible_gpus
+    for g in list_visible_gpus():
+        cc = g.get("compute_capability")
+        mem = g.get("total_memory_gb")
+        bits = [g["name"]]
+        if cc:
+            bits.append(f"sm_{cc[0]}{cc[1]}")
+        if mem:
+            bits.append(f"{mem} GiB")
+        print(f"  gpu[{g['index']}]: {', '.join(bits)}")
+
     model_cfg = GraphMambaConfig(d_model=args.d_model)
     model = build_core_model(
         CoreModelConfig(arch="graphmamba", graphmamba=model_cfg)
@@ -92,40 +323,19 @@ def main() -> int:
         PipelineConfig(mode="hybrid", batch_size=args.batch_size), model=model
     )
 
-    # One index per reference, built once and shared by every batch on it. Using
-    # all references rather than just the first keeps the whole dataset in play.
-    references = {
-        ref_id: pipeline.build_reference(ref.seq, ref_id=ref_id)
-        for ref_id, ref in sorted(ds.references.items())
-    }
+    if args.data == "real":
+        train_batches, val_batches, data_info = build_real(args, pipeline, model_cfg)
+    else:
+        train_batches, val_batches, data_info = build_synthetic(args, pipeline, model_cfg)
 
-    def batches_for(split: str) -> list[tuple]:
-        out: list[tuple] = []
-        by_ref: dict[int, list] = {}
-        for read in ds.splits.get(split, []):
-            if read.ref_id in references:
-                by_ref.setdefault(read.ref_id, []).append(read)
-        for ref_id, reads in sorted(by_ref.items()):
-            for group in chunk(reads, args.batch_size):
-                out.append((group, references[ref_id]))
-        return out
-
-    train_batches = batches_for("train")
-    val_batches = batches_for("val") or batches_for("test")
     n_train = sum(len(r) for r, _ in train_batches)
     n_val = sum(len(r) for r, _ in val_batches)
-    if not n_val:
-        # No held-out split at all: peel the tail off train rather than
-        # validating on the training reads.
-        cut = max(1, int(len(train_batches) * 0.8))
-        train_batches, val_batches = train_batches[:cut], train_batches[cut:]
-        n_train = sum(len(r) for r, _ in train_batches)
-        n_val = sum(len(r) for r, _ in val_batches)
-
-    print(f"references: {len(references)} "
-          f"({', '.join(f'{len(r.seq):,}bp' for _, r in sorted(ds.references.items()))})")
+    print(f"ref-mode: {args.ref_mode}")
     print(f"reads: {n_train} train / {n_val} val   "
           f"batches: {len(train_batches)} train / {len(val_batches)} val")
+    if args.ref_mode == "both":
+        print("note: each read is trained once on the linear index and once "
+              "on the pangenome index")
 
     print()
     print("=" * 74)
@@ -136,6 +346,8 @@ def main() -> int:
         cfg=TrainConfig(
             epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
             patience=args.patience, monitor=args.monitor, out_dir=args.out,
+            save_checkpoint=not args.no_checkpoint,
+            devices=args.devices,
         ),
         loss_cfg=LossConfig(),
         accel=accel,
@@ -145,6 +357,30 @@ def main() -> int:
 
     json_path = history.to_json(os.path.join(args.out, "history.json"))
     print(f"\nhistory -> {json_path}")
+
+    # Record how this run was configured so eval can mirror it exactly.
+    meta_path = os.path.join(args.out, "run_meta.json")
+    with open(meta_path, "w") as fh:
+        json.dump({
+            "data": data_info,
+            "ref_mode": args.ref_mode,
+            "d_model": args.d_model,
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "lr": args.lr,
+            "monitor": args.monitor,
+            "device": accel.summary(),
+            "devices": list(trainer.device_ids),
+            "out_dir": os.path.abspath(args.out),
+            "artifacts": {
+                "best": "checkpoint.pt",
+                "last": "last.pt",
+                "per_epoch": "checkpoints/epoch_XX.pt",
+                "history": "history.json",
+                "plots": "plots/",
+            },
+        }, fh, indent=2)
+    print(f"run meta -> {meta_path}")
 
     if not args.no_plots:
         print()

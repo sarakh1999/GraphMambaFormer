@@ -14,7 +14,7 @@ bar charts under ``data/chr21/<SAMPLE>/compare/``. Missing inputs are skipped
 with a note, so this is safe to run at any point in the pipeline.
 
 Usage:
-    python scripts/chr21/compare_giraffe_ours.py --sample HG005 --chr chr21
+    python scripts/chr21/compare_giraffe_ours.py --sample HG002 --chr chr21
     python scripts/chr21/compare_giraffe_ours.py --labels giraffe ours bwa
 """
 from __future__ import annotations
@@ -161,7 +161,7 @@ def _bar_chart(out_png, title, labels, series: dict[str, list[float]], ylabel):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sample", default=os.environ.get("SAMPLE", "HG005"))
+    ap.add_argument("--sample", default=os.environ.get("SAMPLE", "HG002"))
     ap.add_argument("--chr", default=os.environ.get("CHR", "chr21"))
     ap.add_argument("--labels", nargs="+", default=["giraffe", "ours"])
     args = ap.parse_args()

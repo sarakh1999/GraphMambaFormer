@@ -13,10 +13,10 @@ samtools — so it works from environments that cannot reach the Docker socket.
 Usage
 -----
     python scripts/chr21/align_ours.py \
-        --ref  data/chr21/HG005/ref/GRCh38.chr21.fa \
-        --reads data/chr21/HG005/reads/HG005.chr21.R1.fastq.gz \
-        --reads data/chr21/HG005/reads/HG005.chr21.R2.fastq.gz \
-        --out  data/chr21/HG005/bam/HG005.chr21.ours.sorted.bam \
+        --ref  data/chr21/HG002/ref/GRCh38.chr21.fa \
+        --reads data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \
+        --reads data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz \
+        --out  data/chr21/HG002/bam/HG002.chr21.ours.sorted.bam \
         --mode fast
 
 Notes
@@ -137,13 +137,27 @@ def main() -> None:
 
     references = {args.ref_id: _RefShim(ref_seq)}
     contig_names = {args.ref_id: contig}
+    out_path = args.out
+    if not out_path.lower().endswith((".bam", ".ubam", ".sam", ".cram")):
+        out_path = out_path + ".bam"
     out = write_alignments(
-        results, reads, args.out,
+        results, reads, out_path,
         references=references,
         contig_names=contig_names,
         modality=args.modality,
+        reference_fasta=args.ref if out_path.lower().endswith(".cram") else None,
     )
-    print(f"[ours] wrote {out}  (+ .bai)  total {time.time()-t0:.1f}s")
+    print(f"[ours] wrote {out}  total {time.time()-t0:.1f}s")
+
+    # Companion SAM when the primary output is binary.
+    if out.lower().endswith((".bam", ".ubam", ".cram")):
+        sam_path = os.path.splitext(out)[0] + ".sam"
+        write_alignments(
+            results, reads, sam_path,
+            references=references, contig_names=contig_names,
+            modality=args.modality,
+        )
+        print(f"[ours] wrote {sam_path}")
 
 
 if __name__ == "__main__":

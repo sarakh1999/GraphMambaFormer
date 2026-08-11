@@ -10,7 +10,6 @@
 # Skipped: DRAGEN (FPGA), DeepTrio (needs parents — add later).
 #
 #   SAMPLE=HG002 ./scripts/fig6/run_all.sh
-#   SAMPLE=HG005 ./scripts/fig6/run_all.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 D="$(dirname "${BASH_SOURCE[0]}")"
 

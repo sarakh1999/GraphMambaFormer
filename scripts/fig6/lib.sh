@@ -11,8 +11,7 @@
 # Skipped: DRAGEN (needs Illumina FPGA hardware).
 #
 # Usage:
-#   SAMPLE=HG002 ./scripts/fig6/run_all.sh
-#   SAMPLE=HG005 ./scripts/fig6/run_all.sh
+#   SAMPLE=HG002 ./scripts/fig6/run_all.sh   # sole GIAB validation sample
 #
 # Everything runs inside official Docker images. On Apple Silicon these are
 # x86-64, so we force --platform linux/amd64 (Rosetta: correct but slower).
@@ -82,7 +81,7 @@ mkdir -p "$REF_DIR" "$IDX_DIR" "$TRUTH_DIR" "$READS_DIR" \
          "$BAM_DIR" "$VCF_DIR" "$EVAL_DIR" "$PLOT_DIR"
 
 # ---- GIAB defaults (truth + short-read BAM for chr slice) ------------------
-# Prefer GRCh38 BAMs so chromosome names match truth / ref.
+# Validation is HG002-only. Override GIAB_TRUTH_* / READS_ALN_URL for experiments.
 case "$SAMPLE" in
   HG002)
     : "${GIAB_TRUTH_BASE:=https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38}"
@@ -90,11 +89,13 @@ case "$SAMPLE" in
     : "${GIAB_TRUTH_BED:=HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed}"
     : "${READS_ALN_URL:=https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/NIST_Illumina_2x250bps/novoalign_bams/HG002.GRCh38.2x250.bam}"
     ;;
-  HG005)
-    : "${GIAB_TRUTH_BASE:=https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/ChineseTrio/HG005_NA24631_son/NISTv4.2.1/GRCh38}"
-    : "${GIAB_TRUTH_VCF:=HG005_GRCh38_1_22_v4.2.1_benchmark.vcf.gz}"
-    : "${GIAB_TRUTH_BED:=HG005_GRCh38_1_22_v4.2.1_benchmark.bed}"
-    : "${READS_ALN_URL:=https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/ChineseTrio/HG005_NA24631_son/HG005_NA24631_son_HiSeq_300x/NHGRI_Illumina300X_Chinesetrio_novoalign_bams/HG005.GRCh38_full_plus_hs38d1_analysis_set_minus_alts.300x.bam}"
+  *)
+    if [ -z "${GIAB_TRUTH_BASE:-}" ] || [ -z "${READS_ALN_URL:-}" ]; then
+      echo "ERROR: SAMPLE=$SAMPLE is not the project validation sample (HG002)." >&2
+      echo "       Set SAMPLE=HG002, or supply GIAB_TRUTH_BASE / GIAB_TRUTH_VCF /" >&2
+      echo "       GIAB_TRUTH_BED / READS_ALN_URL explicitly." >&2
+      exit 1
+    fi
     ;;
 esac
 

@@ -3,7 +3,7 @@
 #
 # Resolution order:
 #   1) READS_ALN_URL env var
-#   2) GIAB defaults for HG005 / HG002
+#   2) GIAB defaults for HG002 (sole validation sample)
 #   3) HPRC Illumina CRAM from data/hprc/sample_links.json (e.g. HG00438)
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 RESOLVE="$(dirname "${BASH_SOURCE[0]}")/resolve_sample.py"

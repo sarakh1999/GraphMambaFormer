@@ -167,18 +167,23 @@ CMD ["bash"]
 # --- stage 4: GPU-enabled (NVIDIA CUDA or AMD ROCm) -------------------------
 FROM full AS gpu
 
-# cu124 covers Volta through Blackwell. Use cu121 for older drivers, or
-# rocm6.0 for AMD. Pinning torch>=2.4 keeps the accel stack's SDP and
-# bf16 paths available.
+# Default cu124 + torch 2.5.x covers the datacentre cards this project targets
+# with one image (no per-SKU rebuild):
+#   V100 (sm_70) · T4 (sm_75) · A100 (sm_80) · A6000 (sm_86) · L40 (sm_89)
+#   H100 / H200 (sm_90)
+# Blackwell (B100/B200, sm_100+) needs a newer wheel:
+#   TORCH_CHANNEL=cu126 GPU_TORCH_VERSION=2.6.0 TARGET=gpu docker/build.sh
+# Older host drivers: TORCH_CHANNEL=cu121
+# AMD:                  TORCH_CHANNEL=rocm6.0
 ARG TORCH_CHANNEL=cu124
-ARG GPU_TORCH_VERSION=2.4.1
+ARG GPU_TORCH_VERSION=2.5.1
 #: Triton powers the fused LN+Linear+GELU kernel; it supports CUDA and ROCm.
 ARG INSTALL_TRITON=1
 #: CuPy provides the NVRTC raw kernels, which are NVIDIA-only by construction.
 ARG INSTALL_CUPY=0
 
 LABEL org.opencontainers.image.title="graphmambaformer-gpu" \
-      org.opencontainers.image.description="GraphMambaFormer + GPU PyTorch (CUDA or ROCm) + the Fig 6a genomics stack"
+      org.opencontainers.image.description="GraphMambaFormer + GPU PyTorch (CUDA or ROCm) — A100/A6000/H100/H200/… + the Fig 6a genomics stack"
 
 # Replace the CPU wheel in place; the venv layout and PATH are unchanged, so
 # nothing downstream has to know which channel was used.

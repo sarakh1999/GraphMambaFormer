@@ -5,7 +5,7 @@
 #   Long-read BAM                →  Sniffles   (structural variants)
 #
 # Defaults:
-#   SAMPLE=HG005   (GIAB truth; override with SAMPLE=HG00438 for first training)
+#   SAMPLE=HG002   (GIAB truth; held out of HPRC pangenome training set)
 #   CHR=chr21
 #
 # Run from your OWN Terminal (needs Docker). Cursor agent shell cannot use
@@ -17,7 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 PLATFORM="${PLATFORM:-linux/amd64}"
 THREADS="${THREADS:-4}"
-SAMPLE="${SAMPLE:-HG005}"
+SAMPLE="${SAMPLE:-HG002}"
 CHR="${CHR:-chr21}"
 
 VG_IMAGE="${VG_IMAGE:-quay.io/vgteam/vg:latest}"

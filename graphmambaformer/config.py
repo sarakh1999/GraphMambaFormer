@@ -524,8 +524,9 @@ class AccelConfig:
     """Switches for the 5-tier GPU acceleration stack.
 
     Everything here degrades safely: a flag that the host cannot honour is
-    ignored rather than raising, so the same config runs on an H100 and on a
-    laptop CPU.
+    ignored rather than raising, so the same config runs on an A100, A6000,
+    H100, H200, or a laptop CPU. Pass ``device="cuda"`` / ``"cuda:1"`` /
+    ``"mps"`` / ``"cpu"`` / ``None`` (auto).
     """
 
     device: str | None = None  # None / "auto" -> best available

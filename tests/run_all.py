@@ -7,7 +7,8 @@ written to pytest conventions as well, so ``pytest tests/`` also works if it is
 installed.
 
 Run: PYTHONPATH=. .venv/bin/python tests/run_all.py
-     PYTHONPATH=. .venv/bin/python tests/run_all.py losses   # substring filter
+     PYTHONPATH=. .venv/bin/python tests/run_all.py losses   # module or test-name filter
+     PYTHONPATH=. .venv/bin/python tests/run_all.py fuzzy    # fuzzy seeding tests only
 """
 
 from __future__ import annotations
@@ -37,13 +38,14 @@ def run(filter_text: str | None = None) -> int:
     started = time.perf_counter()
 
     for module_name in discover():
-        if filter_text and filter_text not in module_name:
-            continue
-        print(f"\n{'=' * 72}\n{module_name}\n{'=' * 72}")
         try:
             module = importlib.import_module(f"tests.{module_name}")
         except Exception:
+            label = module_name
+            if filter_text and filter_text not in label:
+                continue
             failed.append((module_name, traceback.format_exc()))
+            print(f"\n{'=' * 72}\n{module_name}\n{'=' * 72}")
             print(f"  [FAIL] import: {traceback.format_exc(limit=1).strip()}")
             continue
 
@@ -57,10 +59,17 @@ def run(filter_text: str | None = None) -> int:
         # Source order reads better than alphabetical for a progress log.
         functions.sort(key=lambda pair: pair[1].__code__.co_firstlineno)
 
+        selected = []
         for name, function in functions:
             label = f"{module_name}::{name}"
             if filter_text and filter_text not in label:
                 continue
+            selected.append((name, function, label))
+        if not selected:
+            continue
+
+        print(f"\n{'=' * 72}\n{module_name}\n{'=' * 72}")
+        for name, function, label in selected:
             try:
                 function()
                 passed.append(label)

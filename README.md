@@ -741,6 +741,69 @@ PYTHONPATH=. .venv/bin/python scripts/smoke_test.py
 This exercises the implemented modules on synthetic long-read data and verifies
 output shapes and a backward pass (on MPS when available).
 
+## Test and verification commands
+
+All commands assume the repo root and the project venv. A substring filter
+matches module **or** test-function names (for example `fuzzy` runs only the
+fuzzy-seeding tests).
+
+### Full suite
+
+```bash
+PYTHONPATH=. .venv/bin/python tests/run_all.py
+```
+
+### Per-area unit / integration suites
+
+```bash
+# Stage 1–3 algorithms (SMEM, fuzzy spaced seeds, chaining, SW, WFA)
+PYTHONPATH=. .venv/bin/python tests/run_all.py alignment_stages
+
+# Fuzzy seeding only (spaced-pattern packing, recovery vs exact k-mers, pipeline)
+PYTHONPATH=. .venv/bin/python tests/run_all.py fuzzy
+
+# Stage 4 pipeline modes (hybrid / fast / two-pass)
+PYTHONPATH=. .venv/bin/python tests/run_all.py pipeline
+
+# Stages 5–7 + SevenStagePipeline orchestrator
+PYTHONPATH=. .venv/bin/python tests/run_all.py downstream
+
+# GPU / accel stack (CUDA RawKernel parity skips cleanly without CUDA+CuPy)
+PYTHONPATH=. .venv/bin/python tests/run_all.py accel
+
+# Formats, training, losses, core model (other modules under tests/)
+PYTHONPATH=. .venv/bin/python tests/run_all.py formats
+PYTHONPATH=. .venv/bin/python tests/run_all.py training
+PYTHONPATH=. .venv/bin/python tests/run_all.py losses
+PYTHONPATH=. .venv/bin/python tests/run_all.py core_model
+```
+
+### Stage verification scripts
+
+```bash
+# Figure-1 encoders / MambaFormer backbone
+PYTHONPATH=. .venv/bin/python scripts/verify_stages.py
+
+# Alignment stages 1–4 + core model + losses (end-to-end on synthetic data)
+PYTHONPATH=. .venv/bin/python scripts/verify_alignment_pipeline.py
+
+# Architecture conformance checklist (counts, modes, coverage table)
+PYTHONPATH=. .venv/bin/python scripts/audit_architecture.py
+```
+
+### Fuzzy seeding notes
+
+Default Stage-1 modes are `("smem", "minimizer", "fuzzy")` with spaced pattern
+`111010010100110111` (weight 11 / span 18). Fuzzy-only:
+
+```python
+from graphmambaformer import PipelineConfig, build_pipeline
+
+cfg = PipelineConfig(mode="fast")
+cfg.seeding.modes = ("fuzzy",)
+pipeline = build_pipeline(cfg, model=None)
+```
+
 ## Minimal usage
 
 ```python

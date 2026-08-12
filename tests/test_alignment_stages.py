@@ -187,7 +187,7 @@ def test_fuzzy_spaced_seed_ignores_dont_care_mismatch():
     assert np.array_equal(length, [3])
 
 
-def test_pack_spaced_kmers_care_bits_and_n_bases():
+def test_fuzzy_pack_spaced_kmers_care_bits_and_n_bases():
     from graphmambaformer.alignment.seeding import pack_spaced_kmers, validate_spaced_pattern
 
     pattern = "111010010100110111"

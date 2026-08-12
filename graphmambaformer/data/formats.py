@@ -221,13 +221,20 @@ def read_reads(path: str, modality: str = "pacbio_hifi", **kwargs) -> list[ReadR
     Handles FASTQ (plain or gzipped) and BAM/SAM/CRAM, aligned or not. For a
     uBAM every record is unmapped, so unmapped reads are included by default
     there — otherwise the read would silently yield nothing.
+
+    Extra keyword arguments (``region``, ``limit``, ``reference_fasta``,
+    ``as_sequences``, ``include_unmapped``) are forwarded to :func:`read_bam`.
     """
     modality = validate_modality(modality)
     low = path.lower()
     if low.endswith((".fastq", ".fq", ".fastq.gz", ".fq.gz")):
         return read_fastq(path, modality=modality)
     if low.endswith((".bam", ".sam", ".cram", ".ubam")):
-        kwargs.setdefault("include_unmapped", is_unaligned_bam(path))
+        # Aligned CRAM/BAM used as remapping input: keep sequences, drop coords.
+        if kwargs.get("as_sequences"):
+            kwargs.setdefault("include_unmapped", True)
+        else:
+            kwargs.setdefault("include_unmapped", is_unaligned_bam(path))
         return read_bam(path, modality=modality, **kwargs)
     raise ValueError(
         f"unrecognized reads format: {path}. "

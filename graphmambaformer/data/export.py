@@ -374,6 +374,8 @@ def read_bam(
     limit: Optional[int] = None,
     modality: str = "pacbio_hifi",
     include_unmapped: bool = False,
+    reference_fasta: Optional[str] = None,
+    as_sequences: bool = False,
 ) -> list[ReadRecord]:
     """Read alignments from a BAM (or SAM/CRAM) into :class:`ReadRecord` objects.
 
@@ -390,32 +392,75 @@ def read_bam(
         modality: modality tag stamped on every record (default ``"pacbio_hifi"``).
         include_unmapped: if ``True``, also yield unmapped reads (seq only, no
             alignment); by default they are skipped.
+        reference_fasta: reference FASTA required to decode many CRAM files.
+        as_sequences: if ``True``, drop prior alignment fields and return
+            remappable sequences (needed when an aligned Illumina CRAM or ONT
+            BAM is used as *input* to our aligner rather than as truth).
 
     Returns:
         A list of :class:`ReadRecord`. Seed/head supervision fields are left
         empty (real BAMs carry no seed labels); ``ref_id`` is the index of the
         reference name in the BAM header, and ``ref_positions`` gives a
         forward-reference coordinate per query base (``-1`` for insertions/clips).
+        When ``as_sequences`` is set, every record is unmapped.
     """
     import pysam  # local import so pysam stays an optional dependency
 
     from .formats import validate_modality
+    from .synthetic import reverse_complement
 
     modality = validate_modality(modality)
     records: list[ReadRecord] = []
     open_mode = _pysam_read_mode(bam_path)
+    open_kwargs: dict = {"check_sq": False}
+    if reference_fasta:
+        open_kwargs["reference_filename"] = reference_fasta
     # check_sq=False so unaligned BAM/CRAM (no @SQ lines) can still be read.
-    with pysam.AlignmentFile(bam_path, open_mode, check_sq=False) as af:
+    with pysam.AlignmentFile(bam_path, open_mode, **open_kwargs) as af:
         ref_id_of = {name: i for i, name in enumerate(af.references)}
         itr = af.fetch(region=region) if region is not None else af.fetch(until_eof=True)
         for aln in itr:
             if aln.is_secondary or aln.is_supplementary:
                 continue
-            if aln.is_unmapped and not include_unmapped:
+            if aln.is_unmapped and not include_unmapped and not as_sequences:
                 continue
 
-            rec = _alignment_to_record(aln, ref_id_of, modality)
-            records.append(rec)
+            if as_sequences:
+                seq = aln.query_sequence or ""
+                if not seq:
+                    continue
+                quals = (
+                    list(aln.query_qualities)
+                    if aln.query_qualities is not None
+                    else [0] * len(seq)
+                )
+                # Restore original sequenced orientation for remapping.
+                if aln.is_reverse:
+                    seq = reverse_complement(seq)
+                    quals = list(reversed(quals))
+                mate_index = 1 if aln.is_read1 else (2 if aln.is_read2 else 0)
+                pair_id = aln.query_name if aln.is_paired and mate_index else None
+                read_id = f"{aln.query_name}/{mate_index}" if pair_id else aln.query_name
+                records.append(
+                    ReadRecord(
+                        read_id=read_id,
+                        ref_id=-1,
+                        modality=modality,
+                        seq=seq,
+                        quals=quals,
+                        ref_start=0,
+                        ref_end=0,
+                        strand=1,
+                        cigar=[],
+                        ref_positions=[-1] * len(seq),
+                        mapq=0,
+                        edge_case="from_aligned_input",
+                        pair_id=pair_id,
+                        mate_index=mate_index,
+                    )
+                )
+            else:
+                records.append(_alignment_to_record(aln, ref_id_of, modality))
             if limit is not None and len(records) >= limit:
                 break
     return records

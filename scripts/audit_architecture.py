@@ -388,8 +388,9 @@ CATALOGUE: dict[str, list[Feature]] = {
         Feature("CuPy Acceleration", "yes", "accel/backend.py:array_namespace"),
         Feature("Triton SSD Scan", "partial", "delegates to mamba_ssm; no own kernel"),
         Feature("Triton Fused FFN", "yes", "accel/triton_ops.py"),
-        Feature("CUDA Graphs + TF32 + Flash SDP", "yes", "accel/backend.py"),
-        Feature("TensorRT Engine", "no", "-"),
+        Feature("CUDA Graphs + TF32 + Flash SDP", "yes", "accel/cuda_graphs.py + backend"),
+        Feature("TensorRT Engine", "yes", "accel/tensorrt_engine.py"),
+        Feature("TransformerEngine FP8", "yes", "accel/transformer_engine.py"),
     ],
     "Training Infrastructure (6)": [
         Feature("Trainer", "no", "-"),

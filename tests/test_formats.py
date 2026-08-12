@@ -465,3 +465,150 @@ def test_giraffe_indexes_report_clearly_when_vg_is_absent():
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
+
+def test_hprc_three_modality_inputs_combined_and_separate():
+    """HiFi FASTQ.gz, Illumina CRAM, and ONT BAM all load; combined+separate BAM."""
+    import pysam
+    from graphmambaformer.data.formats import write_bam, write_cram
+    from graphmambaformer.data.real_data import (
+        discover_hprc_reads,
+        expand_read_inputs,
+        load_real_reads,
+    )
+    from graphmambaformer.data.synthetic import ReadRecord
+
+    d = _tmp()
+    try:
+        # Mimic data/hprc/reads/<SAMPLE>/{hifi,illumina,ont}/
+        sample = "HG00438"
+        root = os.path.join(d, "reads")
+        for sub in ("hifi", "illumina", "ont"):
+            os.makedirs(os.path.join(root, sample, sub))
+
+        hifi = _fastq(
+            os.path.join(root, sample, "hifi", f"{sample}.run1.fastq.gz"),
+            n=4, gz=True,
+        )
+        # Second HiFi run file (multi-file folders are normal).
+        _fastq(
+            os.path.join(root, sample, "hifi", f"{sample}.run2.fastq.gz"),
+            n=2, gz=True,
+        )
+
+        refs = {0: SimpleNamespace(seq="ACGT" * 40)}
+        fasta = os.path.join(d, "ref.fa")
+        with open(fasta, "w") as fh:
+            fh.write(f">chr21\n{refs[0].seq}\n")
+        # CRAM writers need an fai next to the FASTA.
+        import pysam as _pysam
+        _pysam.faidx(fasta)
+
+        illumina_recs = [
+            ReadRecord(
+                read_id=f"ill{i}/1", ref_id=0, modality="illumina",
+                seq="ACGTACGTAC", quals=[30] * 10,
+                ref_start=0, ref_end=10, strand=1,
+                cigar=[("=", 10)], ref_positions=list(range(10)), mapq=60,
+                pair_id=f"ill{i}", mate_index=1,
+            )
+            for i in range(3)
+        ]
+        cram = write_cram(
+            illumina_recs,
+            os.path.join(root, sample, "illumina", f"{sample}.final.cram"),
+            fasta,
+            references=refs,
+            contig_names={0: "chr21"},
+        )
+
+        ont_recs = [
+            ReadRecord(
+                read_id=f"ont{i}", ref_id=0, modality="ont",
+                seq="ACGT" * 20, quals=[20] * 80,
+                ref_start=0, ref_end=80, strand=1,
+                cigar=[("=", 80)], ref_positions=list(range(80)), mapq=40,
+            )
+            for i in range(2)
+        ]
+        ont_bam = write_bam(
+            ont_recs,
+            os.path.join(root, sample, "ont", f"{sample}.dorado.bam"),
+            references=refs,
+            contig_names={0: "chr21"},
+        )
+
+        # Discovery finds every modality's files.
+        hifi_paths, hifi_mod = discover_hprc_reads(sample, "hifi", reads_root=root)
+        ill_paths, ill_mod = discover_hprc_reads(sample, "illumina", reads_root=root)
+        ont_paths, ont_mod = discover_hprc_reads(sample, "ont", reads_root=root)
+        assert hifi_mod == "pacbio_hifi" and len(hifi_paths) == 2
+        assert ill_mod == "illumina" and ill_paths == [cram]
+        assert ont_mod == "ont" and ont_paths == [ont_bam]
+        assert len(expand_read_inputs([os.path.join(root, sample, "hifi")])) == 2
+
+        # Load each modality (CRAM/BAM as remappable sequences).
+        hifi_reads, _ = load_real_reads(
+            reads=hifi_paths, modality="pacbio_hifi", as_sequences=True
+        )
+        ill_reads, _ = load_real_reads(
+            reads=ill_paths, modality="illumina", as_sequences=True,
+            reference_fasta=fasta,
+        )
+        ont_reads, _ = load_real_reads(
+            reads=ont_paths, modality="ont", as_sequences=True,
+            reference_fasta=fasta,
+        )
+        assert len(hifi_reads) == 6
+        assert all(r.modality == "pacbio_hifi" and r.cigar == [] for r in hifi_reads)
+        assert len(ill_reads) == 3
+        assert all(r.modality == "illumina" and r.ref_id < 0 and not r.cigar for r in ill_reads)
+        assert len(ont_reads) == 2
+        assert all(r.modality == "ont" and r.ref_id < 0 for r in ont_reads)
+
+        # Combined BAM keeps all three @RG tags; separate writes three files.
+        combined = os.path.join(d, "all.sorted.bam")
+        mixed = hifi_reads + ill_reads + ont_reads
+        write_bam(mixed, combined, references=refs, contig_names={0: "chr21"})
+        with pysam.AlignmentFile(combined, "rb") as bam:
+            rgs = {rg["ID"] for rg in bam.header.get("RG", [])}
+        assert rgs == {"pacbio_hifi", "illumina", "ont"}, rgs
+
+        from graphmambaformer.data.alignment_io import write_alignments_split
+        from graphmambaformer.alignment.types import AlignmentRecord
+
+        def _aln(rec: ReadRecord):
+            return SimpleNamespace(
+                read_id=rec.read_id,
+                records=[AlignmentRecord(
+                    read_id=rec.read_id, read_len=len(rec.seq),
+                    ref_id=0, ref_start=0, ref_end=min(10, len(rec.seq)),
+                    strand=1, mapq=20, cigar=[("=", min(10, len(rec.seq)))],
+                    is_mapped=True, is_primary=True,
+                )],
+            )
+
+        # Give temporary mapped fields so the writer emits aligned records.
+        for rec in mixed:
+            rec.ref_id = 0
+            rec.ref_start = 0
+            rec.ref_end = min(10, len(rec.seq))
+            rec.cigar = [("=", min(10, len(rec.seq)))]
+            rec.ref_positions = list(range(rec.ref_end))
+            rec.mapq = 20
+
+        paths = write_alignments_split(
+            [_aln(r) for r in mixed], mixed,
+            os.path.join(d, "split.sorted.bam"),
+            references=refs, contig_names={0: "chr21"},
+        )
+        assert set(paths) == {"pacbio_hifi", "illumina", "ont"}, paths
+        print(
+            "HPRC modalities OK: "
+            f"hifi FASTQ.gz={len(hifi_reads)}, "
+            f"illumina CRAM sequences={len(ill_reads)}, "
+            f"ont BAM sequences={len(ont_reads)}; "
+            "combined @RG + separate BAMs"
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+

@@ -22,7 +22,7 @@ the neural stage cost more than the three classical stages combined.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import numpy as np
 import torch
@@ -171,12 +171,18 @@ class NeuralScorer:
         device: torch.device | str | None = None,
         train_mode: bool = False,
         amp_dtype: torch.dtype | None = None,
+        infer_fn: Optional[Callable[..., object]] = None,
+        precision_ctx: Optional[Callable] = None,
     ):
         self.model = model
         self.cfg = cfg or ScoringConfig()
         self.device = torch.device(device) if device is not None else torch.device("cpu")
         self.train_mode = train_mode
         self.amp_dtype = amp_dtype
+        #: Optional CUDA-graph / TensorRT-wrapped callable for the backbone forward.
+        self.infer_fn = infer_fn if infer_fn is not None else model
+        #: Optional context manager factory (e.g. AccelContext.precision).
+        self.precision_ctx = precision_ctx
 
     # -- plumbing ------------------------------------------------------------- #
     def _grad_context(self):
@@ -185,6 +191,8 @@ class NeuralScorer:
         return torch.inference_mode()
 
     def _autocast(self):
+        if self.precision_ctx is not None and not self.train_mode:
+            return self.precision_ctx()
         if self.amp_dtype is None or self.device.type not in ("cuda", "cpu"):
             return torch.autocast(device_type="cpu", enabled=False)
         return torch.autocast(device_type=self.device.type, dtype=self.amp_dtype)
@@ -423,8 +431,9 @@ class NeuralScorer:
         base_codes, mask, qual_tensor = encode_read_batch(
             reads, self.device, max_len=max_len, quals=quals
         )
+        forward = self.model if self.train_mode else self.infer_fn
         with self._grad_context(), self._autocast():
-            outputs = self.model(
+            outputs = forward(
                 base_codes,
                 mask=mask,
                 graph=graph,

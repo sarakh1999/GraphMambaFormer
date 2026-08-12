@@ -201,6 +201,10 @@ class AccelCapabilities:
     hip_arch: str | None = None
     #: How many accelerators torch can see (``CUDA_VISIBLE_DEVICES`` aware).
     device_count: int = 0
+    #: NVIDIA TransformerEngine importable (FP8 usable only when ``supports_fp8``).
+    has_transformer_engine: bool = False
+    #: ``torch_tensorrt`` or native ``tensorrt`` importable.
+    has_tensorrt: bool = False
 
     @property
     def is_nvidia(self) -> bool:
@@ -295,9 +299,12 @@ class AccelCapabilities:
             f"cupy={self.has_cupy}",
             f"triton={self.has_triton}",
             f"mamba_ssm={self.has_mamba_ssm}",
+            f"te={self.has_transformer_engine}",
+            f"tensorrt={self.has_tensorrt}",
             f"tf32={self.supports_tf32}",
             f"fp16={self.supports_fp16}",
             f"bf16={self.supports_bf16}",
+            f"fp8={self.supports_fp8}",
         ]
         return " | ".join(flags)
 
@@ -388,6 +395,17 @@ def detect_capabilities(device: torch.device | str | None = None) -> AccelCapabi
     # CuPy raw kernels need NVRTC, and mamba-ssm ships CUDA-only kernels, so
     # neither is claimed off NVIDIA. Triton does support ROCm.
     is_nvidia = vendor == "nvidia"
+    # TE / TensorRT are NVIDIA CUDA packages; probe only when that is the vendor
+    # so a missing install does not pollute CPU/MPS summaries.
+    has_te = False
+    has_trt = False
+    if is_nvidia and resolved.type == "cuda":
+        from .tensorrt_engine import tensorrt_available
+        from .transformer_engine import transformer_engine_available
+
+        has_te = transformer_engine_available()
+        has_trt = tensorrt_available()
+
     return AccelCapabilities(
         device=resolved,
         has_cuda=has_cuda and resolved.type == "cuda",
@@ -401,6 +419,8 @@ def detect_capabilities(device: torch.device | str | None = None) -> AccelCapabi
         has_xpu=has_xpu and resolved.type == "xpu",
         hip_arch=hip_arch,
         device_count=device_count,
+        has_transformer_engine=has_te,
+        has_tensorrt=has_trt,
     )
 
 
@@ -482,6 +502,25 @@ class AccelContext:
         with torch.autocast(device_type=self.caps.device.type, dtype=dtype):
             yield
 
+    @contextlib.contextmanager
+    def precision(self) -> Iterator[str]:
+        """Best available precision context (TE FP8 → BF16/FP16 AMP → fp32).
+
+        Yields the path label (``\"fp8\"`` / ``\"bf16\"`` / ``\"fp16\"`` / ``\"fp32\"``).
+        Prefer this over :meth:`autocast` when FP8 should be attempted on
+        Ada/Hopper; on Ampere (A6000) it automatically falls back to BF16 AMP.
+        """
+        from .transformer_engine import precision_context
+
+        use_fp8 = bool(self.cfg.fp8) and self.caps.supports_fp8 and self.caps.has_transformer_engine
+        with precision_context(
+            use_fp8=use_fp8,
+            device_type=self.caps.device.type,
+            fallback_dtype=self.autocast_dtype,
+            enabled=self.cfg.amp or use_fp8,
+        ) as label:
+            yield label
+
     def grad_scaler(self) -> torch.amp.GradScaler | None:
         """A :class:`GradScaler` for fp16 AMP; ``None`` for bf16/off (not needed)."""
         if self.autocast_dtype is torch.float16:
@@ -501,6 +540,33 @@ class AccelContext:
             return torch.compile(module, mode=self.cfg.compile_mode, dynamic=True)
         return module
 
+    def wrap_cuda_graphs(self, module: torch.nn.Module):
+        """Return a CUDA-graph-capturing callable around ``module`` when enabled.
+
+        Always returns a callable with the same ``(base_codes, mask=..., ...)``
+        signature; off CUDA or with ``cuda_graphs=False`` it is eager.
+        """
+        from .cuda_graphs import wrap_model_forward
+
+        return wrap_model_forward(
+            module,
+            enabled=bool(self.cfg.cuda_graphs) and self.caps.device.type == "cuda",
+            warmup=int(getattr(self.cfg, "cuda_graph_warmup", 3)),
+        )
+
+    def wrap_tensorrt(self, module: torch.nn.Module):
+        """Return a TensorRT inference wrapper when ``tensorrt`` is enabled.
+
+        Falls back to the plain module when TRT is missing or the host is not
+        CUDA. The wrapper is lazy: compilation happens on the first CUDA batch.
+        """
+        from .tensorrt_engine import maybe_compile_tensorrt
+
+        if not self.cfg.tensorrt or self.caps.device.type != "cuda":
+            return module
+        precision = "bf16" if self.caps.supports_bf16 else "fp16"
+        return maybe_compile_tensorrt(module, enabled=True, precision=precision)
+
     # ---- per-stage backend choice ------------------------------------------ #
     def kernel_backend(self, stage: str) -> str:
         """Which implementation tier ``stage`` should use.
@@ -518,7 +584,13 @@ class AccelContext:
 
     def summary(self) -> str:
         dtype = self.autocast_dtype
-        return f"{self.caps.summary()} | amp={dtype if dtype else 'off'}"
+        extras = [
+            f"amp={dtype if dtype else 'off'}",
+            f"cuda_graphs={bool(self.cfg.cuda_graphs)}",
+            f"fp8={bool(self.cfg.fp8 and self.caps.supports_fp8)}",
+            f"tensorrt={bool(self.cfg.tensorrt)}",
+        ]
+        return f"{self.caps.summary()} | " + " | ".join(extras)
 
 
 # --------------------------------------------------------------------------- #

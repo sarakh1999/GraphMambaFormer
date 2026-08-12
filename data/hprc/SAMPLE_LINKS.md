@@ -12,12 +12,22 @@ Generated from HPRC release CSVs. Use this for the mentor chr21 benchmark and sc
 # resolved Illumina + HiFi URLs for first training sample
 ./scripts/chr21/fetch_hprc_sample.sh HG00438 links
 
+# map all three modalities for HG00438 (HiFi FASTQ.gz + Illumina CRAM + ONT BAM)
+SAMPLE=HG00438 REF=data/chr21/HG002/ref/GRCh38.chr21.fa \
+  MODALITIES=illumina,hifi,ont BAM_MODE=combined \
+  ./scripts/hprc/map_sample.sh
+
+# one modality only
+SAMPLE=HG00621 MODALITIES=hifi ./scripts/hprc/map_sample.sh
+
 # one-sample chr21 benchmark (Giraffe + DeepVariant + Sniffles)
 SAMPLE=HG005 ./scripts/chr21/run_all.sh
 
 # first training sample on chr21 (no GIAB truth unless you add it)
 SAMPLE=HG00438 SKIP_TRUTH=1 ./scripts/chr21/run_all.sh
 ```
+
+Full modality runbook (combined vs separate): [`README.md`](README.md).
 
 ## All Year-1 individuals
 

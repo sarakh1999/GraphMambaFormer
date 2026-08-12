@@ -163,6 +163,32 @@ heads it has labels for without diluting the others.
 These are the production commands (linear / pangenome / both). They were
 smoke-tested end-to-end on real-format FASTA + GFA + truth BAM.
 
+### HPRC multi-modality mapping (HiFi / Illumina / ONT)
+
+Samples such as `HG00438`, `HG00621`, and `HG00673` live under
+`data/hprc/reads/<SAMPLE>/{hifi,illumina,ont}/` as:
+
+| Folder | Format | Modality |
+| --- | --- | --- |
+| `hifi/` | `.fastq.gz` | `pacbio_hifi` |
+| `illumina/` | `.cram` | `illumina` |
+| `ont/` | `.bam` | `ont` |
+
+Run **separately** or **combined** — see [`data/hprc/README.md`](data/hprc/README.md):
+
+```bash
+# all three modalities -> one BAM
+SAMPLE=HG00438 REF=data/chr21/HG002/ref/GRCh38.chr21.fa \
+  MODALITIES=illumina,hifi,ont BAM_MODE=combined \
+  ./scripts/hprc/map_sample.sh
+
+# one modality only
+SAMPLE=HG00621 MODALITIES=hifi ./scripts/hprc/map_sample.sh
+
+# same inputs, one BAM per modality
+SAMPLE=HG00673 BAM_MODE=separate ./scripts/hprc/map_sample.sh
+```
+
 ### Stage 1 — prepare HG002 inputs (once, needs Docker)
 
 ```bash

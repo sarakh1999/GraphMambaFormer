@@ -231,12 +231,20 @@ class AlignmentPipeline:
 
         self.model = model
         self.scorer: Optional[NeuralScorer] = None
+        # Inference wrappers: TensorRT (optional) then CUDA Graphs around the
+        # resulting callable. Training still uses ``self.model`` directly.
+        self._infer_model = model
+        if model is not None:
+            wrapped = self.accel.wrap_tensorrt(model)
+            self._infer_model = self.accel.wrap_cuda_graphs(wrapped)
         if model is not None and self._model_has_heads(model):
             self.scorer = NeuralScorer(
                 model,
                 self.cfg.scoring,
                 device=self.device,
                 amp_dtype=self.accel.autocast_dtype,
+                infer_fn=self._infer_model,
+                precision_ctx=self.accel.precision,
             )
 
     @staticmethod
@@ -415,6 +423,7 @@ class AlignmentPipeline:
         reads: Sequence[str],
         reference: ReferenceIndex,
         read_ids: Optional[Sequence[str]] = None,
+        encoded: Optional[tuple] = None,
     ) -> tuple[list[ReadAlignments], PipelineStats]:  # pragma: no cover - abstract
         raise NotImplementedError
 
@@ -447,7 +456,10 @@ class FastAlignmentPipeline(AlignmentPipeline):
 
     mode = "fast"
 
-    def align_batch(self, reads, reference, read_ids=None):
+    def align_batch(self, reads, reference, read_ids=None, encoded=None):
+        # ``encoded`` (a precomputed read encoding) is accepted for a uniform
+        # signature with the neural modes but ignored: the fast path never runs
+        # the core model, so there is nothing to reuse.
         batch = as_read_batch(reads, read_ids)
         reads, ids = batch.seqs, batch.ids
         stats = PipelineStats(n_reads=len(reads))
@@ -506,7 +518,7 @@ class HybridAlignmentPipeline(AlignmentPipeline):
 
     mode = "hybrid"
 
-    def align_batch(self, reads, reference, read_ids=None):
+    def align_batch(self, reads, reference, read_ids=None, encoded=None):
         batch = as_read_batch(reads, read_ids)
         reads, ids = batch.seqs, batch.ids
         stats = PipelineStats(n_reads=len(reads))
@@ -531,11 +543,20 @@ class HybridAlignmentPipeline(AlignmentPipeline):
         # Qualities and modality ride along when the reads came from a file that
         # carries them (FASTQ/BAM/uBAM/CRAM); they drive the encoder's quality
         # embedding and modality token.
-        base_codes, mask, qual_tensor = _encode(
-            reads, self.device, self.cfg.max_read_len, quals=batch.quals
-        )
-        with torch.inference_mode(), self.accel.autocast():
-            outputs = self.model(
+        #
+        # ``encoded`` lets a caller aligning the same reads against several
+        # references (e.g. linear + pangenome) build this read tensor once and
+        # reuse it here; only the graph-dependent forward pass below must rerun.
+        if encoded is not None:
+            base_codes, mask, qual_tensor = encoded
+        else:
+            base_codes, mask, qual_tensor = _encode(
+                reads, self.device, self.cfg.max_read_len, quals=batch.quals
+            )
+        # CUDA Graphs + TensorRT wrap ``_infer_model``; TE FP8 / AMP via precision().
+        infer = getattr(self, "_infer_model", self.model)
+        with torch.inference_mode(), self.accel.precision():
+            outputs = infer(
                 base_codes,
                 mask=mask,
                 graph=reference.graph,
@@ -706,7 +727,10 @@ class TwoPassAligner(AlignmentPipeline):
         margin = (best.score - chains[1].score) / max(best.score, 1e-6)
         return margin >= self.cfg.easy_margin
 
-    def align_batch(self, reads, reference, read_ids=None):
+    def align_batch(self, reads, reference, read_ids=None, encoded=None):
+        # ``encoded`` is ignored here: the hybrid rescue only ever encodes the
+        # hard-read *subset*, so a full-batch encoding would not line up. Reuse
+        # across references is offered by the pure hybrid mode instead.
         batch = as_read_batch(reads, read_ids)
         ids = batch.ids
 

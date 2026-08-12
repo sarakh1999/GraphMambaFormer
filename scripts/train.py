@@ -288,6 +288,18 @@ def main() -> int:
     p.add_argument("--compile", dest="compile", action="store_true",
                    help="torch.compile the model forward (CUDA/XPU; big speed-up "
                         "after warmup, skipped automatically on MPS)")
+    p.add_argument("--cuda-graphs", dest="cuda_graphs", action="store_true",
+                   default=True,
+                   help="capture fixed-shape inference into CUDA Graphs (default on)")
+    p.add_argument("--no-cuda-graphs", dest="cuda_graphs", action="store_false",
+                   help="disable CUDA Graph capture")
+    p.add_argument("--fp8", dest="fp8", action="store_true", default=True,
+                   help="use TransformerEngine FP8 when the GPU supports it "
+                        "(Ada/Hopper); Ampere falls back to BF16")
+    p.add_argument("--no-fp8", dest="fp8", action="store_false",
+                   help="disable FP8 even on Hopper/Ada")
+    p.add_argument("--tensorrt", action="store_true",
+                   help="compile inference with torch_tensorrt / TensorRT (lazy)")
     p.add_argument("--patience", type=int, default=4)
     p.add_argument("--monitor", default="locus_accuracy",
                    help="early-stopping metric (falls back to -val_loss if the "
@@ -320,6 +332,9 @@ def main() -> int:
             num_workers=args.workers,
             prefetch=args.prefetch,
             compile=args.compile,
+            cuda_graphs=args.cuda_graphs,
+            fp8=args.fp8,
+            tensorrt=args.tensorrt,
         ))
     except RuntimeError as exc:
         sys.exit(f"ERROR: {exc}")

@@ -22,6 +22,7 @@ truth the trainer sees is expressed in the same frame as ``reference.ref_seq``.
 
 from __future__ import annotations
 
+import glob
 import os
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
@@ -33,6 +34,27 @@ from .formats import read_paired_fastq, read_reads, validate_modality
 from .reference_build import pangenome_graph_batch
 from .synthetic import ReadRecord
 
+# On-disk HPRC layout under ``data/hprc/reads/<SAMPLE>/{hifi,illumina,ont}/``.
+# Values are (subdirectory name, canonical modality, default file globs).
+HPRC_MODALITY_DIRS: dict[str, tuple[str, str, tuple[str, ...]]] = {
+    "hifi": ("hifi", "pacbio_hifi", ("*.fastq.gz", "*.fq.gz", "*.fastq", "*.fq", "*.bam")),
+    "pacbio_hifi": (
+        "hifi",
+        "pacbio_hifi",
+        ("*.fastq.gz", "*.fq.gz", "*.fastq", "*.fq", "*.bam"),
+    ),
+    "illumina": (
+        "illumina",
+        "illumina",
+        ("*.cram", "*.bam", "*.fastq.gz", "*.fq.gz", "*.fastq", "*.fq"),
+    ),
+    "ont": (
+        "ont",
+        "ont",
+        ("*.bam", "*.cram", "*.fastq.gz", "*.fq.gz", "*.fastq", "*.fq"),
+    ),
+}
+
 __all__ = [
     "RealReference",
     "parse_region",
@@ -40,6 +62,9 @@ __all__ = [
     "build_reference_from_files",
     "load_real_reads",
     "build_batches",
+    "HPRC_MODALITY_DIRS",
+    "discover_hprc_reads",
+    "expand_read_inputs",
 ]
 
 
@@ -205,6 +230,83 @@ def _shift_read_into_window(
     return rec
 
 
+def expand_read_inputs(inputs: Sequence[str]) -> list[str]:
+    """Expand paths / directories / globs into a sorted list of concrete files."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in inputs:
+        path = os.path.expanduser(raw)
+        candidates: list[str] = []
+        if any(ch in path for ch in "*?[]"):
+            candidates = sorted(glob.glob(path))
+        elif os.path.isdir(path):
+            for pattern in (
+                "*.fastq.gz", "*.fq.gz", "*.fastq", "*.fq",
+                "*.bam", "*.ubam", "*.cram", "*.sam",
+            ):
+                candidates.extend(sorted(glob.glob(os.path.join(path, pattern))))
+        else:
+            candidates = [path]
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+    return out
+
+
+def discover_hprc_reads(
+    sample: str,
+    modality: str,
+    *,
+    reads_root: str = "data/hprc/reads",
+) -> tuple[list[str], str]:
+    """Resolve HPRC on-disk files for one sample + modality.
+
+    Expects::
+
+        {reads_root}/{sample}/hifi/*.fastq.gz
+        {reads_root}/{sample}/illumina/*.cram
+        {reads_root}/{sample}/ont/*.bam
+
+    Returns ``(paths, canonical_modality)``.
+    """
+    key = str(modality).strip().lower().replace("-", "_")
+    if key not in HPRC_MODALITY_DIRS:
+        # Allow canonical names via validate_modality aliases.
+        canon = validate_modality(modality)
+        for alias, (subdir, canon_name, patterns) in HPRC_MODALITY_DIRS.items():
+            if canon_name == canon:
+                key = alias
+                break
+        else:
+            raise ValueError(
+                f"unsupported HPRC modality {modality!r}. "
+                f"Use one of: {sorted(set(HPRC_MODALITY_DIRS))}"
+            )
+    subdir, canon, patterns = HPRC_MODALITY_DIRS[key]
+    folder = os.path.join(reads_root, sample, subdir)
+    if not os.path.isdir(folder):
+        raise FileNotFoundError(
+            f"HPRC reads folder not found: {folder} "
+            f"(expected layout reads_root/sample/{{hifi,illumina,ont}}/)"
+        )
+    paths: list[str] = []
+    for pattern in patterns:
+        paths.extend(sorted(glob.glob(os.path.join(folder, pattern))))
+    # De-dupe while preserving order.
+    seen: set[str] = set()
+    uniq = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    if not uniq:
+        raise FileNotFoundError(
+            f"no {canon} read files under {folder} (looked for {patterns})"
+        )
+    return uniq, canon
+
+
 def load_real_reads(
     *,
     reads: Optional[Sequence[str]] = None,
@@ -215,6 +317,8 @@ def load_real_reads(
     reference: Optional[RealReference] = None,
     require_truth: bool = False,
     layout: str = "auto",
+    reference_fasta: Optional[str] = None,
+    as_sequences: Optional[bool] = None,
 ) -> tuple[list[ReadRecord], bool]:
     """Load real reads, returning ``(records, has_truth)``.
 
@@ -222,12 +326,15 @@ def load_real_reads(
       ``ref_start``/``ref_end``/``cigar``/``mapq`` (supervision), shifted into
       the reference window when ``reference.offset`` is set. **Required for
       training.**
-    * ``reads`` — FASTQ(.gz)/BAM files for inference. Two Illumina FASTQs are
-      auto-detected as paired R1/R2; single FASTQ/BAM remains single-end.
-      ``layout`` can force ``single`` or ``paired``.
-      No locus truth, so
-      ``has_truth`` is ``False`` and only end-to-end alignment (not per-head
-      loss) is meaningful.
+    * ``reads`` — FASTQ(.gz)/BAM/CRAM files for inference. Paths may be files,
+      directories, or globs. Two Illumina FASTQs are auto-detected as paired
+      R1/R2; single FASTQ/BAM/CRAM remains single-end. ``layout`` can force
+      ``single`` or ``paired``.
+    * ``as_sequences`` — when loading aligned BAM/CRAM as *input* (e.g. HPRC
+      Illumina ``.final.cram`` or ONT Dorado BAMs), strip prior coordinates so
+      the aligner remaps them. Defaults to ``True`` for BAM/CRAM under
+      ``reads=`` and ``False`` for ``truth_bam=``.
+    * ``reference_fasta`` — required to decode many CRAM inputs.
 
     Paired mates are independently aligned model rows but retain fragment
     metadata for paired BAM/SAM output. Long reads remain single-end.
@@ -238,6 +345,7 @@ def load_real_reads(
     offset = reference.offset if reference else 0
     window_len = reference.length if reference else None
     ref_id = reference.ref_id if reference else 0
+    fasta = reference_fasta or (reference.fasta_path if reference else None)
 
     records: list[ReadRecord] = []
     has_truth = False
@@ -245,7 +353,14 @@ def load_real_reads(
     if truth_bam:
         if not os.path.exists(truth_bam):
             raise FileNotFoundError(f"truth BAM not found: {truth_bam}")
-        raw = read_bam(truth_bam, region=region, limit=None, modality=modality)
+        raw = read_bam(
+            truth_bam,
+            region=region,
+            limit=None,
+            modality=modality,
+            reference_fasta=fasta,
+            as_sequences=False,
+        )
         for rec in raw:
             if window_len is not None:
                 shifted = _shift_read_into_window(rec, offset, window_len, ref_id)
@@ -259,17 +374,25 @@ def load_real_reads(
                 break
         has_truth = True
     elif reads:
-        paths = list(reads)
+        paths = expand_read_inputs(list(reads))
+        if not paths:
+            raise FileNotFoundError(f"no read files matched: {list(reads)}")
         for p in paths:
             if not os.path.exists(p):
                 raise FileNotFoundError(f"reads file not found: {p}")
         fastq = lambda p: p.lower().endswith(  # noqa: E731
             (".fastq", ".fq", ".fastq.gz", ".fq.gz")
         )
+        aligned = lambda p: p.lower().endswith(  # noqa: E731
+            (".bam", ".sam", ".cram", ".ubam")
+        )
         paired = layout == "paired" or (
             layout == "auto" and modality == "illumina"
             and len(paths) == 2 and all(fastq(p) for p in paths)
         )
+        # Only strip when the caller opts in (align_ours does for HPRC CRAM/BAM).
+        strip = bool(as_sequences)
+        # FASTQ never carries coords; only BAM/CRAM need as_sequences.
         if paired:
             if len(paths) != 2 or not all(fastq(p) for p in paths):
                 raise ValueError(
@@ -280,7 +403,17 @@ def load_real_reads(
                 records = records[:max_reads]
         else:
             for p in paths:
-                batch = read_reads(p, modality=modality)
+                if aligned(p):
+                    batch = read_reads(
+                        p,
+                        modality=modality,
+                        region=region,
+                        reference_fasta=fasta,
+                        as_sequences=strip,
+                        include_unmapped=True,
+                    )
+                else:
+                    batch = read_reads(p, modality=modality)
                 records.extend(batch)
                 if max_reads and len(records) >= max_reads:
                     records = records[:max_reads]

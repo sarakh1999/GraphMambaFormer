@@ -539,11 +539,17 @@ class AccelConfig:
     cudnn_benchmark: bool = True
     cuda_rawkernels: bool = True  # CuPy RawKernel tier for the DP stages
     triton_kernels: bool = True  # fused LN+Linear+GELU
-    cuda_graphs: bool = False  # static capture; needs fixed shapes
+    cuda_graphs: bool = True  # static capture for fixed-shape inference
+    cuda_graph_warmup: int = 3  # eager steps before first capture
 
     # Mixed precision: "auto" | "bf16" | "fp16".
     amp: bool = True
     amp_dtype: str = "auto"
+    #: Try TransformerEngine FP8 when the GPU has FP8 tensor cores (Ada/Hopper).
+    #: On Ampere (A6000) this is ignored and BF16 AMP is used instead.
+    fp8: bool = True
+    #: Compile the inference forward with TensorRT / torch_tensorrt (lazy).
+    tensorrt: bool = False
 
     # torch.compile.
     compile: bool = False

@@ -403,6 +403,133 @@ def test_cuda_graph_runner_falls_back_to_eager():
     print("CUDAGraphRunner matches eager results (capture skipped off CUDA)")
 
 
+def test_graph_captured_forward_matches_eager_and_reports_backend():
+    """GraphCapturedForward must equal the bare module and stay eager off CUDA."""
+    from graphmambaformer.accel import GraphCapturedForward
+
+    class Tiny(torch.nn.Module):
+        def forward(self, base_codes, mask=None, qualities=None, graph=None,
+                    modality=None, **kwargs):
+            return base_codes.float().mean(dim=-1, keepdim=True)
+
+    model = Tiny()
+    wrapped = GraphCapturedForward(model, enabled=True, warmup=2)
+    x = torch.randn(2, 8)
+    for _ in range(5):
+        assert torch.allclose(wrapped(x), model(x))
+    assert wrapped.backend == "eager"  # no CUDA on this host / CPU tensor
+    # graph / modality force eager even if CUDA were present
+    assert torch.allclose(wrapped(x, graph=object()), model(x, graph=object()))
+    print(f"GraphCapturedForward backend={wrapped.backend}, matches eager")
+
+
+def test_transformer_engine_fp8_gates_and_fallback():
+    """FP8 only on Ada+; A6000 must fall back to BF16/fp32 via precision_context."""
+    from graphmambaformer.accel import (
+        fp8_available_on_device,
+        precision_context,
+        te_summary,
+        transformer_engine_available,
+    )
+
+    assert not fp8_available_on_device((8, 6), vendor="nvidia"), "A6000 has no FP8"
+    assert fp8_available_on_device((8, 9), vendor="nvidia"), "L40/Ada has FP8"
+    assert fp8_available_on_device((9, 0), vendor="nvidia"), "H100 has FP8"
+    assert not fp8_available_on_device((9, 0), vendor="amd")
+
+    # use_fp8=True but no TE / no FP8 HW → falls back cleanly.
+    with precision_context(use_fp8=True, device_type="cpu",
+                           fallback_dtype=torch.bfloat16) as label:
+        assert label in ("bf16", "fp32", "fp8"), label
+        y = torch.randn(4, 4) @ torch.randn(4, 4)
+        assert torch.isfinite(y).all()
+    with precision_context(use_fp8=False, device_type="cpu",
+                           fallback_dtype=None, enabled=False) as label:
+        assert label == "fp32"
+
+    summary = te_summary(compute_capability=(8, 6), vendor="nvidia")
+    assert "transformer_engine=" in summary
+    assert "fp8=no" in summary or "transformer_engine=no" in summary
+    print(f"TE available={transformer_engine_available()} | {summary} | "
+          f"precision_fallback={label}")
+
+
+def test_tensorrt_wrapper_falls_back_to_eager():
+    """Without CUDA/TRT the wrapper must behave like the plain module."""
+    from graphmambaformer.accel import (
+        TensorRTInference,
+        tensorrt_available,
+        tensorrt_summary,
+    )
+
+    class Tiny(torch.nn.Module):
+        def forward(self, base_codes, mask=None, **kwargs):
+            return base_codes.float().sum(dim=-1)
+
+    model = Tiny().eval()
+    wrap = TensorRTInference(model, enabled=True)
+    x = torch.randn(3, 5)
+    assert torch.allclose(wrap(x), model(x))
+    assert wrap.backend == "eager"
+    # Disabled path
+    assert torch.allclose(
+        TensorRTInference(model, enabled=False)(x), model(x)
+    )
+    print(f"{tensorrt_summary()} | wrapper backend={wrap.backend} "
+          f"available={tensorrt_available()}")
+
+
+def test_accel_context_wires_cuda_graphs_fp8_tensorrt():
+    """AccelContext must expose the new knobs and wrap callables safely on CPU."""
+    ctx = AccelContext(AccelConfig(
+        cuda_graphs=True, fp8=True, tensorrt=True, amp=True,
+    ))
+    summary = ctx.summary()
+    assert "cuda_graphs=True" in summary
+    assert "fp8=" in summary
+    assert "tensorrt=True" in summary
+
+    class Tiny(torch.nn.Module):
+        def forward(self, base_codes, mask=None, qualities=None, graph=None,
+                    modality=None, **kwargs):
+            return base_codes.float().mean()
+
+    model = Tiny()
+    captured = ctx.wrap_cuda_graphs(model)
+    trt = ctx.wrap_tensorrt(model)
+    x = torch.randn(2, 4)
+    assert torch.isfinite(captured(x))
+    assert torch.isfinite(trt(x) if not isinstance(trt, Tiny) else trt(x))
+
+    with ctx.precision() as path:
+        assert path in ("fp8", "bf16", "fp16", "fp32"), path
+        _ = torch.randn(2, 2) @ torch.randn(2, 2)
+    # Ampere synthetic: fp8 flag on but CC denies → still a valid precision path
+    object.__setattr__(ctx, "caps", _caps("nvidia", (8, 6), name="NVIDIA RTX A6000"))
+    assert not ctx.caps.supports_fp8
+    with ctx.precision() as path:
+        assert path != "fp8", "A6000 must not claim FP8"
+    print(f"AccelContext wired: summary has graphs/fp8/trt; precision={path}")
+
+
+def test_pipeline_uses_infer_wrapper_and_precision():
+    """Hybrid pipeline must attach CUDA-graph/TRT infer_fn to the scorer."""
+    from graphmambaformer.alignment import build_pipeline
+    from graphmambaformer.config import CoreModelConfig, GraphMambaConfig, PipelineConfig
+    from graphmambaformer.models import build_core_model
+
+    ctx = AccelContext(AccelConfig(cuda_graphs=True, fp8=True, tensorrt=False))
+    model = build_core_model(
+        CoreModelConfig(arch="graphmamba", graphmamba=GraphMambaConfig(d_model=32))
+    ).model
+    pipeline = build_pipeline(PipelineConfig(mode="hybrid"), model=model, accel=ctx)
+    assert pipeline._infer_model is not None
+    assert pipeline.scorer is not None
+    assert pipeline.scorer.infer_fn is pipeline._infer_model
+    assert pipeline.scorer.precision_ctx is not None
+    print("pipeline infer_fn + precision_ctx attached for hybrid scoring")
+
+
 def test_pipeline_uses_the_detected_backend():
     """The pipeline must adopt the context's device and chaining backend."""
     from graphmambaformer.alignment import build_pipeline

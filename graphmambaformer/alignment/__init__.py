@@ -14,6 +14,7 @@ testable.
 """
 
 from .chaining import AffineChainer, ChainingContext, GraphDistanceOracle
+from .dual_reference import DualAlignmentResult, DualReferenceAligner
 from .extension import ExtensionEngine, WavefrontAligner, banded_affine_sw_batch
 from .end_to_end import (
     PredictionEvidence,
@@ -154,4 +155,7 @@ __all__ = [
     "ReferenceIndex",
     "PIPELINE_REGISTRY",
     "build_pipeline",
+    # multi-reference (linear + pangenome) in one pass
+    "DualReferenceAligner",
+    "DualAlignmentResult",
 ]

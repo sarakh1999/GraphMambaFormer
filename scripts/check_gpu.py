@@ -67,17 +67,23 @@ def main() -> int:
     print(f"accel      {ctx.summary()}")
     device = ctx.caps.device
 
+    from graphmambaformer.accel import te_summary, tensorrt_summary
+
+    print(f"precision  {te_summary(compute_capability=ctx.caps.compute_capability, vendor=ctx.caps.vendor)}")
+    print(f"tensorrt   {tensorrt_summary()} (cfg.tensorrt={ctx.cfg.tensorrt})")
+    print(f"cuda_graphs cfg={ctx.cfg.cuda_graphs}")
+
     # Tiny matmul on every visible GPU — proves each card can allocate and compute.
     try:
         x = torch.randn(1024, 1024, device=device)
-        with ctx.autocast():
+        with ctx.precision() as path:
             y = x @ x
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         elif device.type == "mps":
             torch.mps.synchronize()
         print(f"matmul     OK  device={y.device}  mean={float(y.float().mean()):.4f}"
-              f"  amp={ctx.autocast_dtype}")
+              f"  precision={path} amp={ctx.autocast_dtype}")
     except Exception as exc:
         print(f"matmul FAIL  {exc}")
         ok = False

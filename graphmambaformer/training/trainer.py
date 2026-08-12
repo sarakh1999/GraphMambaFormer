@@ -251,7 +251,7 @@ class Trainer:
                 group["lr"] = lr
 
             self.optimizer.zero_grad(set_to_none=True)
-            with self.accel.autocast():
+            with self.accel.precision():
                 outputs, seed_scores, chain_scores = self._forward(sup, reference)
                 loss = self.criterion(
                     outputs, sup.targets,
@@ -311,7 +311,7 @@ class Trainer:
         n_chain_scored = 0
 
         for sup, reference in self._feed(batches):
-            with self.accel.autocast():
+            with self.accel.precision():
                 outputs, seed_scores, chain_scores = self._forward(sup, reference)
                 loss = self.criterion(
                     outputs, sup.targets,

@@ -1,65 +1,46 @@
 #!/usr/bin/env python3
 """Map reads with the GraphMambaFormer alignment pipeline -> sorted+indexed BAM.
 
-This is the "our implementation" arm of the chr21 mentor benchmark. It runs the
-classical/neural seed -> chain -> extend -> score pipeline
-(:mod:`graphmambaformer.alignment`) against a single-contig reference (e.g.
-GRCh38 ``chr21``) and writes a BAM whose ``@SQ`` name matches the reference
-FASTA, so DeepVariant / hap.py accept it exactly like the Giraffe BAM.
+Supports the three HPRC modalities and their on-disk formats:
 
-It runs entirely in Python via pysam (bundled htslib) — no Docker, no external
-samtools — so it works from environments that cannot reach the Docker socket.
+=======  =====================  ===========================================
+Modality Canonical name         Typical inputs under data/hprc/reads/<SAMPLE>/
+=======  =====================  ===========================================
+HiFi     ``pacbio_hifi``        ``hifi/*.fastq.gz``  (also BAM)
+Illumina ``illumina``           ``illumina/*.cram``  (also FASTQ / BAM)
+ONT      ``ont``                ``ont/*.bam``        (also FASTQ / CRAM)
+=======  =====================  ===========================================
 
-Short and long reads can be aligned in **one command**. When both are given,
-the default is a single combined BAM (distinct ``@RG`` / ``XM`` tags per
-modality). Pass ``--bam-mode separate`` if a caller needs homogeneous files.
+Aligned Illumina CRAM and ONT BAM are loaded as **sequences** (prior coordinates
+stripped) so this script remaps them. CRAM decode uses ``--ref``.
 
-Throughput knobs (combined *or* per-file runs)
-----------------------------------------------
-* Host threads for Stage 1/3 are auto-sized to the machine (``--workers`` /
-  ``$GMF_NUM_WORKERS`` / ``$OURS_WORKERS``).
-* ``--index-cache DIR`` persists the Stage-1 reference index so separate R1 /
-  R2 / long invocations reuse the same build (combined runs already share one
-  in-memory index).
-* ``--batch-size`` controls how many reads pass through the pipeline at once.
-* Companion SAM is **opt-in** (``--sam``); writing it roughly doubles I/O.
+Run modalities **separately** (one BAM each) or **combined** (one BAM with
+per-modality ``@RG`` / ``XM`` tags). Pass ``--bam-mode separate`` to always
+split a multi-modality run.
 
-Usage
------
-    # short reads only (Illumina R1/R2)
+Examples
+--------
+    # HPRC sample — all three modalities combined
     python scripts/chr21/align_ours.py \\
-        --ref  data/chr21/HG002/ref/GRCh38.chr21.fa \\
-        --reads data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \\
-        --reads data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz \\
-        --out  data/chr21/HG002/bam/HG002.chr21.ours.sorted.bam \\
-        --mode fast
+        --ref data/chr21/HG002/ref/GRCh38.chr21.fa \\
+        --sample HG00438 --reads-root data/hprc/reads \\
+        --modalities illumina,hifi,ont \\
+        --out data/hprc/bam/HG00438.ours.sorted.bam \\
+        --index-cache data/hprc/index_cache
 
-    # short + long in one command -> one combined BAM
-    python scripts/chr21/align_ours.py \\
-        --ref  data/chr21/HG002/ref/GRCh38.chr21.fa \\
-        --reads data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \\
-        --reads data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz \\
-        --long-reads data/chr21/HG002/reads/HG002.chr21.hifi.fastq.gz \\
-        --out  data/chr21/HG002/bam/HG002.chr21.ours.sorted.bam \\
-        --index-cache data/chr21/HG002/index_cache
+    # Separate BAMs for each modality (same inputs)
+    ... --bam-mode separate
 
-    # same inputs as three separate invocations (index reused from cache)
-    python scripts/chr21/align_ours.py --ref REF --reads R1.fq \\
-        --out out.R1.bam --read-layout single --index-cache CACHE
-    python scripts/chr21/align_ours.py --ref REF --reads R2.fq \\
-        --out out.R2.bam --read-layout single --index-cache CACHE
-    python scripts/chr21/align_ours.py --ref REF --long-reads hifi.fq \\
-        --out out.hifi.bam --index-cache CACHE
+    # One modality only (auto-discovers files under the sample folder)
+    python scripts/chr21/align_ours.py --ref REF --sample HG00438 \\
+        --modalities hifi --out out.hifi.bam
 
-Notes
------
-* ``--mode fast`` (default) is fully classical and needs no trained model.
-  ``hybrid`` / ``two_pass`` only add neural re-ranking when a model with
-  alignment heads is supplied, which this script does not load, so they degrade
-  gracefully to the classical path.
-* One combined BAM is always possible when both modalities share a reference
-  (they do here). Separate BAMs are optional for DeepVariant / Sniffles style
-  callers that expect a single platform.
+    # Explicit files (no sample discovery)
+    python scripts/chr21/align_ours.py --ref REF \\
+        --illumina data/hprc/reads/HG00438/illumina/HG00438.final.cram \\
+        --hifi 'data/hprc/reads/HG00438/hifi/*.fastq.gz' \\
+        --ont data/hprc/reads/HG00438/ont/ \\
+        --out out.combined.bam
 """
 from __future__ import annotations
 
@@ -115,17 +96,6 @@ def _load_reference(path: str) -> tuple[str, str]:
     return name, seq
 
 
-def _load_reads(paths: list[str], modality: str, max_reads: int | None,
-                layout: str = "auto"):
-    """Load paired Illumina or single-end long reads through the shared path."""
-    from graphmambaformer.data import load_real_reads
-
-    reads, _ = load_real_reads(
-        reads=paths, modality=modality, max_reads=max_reads, layout=layout
-    )
-    return reads
-
-
 def _ensure_ext(path: str) -> str:
     if path.lower().endswith((".bam", ".ubam", ".sam", ".cram")):
         return path
@@ -160,7 +130,6 @@ def _write_outputs(
     written: list[str] = []
     modalities = {getattr(r, "modality", None) or modality for r in reads}
     mixed = len(modalities) > 1
-    # Combined BAM is always valid on a shared reference; separate is opt-in.
     use_separate = bam_mode == "separate"
 
     if mixed and use_separate:
@@ -201,7 +170,7 @@ def _write_outputs(
         ),
     )
     written.append(out)
-    print(f"[ours] wrote {out}" + ("  (combined short+long)" if mixed else ""))
+    print(f"[ours] wrote {out}" + ("  (combined multi-modality)" if mixed else ""))
     if also_sam and out.lower().endswith((".bam", ".ubam", ".cram")):
         sam_path = os.path.splitext(out)[0] + ".sam"
         write_alignments(
@@ -237,33 +206,98 @@ def _build_or_load_reference(pipeline, ref_seq: str, ref_id: int,
     return reference
 
 
+def _collect_modality_inputs(args) -> list[tuple[str, list[str], str]]:
+    """Return ``[(label, paths, canonical_modality), ...]`` for requested inputs."""
+    from graphmambaformer.data import discover_hprc_reads, expand_read_inputs
+    from graphmambaformer.data.formats import validate_modality
+
+    jobs: list[tuple[str, list[str], str]] = []
+
+    def add(label: str, paths: list[str], modality: str, layout_hint: str = "single"):
+        expanded = expand_read_inputs(paths)
+        if not expanded:
+            sys.exit(f"ERROR: no files matched for {label}: {paths}")
+        jobs.append((label, expanded, validate_modality(modality)))
+
+    # Explicit per-modality flags.
+    if args.illumina:
+        add("illumina", list(args.illumina), "illumina")
+    if args.hifi:
+        add("hifi", list(args.hifi), "pacbio_hifi")
+    if args.ont:
+        add("ont", list(args.ont), "ont")
+
+    # Legacy aliases.
+    if args.reads:
+        add("illumina", list(args.reads), args.modality)
+    if args.long_reads:
+        add("hifi", list(args.long_reads), args.long_modality)
+
+    # HPRC sample auto-discovery.
+    if args.sample:
+        wanted = [
+            m.strip().lower()
+            for m in (args.modalities or "illumina,hifi,ont").split(",")
+            if m.strip()
+        ]
+        already = {canon for _, _, canon in jobs}
+        for mod in wanted:
+            paths, canon = discover_hprc_reads(
+                args.sample, mod, reads_root=args.reads_root
+            )
+            if canon in already:
+                continue
+            jobs.append((mod, paths, canon))
+            already.add(canon)
+
+    if not jobs:
+        sys.exit(
+            "ERROR: provide --illumina / --hifi / --ont, or --sample with "
+            "--modalities, or legacy --reads / --long-reads"
+        )
+    return jobs
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--ref", required=True, help="single-contig reference FASTA (e.g. chr21)")
+    ap.add_argument("--ref", required=True, help="reference FASTA (also used to decode CRAM)")
+    ap.add_argument("--sample", default=os.environ.get("OURS_SAMPLE"),
+                    help="HPRC sample id (e.g. HG00438); discovers files under --reads-root")
+    ap.add_argument("--reads-root", default=os.environ.get("OURS_READS_ROOT", "data/hprc/reads"),
+                    help="root containing <SAMPLE>/{hifi,illumina,ont}/ (default: data/hprc/reads)")
+    ap.add_argument("--modalities", default=os.environ.get("OURS_MODALITIES", "illumina,hifi,ont"),
+                    help="comma list used with --sample: illumina,hifi,ont "
+                         "(aliases: pacbio_hifi)")
+    ap.add_argument("--illumina", action="append", default=None,
+                    help="Illumina CRAM/BAM/FASTQ path, dir, or glob (repeatable)")
+    ap.add_argument("--hifi", action="append", default=None,
+                    help="PacBio HiFi FASTQ.gz/BAM path, dir, or glob (repeatable)")
+    ap.add_argument("--ont", action="append", default=None,
+                    help="ONT BAM/CRAM/FASTQ path, dir, or glob (repeatable)")
+    # Back-compat aliases.
     ap.add_argument("--reads", action="append", default=None,
-                    help="short-read FASTQ(.gz)/BAM; repeat for R1 and R2 "
-                         "(modality from --modality, default illumina)")
+                    help=argparse.SUPPRESS)
     ap.add_argument("--long-reads", action="append", default=None,
-                    help="long-read FASTQ(.gz)/BAM/uBAM; repeatable. "
-                         "May be combined with --reads in one command")
+                    help=argparse.SUPPRESS)
+    ap.add_argument("--modality", default=os.environ.get("OURS_MODALITY", "illumina"),
+                    help=argparse.SUPPRESS)
+    ap.add_argument("--long-modality",
+                    default=os.environ.get("OURS_LONG_MODALITY", "pacbio_hifi"),
+                    help=argparse.SUPPRESS)
     ap.add_argument("--out", required=True,
                     help="output BAM path (combined) or stem for --bam-mode separate")
     ap.add_argument("--mode", default=os.environ.get("OURS_MODE", "fast"),
                     choices=["fast", "hybrid", "two_pass"])
-    ap.add_argument("--modality", default=os.environ.get("OURS_MODALITY", "illumina"),
-                    help="modality for --reads (default: illumina)")
-    ap.add_argument("--long-modality",
-                    default=os.environ.get("OURS_LONG_MODALITY", "pacbio_hifi"),
-                    help="modality for --long-reads (default: pacbio_hifi)")
     ap.add_argument("--read-layout", default=os.environ.get("OURS_READ_LAYOUT", "auto"),
                     choices=["auto", "single", "paired"],
-                    help="layout for --reads; long reads always stay single-end")
+                    help="layout for Illumina FASTQ pairs; BAM/CRAM stay single-end rows")
     ap.add_argument("--bam-mode", default=os.environ.get("OURS_BAM_MODE", "combined"),
                     choices=["combined", "separate", "auto"],
-                    help="when short+long are both given: one BAM with @RG tags "
-                         "(combined, default) or one BAM per modality (separate). "
-                         "auto currently equals combined (shared reference)")
+                    help="multi-modality output: one BAM with @RG tags (combined) "
+                         "or one BAM per modality (separate)")
+    ap.add_argument("--region", default=os.environ.get("OURS_REGION"),
+                    help="optional samtools region when reading BAM/CRAM (e.g. chr21)")
     ap.add_argument("--contig", default=os.environ.get("OURS_CONTIG"),
                     help="override @SQ contig name (default: reference FASTA header)")
     ap.add_argument("--ref-id", type=int, default=0)
@@ -282,15 +316,12 @@ def main() -> None:
                     help="torch device: auto|cpu|cuda|cuda:N|mps")
     ap.add_argument("--sam", action="store_true",
                     help="also write a companion .sam (off by default for speed)")
-    ap.add_argument("--no-sam", action="store_true",
-                    help=argparse.SUPPRESS)  # backwards-compatible no-op
+    ap.add_argument("--no-sam", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
+    if args.bam_mode == "auto":
+        args.bam_mode = "combined"
 
-    short_paths = list(args.reads or [])
-    long_paths = list(args.long_reads or [])
-    if not short_paths and not long_paths:
-        sys.exit("ERROR: provide --reads and/or --long-reads")
-
+    jobs = _collect_modality_inputs(args)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
 
     t0 = time.time()
@@ -298,27 +329,39 @@ def main() -> None:
     contig = args.contig or contig
     print(f"[ours] reference contig={contig} len={len(ref_seq):,}  ({time.time()-t0:.1f}s)")
 
-    # Overlap short/long FASTQ loading when both are present.
-    reads = []
-    load_jobs = []
-    if short_paths:
-        load_jobs.append(("short", short_paths, args.modality, args.read_layout))
-    if long_paths:
-        load_jobs.append(("long", long_paths, args.long_modality, "single"))
+    from graphmambaformer.data import load_real_reads
 
     def _load_job(job):
-        kind, paths, modality, layout = job
-        batch = _load_reads(paths, modality, args.max_reads, layout)
-        return kind, modality, batch
+        label, paths, modality = job
+        layout = args.read_layout if modality == "illumina" else "single"
+        # Illumina CRAM / ONT BAM arrive aligned on disk; strip coords for remap.
+        batch, _ = load_real_reads(
+            reads=paths,
+            modality=modality,
+            max_reads=args.max_reads,
+            layout=layout,
+            region=args.region,
+            reference_fasta=args.ref,
+            as_sequences=True,
+        )
+        return label, modality, paths, batch
 
-    if len(load_jobs) > 1:
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gmf-load") as ex:
-            loaded = list(ex.map(_load_job, load_jobs))
+    if len(jobs) > 1:
+        with ThreadPoolExecutor(
+            max_workers=min(3, len(jobs)), thread_name_prefix="gmf-load"
+        ) as ex:
+            loaded = list(ex.map(_load_job, jobs))
     else:
-        loaded = [_load_job(job) for job in load_jobs]
+        loaded = [_load_job(job) for job in jobs]
 
-    for kind, modality, batch in loaded:
-        print(f"[ours] {kind} reads={len(batch):,} modality={modality}")
+    reads = []
+    for label, modality, paths, batch in loaded:
+        print(f"[ours] {label}: {len(batch):,} reads  modality={modality}  "
+              f"files={len(paths)}")
+        for p in paths[:5]:
+            print(f"         - {p}")
+        if len(paths) > 5:
+            print(f"         ... +{len(paths) - 5} more")
         reads.extend(batch)
 
     modalities = sorted({getattr(r, "modality", "?") for r in reads})
@@ -367,7 +410,7 @@ def main() -> None:
     references = {args.ref_id: _RefShim(ref_seq)}
     contig_names = {args.ref_id: contig}
     out_path = _ensure_ext(args.out)
-    default_mod = args.modality if short_paths else args.long_modality
+    default_mod = loaded[0][1]
 
     _write_outputs(
         results=results,

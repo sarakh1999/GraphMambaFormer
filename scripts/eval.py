@@ -277,6 +277,16 @@ def main() -> int:
                    help="batches to build ahead on background threads (0 = off)")
     p.add_argument("--compile", dest="compile", action="store_true",
                    help="torch.compile the model forward (CUDA/XPU)")
+    p.add_argument("--cuda-graphs", dest="cuda_graphs", action="store_true",
+                   default=True,
+                   help="capture fixed-shape inference into CUDA Graphs (default on)")
+    p.add_argument("--no-cuda-graphs", dest="cuda_graphs", action="store_false",
+                   help="disable CUDA Graph capture")
+    p.add_argument("--fp8", dest="fp8", action="store_true", default=True,
+                   help="TransformerEngine FP8 when supported; Ampere → BF16")
+    p.add_argument("--no-fp8", dest="fp8", action="store_false")
+    p.add_argument("--tensorrt", action="store_true",
+                   help="compile inference with torch_tensorrt / TensorRT")
     p.add_argument("--out", default="data/eval_runs/latest")
     p.add_argument("--no-bam", action="store_true",
                    help="skip writing predicted BAM/SAM")
@@ -318,6 +328,9 @@ def main() -> int:
             num_workers=args.workers,
             prefetch=args.prefetch,
             compile=args.compile,
+            cuda_graphs=args.cuda_graphs,
+            fp8=args.fp8,
+            tensorrt=args.tensorrt,
         ))
     except RuntimeError as exc:
         sys.exit(f"ERROR: {exc}")

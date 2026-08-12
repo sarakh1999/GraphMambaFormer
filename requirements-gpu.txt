@@ -34,7 +34,12 @@ cupy-cuda12x>=13.0.0
 # Optional; used for large-model / multi-A6000 training beyond nn.DataParallel.
 deepspeed>=0.14.0
 
-# NOTE on FP8 (TransformerEngine): FP8 tensor cores need Ada (sm_89) or Hopper
-# (sm_90). The RTX A6000 is Ampere (sm_86), so FP8 is NOT available there and
-# transformer-engine is intentionally omitted. BF16 AMP (enabled automatically)
-# is the right mixed-precision path on the A6000.
+# --- TransformerEngine FP8 (Ada sm_89+ / Hopper sm_90+) -------------------- #
+# On Ampere (A6000 sm_86) the accel stack detects no FP8 tensor cores and falls
+# back to BF16 AMP automatically — installing TE is still harmless.
+transformer-engine>=1.4.0
+
+# --- TensorRT inference (torch_tensorrt preferred) ------------------------- #
+# Lazy-compiles the core model on the first CUDA inference batch. Without this
+# package the path stays on eager PyTorch / CUDA Graphs.
+torch-tensorrt>=2.2.0

@@ -22,6 +22,7 @@ from .backend import (
     triton_module,
 )
 from .cuda_kernels import kernels_available
+from .cuda_graphs import GraphCapturedForward, wrap_model_forward
 from .parallel import (
     ENV_WORKERS,
     Prefetcher,
@@ -30,6 +31,19 @@ from .parallel import (
     parallel_map,
 )
 from .simd_sw import simd_available, simd_isa
+from .tensorrt_engine import (
+    TensorRTInference,
+    maybe_compile_tensorrt,
+    tensorrt_available,
+    tensorrt_summary,
+    torch_tensorrt_available,
+)
+from .transformer_engine import (
+    fp8_available_on_device,
+    precision_context,
+    te_summary,
+    transformer_engine_available,
+)
 from .triton_ops import FusedLNLinearGELU, fused_ln_linear_gelu, triton_available
 
 __all__ = [
@@ -58,4 +72,16 @@ __all__ = [
     "configure_torch_threads",
     "default_worker_count",
     "parallel_map",
+    # CUDA Graphs / TE FP8 / TensorRT.
+    "GraphCapturedForward",
+    "wrap_model_forward",
+    "TensorRTInference",
+    "maybe_compile_tensorrt",
+    "tensorrt_available",
+    "tensorrt_summary",
+    "torch_tensorrt_available",
+    "fp8_available_on_device",
+    "precision_context",
+    "te_summary",
+    "transformer_engine_available",
 ]

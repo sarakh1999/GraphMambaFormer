@@ -15,6 +15,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ipynb_checkpoints/
+# Downloaded CLI binaries (gh, crane, longcallD) and throwaway Python envs the
+# agent tooling installs locally: ~216 MB, all re-fetchable.
+.tools/
+.tools_py/
 
 # --- not redistributable ----------------------------------------------------
 papers/
@@ -24,6 +28,8 @@ meetings screenshots/
 # encodes the numbers it checks, so it does not read these at runtime.
 architecture/*.html
 architecture/*.png
+# NVIDIA brand artwork used only when rebuilding the deck.
+architecture/nvidia_assets/
 # Exported slide deck: a binary rebuild artifact of the same material.
 # architecture/build_pptx.py regenerates it.
 architecture/*.pptx

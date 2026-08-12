@@ -60,6 +60,7 @@ __all__ = [
     "parse_region",
     "read_fasta_contig",
     "build_reference_from_files",
+    "build_dual_reference_from_files",
     "load_real_reads",
     "build_batches",
     "HPRC_MODALITY_DIRS",

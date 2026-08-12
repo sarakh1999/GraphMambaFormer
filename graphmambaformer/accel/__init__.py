@@ -22,6 +22,14 @@ from .backend import (
     triton_module,
 )
 from .cuda_kernels import kernels_available
+from .parallel import (
+    ENV_WORKERS,
+    Prefetcher,
+    configure_torch_threads,
+    default_worker_count,
+    parallel_map,
+)
+from .simd_sw import simd_available, simd_isa
 from .triton_ops import FusedLNLinearGELU, fused_ln_linear_gelu, triton_available
 
 __all__ = [
@@ -36,10 +44,18 @@ __all__ = [
     "kernels_available",
     "list_visible_gpus",
     "mamba_ssm_available",
+    "simd_available",
+    "simd_isa",
     "nvidia_arch_label",
     "to_numpy",
     "triton_module",
     "triton_available",
     "FusedLNLinearGELU",
     "fused_ln_linear_gelu",
+    # CPU parallelism / GPU-feed overlap.
+    "ENV_WORKERS",
+    "Prefetcher",
+    "configure_torch_threads",
+    "default_worker_count",
+    "parallel_map",
 ]

@@ -65,6 +65,17 @@ else
   echo "SKIP_SNIFFLES=1 — skipping SV calling"
 fi
 
+if [ "${SKIP_LONGCALLD:-0}" != "1" ]; then
+  step "10 longcallD (joint small+SV from long reads)"
+  if "$D/call_longcalld.sh"; then
+    echo "longcallD done."
+  else
+    echo "NOTE: longcallD skipped — need a long-read BAM (or LONGCALLD_SMOKE=1)."
+  fi
+else
+  echo "SKIP_LONGCALLD=1 — skipping longcallD"
+fi
+
 echo
 echo "Done. Outputs under: $RUN_DIR"
 echo "  BAM:      $BAM_DIR"

@@ -253,6 +253,25 @@ def test_mapq_is_calibrated_range():
     print(f"MAPQ within [0, 60]: {sorted(mapqs)}")
 
 
+def test_multitask_signals_are_extracted_per_read():
+    ref = make_reference()
+    reads, _ = make_reads(ref, n=2)
+    cfg = PipelineConfig(mode="hybrid")
+    cfg.seeding.modes = ("minimizer", "smem")
+    gm = GraphMambaConfig(d_model=64)
+    gm.multi_task.haplotype = True
+    gm.multi_task.ancestry = True
+    model = build_core_model(
+        CoreModelConfig(arch="multitask_graphmamba", graphmamba=gm)
+    ).model
+    model.eval()
+    pipe = build_pipeline(cfg, model=model)
+    results, _ = pipe.align(reads, reference_for(pipe, ref, gm))
+    assert all({"haplotype", "ancestry", "ancestry_local"} <= set(row.signals) for row in results)
+    assert all(row.signals["haplotype"].shape == (2,) for row in results)
+    print("multi-task head tensors extracted per read for downstream stages")
+
+
 def test_pruning_mechanism_and_floor():
     """Force low seed scores to prove pruning fires and respects its floor."""
     ref = make_reference()

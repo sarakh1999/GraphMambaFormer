@@ -8,6 +8,7 @@ from .alignment_io import (
     alignment_to_read_record,
     alignments_to_records,
     write_alignments,
+    write_alignments_split,
 )
 from .dataset import (
     AlignmentDataset,
@@ -45,6 +46,7 @@ from .formats import (
     convert_reads,
     is_unaligned_bam,
     read_fastq,
+    read_paired_fastq,
     read_reads,
     validate_modality,
     write_bam,
@@ -111,11 +113,13 @@ __all__ = [
     "read_gfa",
     # format I/O layer (FASTQ/BAM/uBAM/SAM/CRAM/GFA in; BAM/SAM/CRAM/GFA/GBZ out)
     "read_fastq",
+    "read_paired_fastq",
     "read_reads",
     "is_unaligned_bam",
     "validate_modality",
     # pipeline results -> BAM / SAM / CRAM
     "write_alignments",
+    "write_alignments_split",
     "alignments_to_records",
     "alignment_to_read_record",
     "write_bam",

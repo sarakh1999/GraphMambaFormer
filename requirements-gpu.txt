@@ -1,0 +1,40 @@
+# NVIDIA CUDA acceleration extras for GraphMambaFormer.
+#
+# These are the libraries from the "GPU Acceleration Stack" that only exist on
+# NVIDIA hardware, so they are kept out of the base requirements.txt (which must
+# still install on CPU / Apple Silicon). Install *on top of* a CUDA torch wheel
+# on the GPU box (e.g. an A6000 / A100 / H100):
+#
+#     # 1. CUDA torch first (pick the wheel matching the box's CUDA runtime):
+#     pip install torch --index-url https://download.pytorch.org/whl/cu121
+#     # 2. then the base deps and these GPU extras:
+#     pip install -r requirements.txt -r requirements-gpu.txt
+#
+# Every one of these degrades safely: the accel stack probes for each at runtime
+# (graphmambaformer/accel/backend.py) and falls back to the portable torch path
+# when a library is missing, so a partial install still runs.
+
+# --- Mamba-2 fused selective-scan kernels (CUDA) -------------------------- #
+# Replaces the pure-PyTorch sequential scan in layers/mamba2.py with the fused
+# CUDA kernel; auto-detected via graphmambaformer.accel.mamba_ssm_available().
+# causal-conv1d is mamba-ssm's fast depthwise-conv dependency.
+causal-conv1d>=1.4.0
+mamba-ssm>=2.2.0
+
+# --- Triton: fused LayerNorm+Linear+GELU (accel/triton_ops.py) ------------ #
+# Bundled with recent CUDA torch wheels; pinned here for standalone installs.
+triton>=2.3.0
+
+# --- CuPy RawKernels: kmer_lookup / chain_dp / banded_sw (accel/cuda_kernels.py)
+# Enables the top "cuda_rawkernel" tier for the Stage-1/2 DP kernels. Pick the
+# wheel matching the box's CUDA major version (cupy-cuda11x for CUDA 11).
+cupy-cuda12x>=13.0.0
+
+# --- DeepSpeed: ZeRO optimizer/gradient/parameter sharding for multi-GPU --- #
+# Optional; used for large-model / multi-A6000 training beyond nn.DataParallel.
+deepspeed>=0.14.0
+
+# NOTE on FP8 (TransformerEngine): FP8 tensor cores need Ada (sm_89) or Hopper
+# (sm_90). The RTX A6000 is Ampere (sm_86), so FP8 is NOT available there and
+# transformer-engine is intentionally omitted. BF16 AMP (enabled automatically)
+# is the right mixed-precision path on the A6000.

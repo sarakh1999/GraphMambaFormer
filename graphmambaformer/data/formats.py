@@ -54,6 +54,12 @@ _REF_OPS = {"M", "D", "N", "=", "X"}
 _MAX_PHRED = 93
 FLAG_REVERSE = 0x10
 FLAG_UNMAPPED = 0x4
+FLAG_PAIRED = 0x1
+FLAG_PROPER_PAIR = 0x2
+FLAG_MATE_UNMAPPED = 0x8
+FLAG_MATE_REVERSE = 0x20
+FLAG_READ1 = 0x40
+FLAG_READ2 = 0x80
 
 
 # --------------------------------------------------------------------------- #
@@ -148,6 +154,52 @@ def read_fastq(path: str, modality: str = "pacbio_hifi") -> list[ReadRecord]:
     return records
 
 
+def _pair_name(read_id: str) -> str:
+    """Normalize common FASTQ mate suffixes to a fragment name."""
+    name = read_id.split()[0]
+    for suffix in ("/1", "/2", ".1", ".2", "_R1", "_R2"):
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return name
+
+
+def read_paired_fastq(
+    r1_path: str,
+    r2_path: str,
+    modality: str = "illumina",
+) -> list[ReadRecord]:
+    """Load synchronized Illumina R1/R2 FASTQ files.
+
+    Mates are returned as separate model rows (the aligner scores each end),
+    but share ``pair_id`` so BAM/SAM output restores paired flags, mate
+    coordinates and TLEN.  Pair names and record counts must match; silently
+    zipping mismatched FASTQs would corrupt fragment relationships.
+    """
+    r1 = read_fastq(r1_path, modality=modality)
+    r2 = read_fastq(r2_path, modality=modality)
+    if len(r1) != len(r2):
+        raise ValueError(
+            f"paired FASTQ count mismatch: R1 has {len(r1)} reads, "
+            f"R2 has {len(r2)} reads"
+        )
+    out: list[ReadRecord] = []
+    for i, (left, right) in enumerate(zip(r1, r2)):
+        left_name, right_name = _pair_name(left.read_id), _pair_name(right.read_id)
+        if left_name != right_name:
+            raise ValueError(
+                f"paired FASTQ name mismatch at record {i}: "
+                f"{left.read_id!r} vs {right.read_id!r}"
+            )
+        pair_id = left_name
+        left.pair_id = right.pair_id = pair_id
+        left.mate_index, right.mate_index = 1, 2
+        # Pipeline IDs must be unique even though SAM QNAME is shared.
+        left.read_id = f"{pair_id}/1"
+        right.read_id = f"{pair_id}/2"
+        out.extend((left, right))
+    return out
+
+
 def is_unaligned_bam(path: str) -> bool:
     """True when a BAM/SAM/CRAM carries no ``@SQ`` lines, i.e. it is a uBAM.
 
@@ -217,11 +269,73 @@ def _is_mapped(rec: ReadRecord) -> bool:
             and rec.ref_end > rec.ref_start and bool(rec.cigar))
 
 
+# SAM @RG PL (platform) codes for known modalities. Mixed short+long BAMs
+# need distinct read groups so callers can still filter by technology.
+_MODALITY_PLATFORM: dict[str, str] = {
+    "illumina": "ILLUMINA",
+    "pacbio_hifi": "PACBIO",
+    "ont": "ONT",
+    "rna_seq": "ILLUMINA",
+    "bisulfite": "ILLUMINA",
+    "single_cell": "ILLUMINA",
+    "linked_reads": "ILLUMINA",
+}
+
+
+def _rg_from_records(records: list[ReadRecord]) -> list[dict[str, str]]:
+    """Build ``@RG`` lines — one per distinct modality present in ``records``."""
+    seen: list[str] = []
+    for rec in records:
+        mod = getattr(rec, "modality", None) or "unknown"
+        if mod not in seen:
+            seen.append(mod)
+    return [
+        {
+            "ID": mod,
+            "PL": _MODALITY_PLATFORM.get(mod, "UNKNOWN"),
+            "SM": "sample",
+            "LB": mod,
+        }
+        for mod in seen
+    ]
+
+
+def _alignment_header(
+    *,
+    sort: bool,
+    sq: list,
+    records: list[ReadRecord],
+) -> dict:
+    """Shared BAM/SAM header including modality ``@RG`` lines when present."""
+    header: dict = {
+        "HD": {"VN": "1.6", "SO": "coordinate" if sort else "unsorted"},
+        "PG": [{"ID": "graphmambaformer", "PN": "graphmambaformer",
+                "DS": "reads/alignments emitted by the format I/O layer"}],
+    }
+    if sq:
+        header["SQ"] = sq
+    rg = _rg_from_records(records)
+    if rg:
+        header["RG"] = rg
+    return header
+
+
 def _make_segment(pysam, rec: ReadRecord, ref_index: dict[int, int]):
     a = pysam.AlignedSegment()
-    a.query_name = rec.read_id
+    paired = bool(rec.pair_id and rec.mate_index in (1, 2))
+    a.query_name = rec.pair_id if paired else rec.read_id
     seq, quals, cigar, flag = rec.seq, list(rec.quals), list(rec.cigar), 0
     mapped = _is_mapped(rec) and rec.ref_id in ref_index
+
+    if paired:
+        flag |= FLAG_PAIRED
+        flag |= FLAG_READ1 if rec.mate_index == 1 else FLAG_READ2
+        if rec.proper_pair:
+            flag |= FLAG_PROPER_PAIR
+        if rec.mate_ref_id < 0:
+            flag |= FLAG_MATE_UNMAPPED
+        if rec.mate_strand == -1:
+            flag |= FLAG_MATE_REVERSE
 
     if mapped and rec.strand == -1:  # reorient to forward strand (SAM spec)
         flag |= FLAG_REVERSE
@@ -240,16 +354,27 @@ def _make_segment(pysam, rec: ReadRecord, ref_index: dict[int, int]):
         a.mapping_quality = int(rec.mapq)
         a.cigartuples = [(_OP2CODE.get(op, 0), n) for op, n in cigar]
     else:
-        a.flag = FLAG_UNMAPPED
+        a.flag = flag | FLAG_UNMAPPED
         a.reference_id = -1
         a.reference_start = -1
         a.mapping_quality = 0
         a.cigartuples = None
 
+    if paired:
+        a.next_reference_id = ref_index.get(rec.mate_ref_id, -1)
+        a.next_reference_start = int(rec.mate_ref_start)
+        a.template_length = int(rec.template_length)
+
     a.query_sequence = seq or "*"
     if seq:
         a.query_qualities = [min(_MAX_PHRED, max(0, q)) for q in quals[: len(seq)]] \
             or None
+
+    # Stamp modality so a combined short+long BAM stays filterable.
+    mod = getattr(rec, "modality", None)
+    if mod:
+        a.set_tag("RG", str(mod))
+        a.set_tag("XM", str(mod))
     return a
 
 
@@ -269,16 +394,16 @@ def write_bam(
     ``contig_names`` maps ``ref_id`` to the ``@SQ`` name to emit, so a run
     against a real reference writes ``chr21`` (matching the caller's FASTA)
     rather than the synthetic default ``ref0``.
+
+    Distinct modalities (e.g. Illumina short + PacBio HiFi long) become
+    separate ``@RG`` lines with matching ``RG``/``XM`` tags, so one BAM can
+    hold both without losing platform identity.
     """
     import pysam
 
     records = list(records)
     sq, ref_index = _sq_from_references(references, contig_names)
-    header = {"HD": {"VN": "1.6", "SO": "coordinate" if sort else "unsorted"}}
-    if sq:
-        header["SQ"] = sq
-    header["PG"] = [{"ID": "graphmambaformer", "PN": "graphmambaformer",
-                     "DS": "reads/alignments emitted by the format I/O layer"}]
+    header = _alignment_header(sort=sort, sq=sq, records=records)
 
     tmp = path + ".unsorted.bam"
     with pysam.AlignmentFile(tmp, "wb", header=header) as out:
@@ -344,11 +469,7 @@ def write_sam(
 
     records = list(records)
     sq, ref_index = _sq_from_references(references, contig_names)
-    header = {"HD": {"VN": "1.6", "SO": "unsorted"}}
-    if sq:
-        header["SQ"] = sq
-    header["PG"] = [{"ID": "graphmambaformer", "PN": "graphmambaformer",
-                     "DS": "reads/alignments emitted by the format I/O layer"}]
+    header = _alignment_header(sort=False, sq=sq, records=records)
 
     with pysam.AlignmentFile(path, "w", header=header) as out:
         for rec in records:

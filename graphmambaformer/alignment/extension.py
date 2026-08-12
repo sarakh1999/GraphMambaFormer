@@ -50,7 +50,7 @@ import numpy as np
 import torch
 
 from ..config import ExtensionConfig
-from .seeding import encode_bases, reverse_complement_codes
+from .seeding import N_CODE, decode_bases, encode_bases, reverse_complement_codes
 from .types import AnchorSet, Chain, ExtensionResult, merge_cigar, run_length_encode
 
 _NEG_INF = -1e30
@@ -337,7 +337,13 @@ class WavefrontAligner:
             if i < 0:
                 continue
             j = i - diagonals[idx]
-            while i < n and 0 <= j < m and query[i] == target[j] and query[i] >= 0:
+            while (
+                i < n
+                and 0 <= j < m
+                and query[i] == target[j]
+                and query[i] >= 0
+                and query[i] != N_CODE
+            ):
                 i += 1
                 j += 1
             out[idx] = i
@@ -469,9 +475,15 @@ class ExtensionEngine:
     wide enough to align through it instead of being clipped.
     """
 
-    def __init__(self, cfg: ExtensionConfig | None = None, device: torch.device | str | None = None):
+    def __init__(
+        self,
+        cfg: ExtensionConfig | None = None,
+        device: torch.device | str | None = None,
+        backend: str = "torch",
+    ):
         self.cfg = cfg or ExtensionConfig()
         self.device = torch.device(device) if device is not None else torch.device("cpu")
+        self.backend = backend
         self.wfa = WavefrontAligner(self.cfg)
 
     def _window(
@@ -543,6 +555,46 @@ class ExtensionEngine:
             # window that is `diagonal - start`, which is where the band goes.
             band_offset[b] = (chain.ref_start - chain.read_start) - start
 
+        simd_scores: torch.Tensor | None = None
+        if self.device.type == "cpu":
+            try:
+                from ..accel.simd_sw import simd_available, smith_waterman_score
+
+                if simd_available():
+                    values = []
+                    for chain, (start, end, _) in zip(chains, windows):
+                        codes = forward if chain.strand > 0 else reverse
+                        values.append(
+                            smith_waterman_score(
+                                decode_bases(codes),
+                                decode_bases(ref_codes[start:end]),
+                                self.cfg,
+                            )
+                        )
+                    simd_scores = torch.tensor(values, dtype=torch.float32)
+            except RuntimeError:
+                simd_scores = None
+
+        cuda_result = None
+        if self.backend == "cuda_rawkernel" and self.device.type == "cuda":
+            try:
+                from ..accel.cuda_kernels import banded_sw as cuda_banded_sw
+
+                cuda_result = cuda_banded_sw(
+                    query,
+                    target,
+                    query_len,
+                    target_len,
+                    half_band=half_band,
+                    match_score=self.cfg.match_score,
+                    mismatch_penalty=self.cfg.mismatch_penalty,
+                    gap_open=self.cfg.gap_open,
+                    gap_extend=self.cfg.gap_extend,
+                    band_offset=band_offset,
+                )
+            except RuntimeError:
+                cuda_result = None
+
         result = banded_affine_sw_batch(
             query,
             target,
@@ -553,6 +605,23 @@ class ExtensionEngine:
             band_offset=band_offset,
             return_matrices=True,
         )
+        if cuda_result is not None:
+            cuda_score, cuda_q_end, cuda_t_end = cuda_result
+            # Traceback matrices remain on the portable tier. Only trust the
+            # accelerator result when all three observables agree.
+            agrees = (
+                torch.allclose(cuda_score, result.score, atol=1e-3, rtol=1e-4)
+                and torch.equal(cuda_q_end, result.query_end)
+                and torch.equal(cuda_t_end, result.target_end)
+            )
+            if agrees:
+                result.score = cuda_score
+                result.query_end = cuda_q_end
+                result.target_end = cuda_t_end
+        if simd_scores is not None and torch.allclose(
+            simd_scores, result.score.cpu(), atol=1e-3, rtol=1e-4
+        ):
+            result.score = simd_scores.to(result.score.device)
 
         out: list[ExtensionResult] = []
         for b, (chain, (start, _end, _)) in enumerate(zip(chains, windows)):
@@ -583,8 +652,36 @@ class ExtensionEngine:
     ) -> ExtensionResult:
         """Extend one chain with the wavefront aligner (global within the window)."""
         codes = forward if chain.strand > 0 else reverse
-        start, end, _ = self._window(chain, anchors, read_len, ref_len)
+        # WFA is global, so unlike local SW it must not see the flanking search
+        # bases from `_window`: those would be forced into the CIGAR as deletions.
+        # Use the chain's read-zero diagonal and implied net indel to define the
+        # sequence that should align end-to-end.
+        start = int(np.clip(chain.ref_start - chain.read_start, 0, max(ref_len - 1, 0)))
+        net_indel = chain.ref_span - chain.read_span
+        target_length = max(1, read_len + net_indel)
+        end = min(ref_len, start + target_length)
         window = ref_codes[start:end]
+
+        gpu_distance: int | None = None
+        if self.backend == "cuda_rawkernel" and self.device.type == "cuda":
+            try:
+                from ..accel.cuda_kernels import wfa_distance as cuda_wfa_distance
+
+                query_t = torch.as_tensor(codes, dtype=torch.int8, device=self.device)[None]
+                target_t = torch.as_tensor(window, dtype=torch.int8, device=self.device)[None]
+                gpu_distance = int(
+                    cuda_wfa_distance(
+                        query_t,
+                        target_t,
+                        torch.tensor([len(codes)], device=self.device),
+                        torch.tensor([len(window)], device=self.device),
+                        self.cfg.wfa_max_distance,
+                    )[0].item()
+                )
+                if gpu_distance < 0:
+                    raise RuntimeError("GPU WFA exceeded distance bound")
+            except RuntimeError:
+                gpu_distance = None
 
         try:
             distance, cigar = self.wfa.align(codes, window)
@@ -593,19 +690,30 @@ class ExtensionEngine:
             saved, self.cfg.algorithm = self.cfg.algorithm, "banded_sw"
             try:
                 return self.extend_chains(
-                    "".join("$ACGTN"[c] for c in codes), [chain], anchors,
-                    "".join("$ACGTN"[c] for c in window),
+                    decode_bases(forward),
+                    [chain],
+                    anchors,
+                    decode_bases(ref_codes),
                 )[0]
             finally:
                 self.cfg.algorithm = saved
+        if gpu_distance is not None and gpu_distance != distance:
+            # Never let an accelerator disagreement change the biological call.
+            # The portable WFA is independently checked against Levenshtein.
+            gpu_distance = None
 
         counts = {op: 0 for op in ("=", "X", "I", "D")}
         for op, n in cigar:
             counts[op] = counts.get(op, 0) + n
+        gap_cost = sum(
+            self.cfg.gap_open + max(n - 1, 0) * self.cfg.gap_extend
+            for op, n in cigar
+            if op in ("I", "D")
+        )
         score = (
             counts["="] * self.cfg.match_score
             - counts["X"] * self.cfg.mismatch_penalty
-            - (counts["I"] + counts["D"]) * self.cfg.gap_extend
+            - gap_cost
         )
         return ExtensionResult(
             score=float(score),

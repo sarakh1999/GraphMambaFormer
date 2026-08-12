@@ -274,10 +274,101 @@ def test_cupy_tier_declines_cleanly():
         print("CuPy RawKernel tier unavailable (expected off CUDA) - reported cleanly")
         return
 
-    from graphmambaformer.accel.cuda_kernels import banded_sw, chain_dp, kmer_lookup
+    from graphmambaformer.accel.cuda_kernels import (
+        banded_sw,
+        chain_dp,
+        kmer_lookup,
+        wfa_distance,
+    )
 
-    assert all(callable(f) for f in (kmer_lookup, chain_dp, banded_sw))
+    assert all(callable(f) for f in (kmer_lookup, chain_dp, banded_sw, wfa_distance))
     print("CuPy RawKernel tier compiled and callable")
+
+
+def test_cuda_rawkernels_match_portable_references():
+    """GPU CI cross-checks SW, WFA, and fractional-weight chaining semantics."""
+    if not (torch.cuda.is_available() and kernels_available()):
+        print("CUDA RawKernel equivalence skipped (CUDA/CuPy unavailable)")
+        return
+
+    from graphmambaformer.accel.cuda_kernels import (
+        banded_sw,
+        chain_dp,
+        wfa_distance,
+    )
+    from graphmambaformer.alignment.chaining import chain_dp_numpy
+    from graphmambaformer.alignment.extension import banded_affine_sw_batch
+    from graphmambaformer.alignment.seeding import encode_bases
+    from graphmambaformer.config import ChainingConfig, ExtensionConfig
+
+    device = torch.device("cuda")
+    extension_cfg = ExtensionConfig()
+    query = torch.as_tensor(encode_bases("ACGT"), dtype=torch.int8, device=device)[None]
+    target = torch.as_tensor(encode_bases("TTACGTAA"), dtype=torch.int8, device=device)[None]
+    lengths_q = torch.tensor([4], device=device)
+    lengths_t = torch.tensor([8], device=device)
+    offset = torch.tensor([2], device=device)
+    raw = banded_sw(
+        query,
+        target,
+        lengths_q,
+        lengths_t,
+        half_band=2,
+        match_score=extension_cfg.match_score,
+        mismatch_penalty=extension_cfg.mismatch_penalty,
+        gap_open=extension_cfg.gap_open,
+        gap_extend=extension_cfg.gap_extend,
+        band_offset=offset,
+    )
+    portable = banded_affine_sw_batch(
+        query,
+        target,
+        lengths_q,
+        lengths_t,
+        extension_cfg,
+        half_band=2,
+        band_offset=offset,
+    )
+    assert torch.allclose(raw[0], portable.score, atol=1e-3)
+    assert torch.equal(raw[1], portable.query_end)
+    assert torch.equal(raw[2], portable.target_end)
+
+    wfa_q = torch.as_tensor(encode_bases("ACGTAC"), dtype=torch.int8, device=device)[None]
+    wfa_t = torch.as_tensor(encode_bases("ACGTTAC"), dtype=torch.int8, device=device)[None]
+    got_distance = wfa_distance(
+        wfa_q,
+        wfa_t,
+        torch.tensor([6], device=device),
+        torch.tensor([7], device=device),
+        max_distance=4,
+    )
+    assert int(got_distance[0]) == 1
+
+    chain_cfg = ChainingConfig()
+    read_end = np.array([10, 20, 30], dtype=np.int64)
+    ref_end = np.array([10, 20, 31], dtype=np.int64)
+    weights = np.array([10.5, 9.25, 8.75], dtype=np.float64)
+    expected, expected_parent = chain_dp_numpy(
+        read_end, ref_end, weights, chain_cfg
+    )
+    anchors = torch.tensor(
+        [[[10, 10, 0], [20, 20, 0], [30, 31, 0]]],
+        dtype=torch.int32,
+        device=device,
+    )
+    got, got_parent = chain_dp(
+        anchors,
+        torch.tensor([3], dtype=torch.int32, device=device),
+        lookback=chain_cfg.max_lookback,
+        max_gap=chain_cfg.max_gap,
+        gap_open=chain_cfg.gap_open,
+        gap_extend=chain_cfg.gap_extend,
+        log_coeff=chain_cfg.log_coeff,
+        weights=torch.tensor(weights, dtype=torch.float32, device=device)[None],
+    )
+    assert np.allclose(got[0].cpu().numpy(), expected, atol=1e-4)
+    assert np.array_equal(got_parent[0].cpu().numpy(), expected_parent)
+    print("CUDA SW/WFA/chaining match portable references")
 
 
 def test_array_namespace_and_to_numpy():

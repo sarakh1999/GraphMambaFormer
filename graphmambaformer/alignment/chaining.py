@@ -22,6 +22,15 @@ bubble is not penalised for the reference-coordinate jump the bubble causes.
 **Reference-path bias** — anchors on the graph's backbone path get extra weight,
 which breaks ties toward the reference allele when evidence is balanced.
 
+**Adaptive seed scoring** — following AGNES (Arafat et al., 2025), when the
+Stage 4 seed head has scored the anchors, the DP does not blindly trust those
+scores. It measures how decisively the read's seed-score distribution separates
+confident seeds from confident non-seeds and only lets the scores steer the
+anchor weights (via a logit-transformed, length-preserving gate) when that
+separation clears a threshold; otherwise it falls back to pure length-based
+chaining. Degenerate anchor counts fall back too. This is the confidence-based
+method selection that makes the chainer robust to an under-confident classifier.
+
 Three interchangeable DP backends with identical semantics:
 :func:`chain_dp_numpy` (single read, the reference implementation),
 :func:`chain_dp_batched` (torch, whole batch at once — the GPU path), and the
@@ -37,6 +46,7 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 
+from ..accel.parallel import parallel_map
 from ..config import ChainingConfig
 from .types import AnchorSet, Chain
 
@@ -253,15 +263,24 @@ def chain_dp_batched(
 # --------------------------------------------------------------------------- #
 @dataclass
 class ChainingContext:
-    """Optional pangenome context that turns the DP graph-aware.
+    """Optional pangenome / AGNES context that turns the DP graph-aware.
 
     Attributes:
         oracle: hop-distance source for the graph bonus.
         backbone: per-node flag marking the graph's reference path.
+        trust_neural: AGNES confidence decision for this read.
+            ``None`` — decide from the scores present on the anchors (auto).
+            ``True`` — apply the logit gate; confidence was already cleared on the
+            *full* pre-prune score distribution.
+            ``False`` — ignore neural scores (pure geometric DP), even if scores
+            are still attached to the anchors. Required after pruning: pruning
+            removes the low-score tail that defines ``μ_low``, so recomputing
+            confidence on the survivors would spuriously reopen the gate.
     """
 
     oracle: Optional[GraphDistanceOracle] = None
     backbone: Optional[np.ndarray] = None
+    trust_neural: Optional[bool] = None
 
 
 class AffineChainer:
@@ -271,25 +290,120 @@ class AffineChainer:
     the chains from both strands compete in a single primary/secondary selection.
     """
 
-    def __init__(self, cfg: ChainingConfig | None = None, backend: str = "torch"):
+    def __init__(self, cfg: ChainingConfig | None = None, backend: str = "torch",
+                 workers: int | None = None):
         self.cfg = cfg or ChainingConfig()
         self.backend = backend
+        #: Host threads for the CPU per-read chaining fallback. ``None`` = auto.
+        self._workers = workers
 
     # ---- anchor weights & bonus -------------------------------------------- #
+    def trust_neural_scores(self, anchors: AnchorSet) -> bool:
+        """AGNES Algorithm 1 confidence decision over one read's seed scores.
+
+        Returns True only when adaptive scoring is on, the scored-anchor count is
+        in ``[min_confidence_anchors, max_confidence_anchors]``, and
+        ``(μ_high - μ_low) / σ > confidence_threshold``. Call this on the *full*
+        scored set before any pruning — pruning destroys the low-score tail that
+        the metric needs.
+        """
+        if not self.cfg.adaptive_seed_scoring:
+            return False
+        finite = np.isfinite(anchors.score)
+        n = int(finite.sum())
+        if not (self.cfg.min_confidence_anchors <= n <= self.cfg.max_confidence_anchors):
+            return False
+        return self._seed_confidence(anchors.score[finite]) > self.cfg.confidence_threshold
+
     def _weights(self, anchors: AnchorSet, ctx: Optional[ChainingContext]) -> np.ndarray:
-        """Per-anchor chain weight: match length, biased toward the reference path."""
+        """Per-anchor chain weight: match length, biased toward the reference path.
+
+        When a neural seed score is present it scales the anchor's contribution,
+        but *adaptively*: :meth:`trust_neural_scores` / ``ctx.trust_neural`` decide
+        whether the scores are trustworthy enough to steer the DP or whether to
+        fall back to pure length-based weights (AGNES confidence-based selection).
+        """
         weight = anchors.length.astype(np.float64)
         if ctx is not None and ctx.backbone is not None:
             on_path = (anchors.node_id >= 0) & ctx.backbone[
                 np.clip(anchors.node_id, 0, len(ctx.backbone) - 1)
             ]
             weight = weight + on_path * self.cfg.ref_path_bias
-        # A neural seed score, when present, scales the anchor's contribution so
-        # the DP trusts anchors the model believes in.
-        if np.isfinite(anchors.score).any():
-            scores = np.where(np.isfinite(anchors.score), anchors.score, 1.0)
-            weight = weight * (0.5 + scores)
-        return weight
+
+        finite = np.isfinite(anchors.score)
+        if not finite.any():
+            return weight  # no neural scores: pure geometric DP, unchanged
+
+        trust = None if ctx is None else ctx.trust_neural
+        if trust is False:
+            return weight  # forced classical fallback (AGNES else-branch)
+
+        if self.cfg.adaptive_seed_scoring:
+            if trust is True:
+                return weight * self._logit_gate(anchors.score, finite)
+            # Auto path (unit tests / callers that skip the pipeline decision).
+            if self.trust_neural_scores(anchors):
+                return weight * self._logit_gate(anchors.score, finite)
+            return weight
+
+        # Legacy fixed linear blend, kept for ablation against the adaptive path.
+        scores = np.where(finite, anchors.score, 1.0)
+        return weight * (0.5 + scores)
+
+    def _seed_confidence(self, scores: np.ndarray) -> float:
+        """AGNES confidence metric ``(μ_high - μ_low) / σ`` over seed scores.
+
+        ``μ_high`` / ``μ_low`` are the mean probabilities of the confidently-good
+        and confidently-bad seeds; dividing their gap by the overall spread gives
+        a scale-free measure of how decisively the classifier has separated the
+        two. A large value means the seed scores carry real signal for this read;
+        a small one means they are noise and should not steer the chain.
+        """
+        if scores.size == 0:
+            return 0.0
+        # Float64 keeps the metric stable across the float32 scores the seed head
+        # writes and any float64 hand checks / ablations that call this helper.
+        scores = np.asarray(scores, dtype=np.float64)
+        high = scores[scores > self.cfg.high_confidence_prob]
+        low = scores[scores < self.cfg.low_confidence_prob]
+        mu_high = float(high.mean()) if high.size else 0.0
+        mu_low = float(low.mean()) if low.size else 0.0
+        sigma = float(scores.std())
+        if sigma <= 1e-6:
+            return 0.0
+        return (mu_high - mu_low) / sigma
+
+    def _logit_gate(self, score: np.ndarray, finite: np.ndarray) -> np.ndarray:
+        """Length-preserving multiplicative gate from logit-transformed seed probs.
+
+        AGNES feeds ``log(p/(1-p))`` directly as the DP node score ``f(s_i)``. Our
+        minimap2-style DP uses match length as the node weight, so the logit is
+        folded into a positive gate ``clip(1 + gain * logit, min, max)`` that
+        up-weights trusted seeds and down-weights distrusted ones without
+        collapsing the geometric advance term.
+        """
+        gate = np.ones(len(score), dtype=np.float64)
+        p = np.clip(score[finite].astype(np.float64), 1e-4, 1.0 - 1e-4)
+        logit = np.log(p / (1.0 - p))
+        gate[finite] = np.clip(
+            1.0 + self.cfg.logit_gate_gain * logit,
+            self.cfg.logit_gate_min,
+            self.cfg.logit_gate_max,
+        )
+        return gate
+
+    def _confidence_gate(self, score: np.ndarray, finite: np.ndarray) -> np.ndarray:
+        """Auto confidence gate: identity unless :meth:`trust_neural_scores` passes.
+
+        Kept as a single helper for the unit tests that exercise the AGNES
+        decision and the logit transform together.
+        """
+        n = int(finite.sum())
+        if not (self.cfg.min_confidence_anchors <= n <= self.cfg.max_confidence_anchors):
+            return np.ones(len(score), dtype=np.float64)
+        if self._seed_confidence(score[finite]) <= self.cfg.confidence_threshold:
+            return np.ones(len(score), dtype=np.float64)
+        return self._logit_gate(score, finite)
 
     def _graph_bonus(
         self, anchors: AnchorSet, ctx: Optional[ChainingContext]
@@ -343,7 +457,7 @@ class AffineChainer:
                 [
                     torch.as_tensor(anchors.read_end, device=dev),
                     torch.as_tensor(anchors.ref_end, device=dev),
-                    torch.as_tensor(weight, device=dev),
+                    torch.zeros(len(anchors), device=dev),
                 ],
                 dim=-1,
             )[None].to(torch.int32)
@@ -361,6 +475,7 @@ class AffineChainer:
                         if bonus is not None
                         else None
                     ),
+                    weights=torch.as_tensor(weight, dtype=torch.float32, device=dev)[None],
                 )
                 return f[0].cpu().numpy().astype(np.float64), parent[0].cpu().numpy()
             except RuntimeError:
@@ -498,10 +613,14 @@ class AffineChainer:
         contexts = list(contexts or [None] * len(anchor_sets))
         dev = torch.device(device) if device is not None else torch.device("cpu")
         if dev.type == "cpu" or len(anchor_sets) == 1:
-            return [
-                self.chain(anchors, ctx, device=dev)
-                for anchors, ctx in zip(anchor_sets, contexts)
-            ]
+            # Reads chain independently, so on CPU the per-read DP fans out across
+            # host cores instead of running one read at a time. The DP is NumPy /
+            # small-tensor work that releases the GIL, so threads scale.
+            return parallel_map(
+                lambda pair: self.chain(pair[0], pair[1], device=dev),
+                list(zip(anchor_sets, contexts)),
+                workers=self._workers,
+            )
 
         results: list[list[Chain]] = [[] for _ in anchor_sets]
         for strand in (1, -1):
@@ -542,9 +661,31 @@ class AffineChainer:
                     )
 
             n_anchors = torch.tensor(counts, dtype=torch.long, device=dev)
-            f, parent = chain_dp_batched(
-                read_end, ref_end, weight, n_anchors, self.cfg, bonus=bonus_batch
-            )
+            f = parent = None
+            if self.backend == "cuda_rawkernel":
+                from ..accel.cuda_kernels import chain_dp as cuda_chain_dp
+
+                packed = torch.stack(
+                    (read_end, ref_end, torch.zeros_like(read_end)), dim=-1
+                ).to(torch.int32)
+                try:
+                    f, parent = cuda_chain_dp(
+                        packed,
+                        n_anchors.to(torch.int32),
+                        lookback=lookback,
+                        max_gap=self.cfg.max_gap,
+                        gap_open=self.cfg.gap_open,
+                        gap_extend=self.cfg.gap_extend,
+                        log_coeff=self.cfg.log_coeff,
+                        bonus=bonus_batch,
+                        weights=weight,
+                    )
+                except RuntimeError:
+                    f = parent = None
+            if f is None or parent is None:
+                f, parent = chain_dp_batched(
+                    read_end, ref_end, weight, n_anchors, self.cfg, bonus=bonus_batch
+                )
             f_np = f.cpu().numpy().astype(np.float64)
             parent_np = parent.cpu().numpy()
 

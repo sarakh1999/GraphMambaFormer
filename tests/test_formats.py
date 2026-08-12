@@ -18,11 +18,13 @@ import gzip
 import os
 import shutil
 import tempfile
+from types import SimpleNamespace
 
 from graphmambaformer.config import MODALITIES
 from graphmambaformer.data.formats import (
     is_unaligned_bam,
     read_fastq,
+    read_paired_fastq,
     read_reads,
     validate_modality,
     write_bam,
@@ -31,6 +33,7 @@ from graphmambaformer.data.formats import (
     write_gfa_graph,
 )
 from graphmambaformer.data.export import write_fasta
+from graphmambaformer.data.real_data import load_real_reads
 from graphmambaformer.data.synthetic import generate_dataset, preset
 
 READ_LEN = 60
@@ -148,6 +151,83 @@ def test_modality_aliases_resolve():
     print(f"{len(cases)} platform aliases resolve to canonical modalities")
 
 
+def test_illumina_r1_r2_are_paired_and_long_reads_stay_single():
+    """Two Illumina FASTQs pair automatically; one ONT FASTQ remains single."""
+    d = _tmp()
+    try:
+        r1 = _fastq(os.path.join(d, "sample_R1.fastq"), n=3)
+        r2 = _fastq(os.path.join(d, "sample_R2.fastq"), n=3)
+        paired = read_paired_fastq(r1, r2, modality="illumina")
+        assert len(paired) == 6
+        for i in range(0, len(paired), 2):
+            left, right = paired[i], paired[i + 1]
+            assert left.pair_id == right.pair_id == f"read{i // 2}"
+            assert (left.mate_index, right.mate_index) == (1, 2)
+            assert left.read_id.endswith("/1") and right.read_id.endswith("/2")
+
+        automatic, _ = load_real_reads(
+            reads=[r1, r2], modality="illumina", layout="auto"
+        )
+        assert [(r.pair_id, r.mate_index) for r in automatic] == [
+            (r.pair_id, r.mate_index) for r in paired
+        ]
+
+        long_reads, _ = load_real_reads(
+            reads=[r1], modality="ont", layout="auto"
+        )
+        assert len(long_reads) == 3
+        assert all(r.pair_id is None and r.mate_index == 0 for r in long_reads)
+        print("Illumina R1/R2 paired; single-file ONT remains single-end")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_paired_bam_flags_mate_coordinates_and_tlen_round_trip():
+    """Paired metadata survives BAM output/input while SE behavior is unchanged."""
+    import pysam
+
+    d = _tmp()
+    try:
+        r1_path = _fastq(os.path.join(d, "R1.fastq"), n=1)
+        r2_path = _fastq(os.path.join(d, "R2.fastq"), n=1)
+        r1, r2 = read_paired_fastq(r1_path, r2_path, modality="illumina")
+        for rec, start, strand in ((r1, 100, 1), (r2, 220, -1)):
+            rec.ref_id = 0
+            rec.ref_start = start
+            rec.ref_end = start + len(rec.seq)
+            rec.strand = strand
+            rec.cigar = [("M", len(rec.seq))]
+            rec.mapq = 60
+        span = r2.ref_end - r1.ref_start
+        r1.mate_ref_id = r2.mate_ref_id = 0
+        r1.mate_ref_start, r2.mate_ref_start = r2.ref_start, r1.ref_start
+        r1.mate_strand, r2.mate_strand = r2.strand, r1.strand
+        r1.template_length, r2.template_length = span, -span
+        r1.proper_pair = r2.proper_pair = True
+
+        path = os.path.join(d, "paired.bam")
+        refs = {0: SimpleNamespace(seq="A" * 1000)}
+        write_bam([r1, r2], path, references=refs)
+        with pysam.AlignmentFile(path, "rb") as af:
+            rows = list(af.fetch(until_eof=True))
+        assert len(rows) == 2
+        by_end = {1 if a.is_read1 else 2: a for a in rows}
+        assert all(a.is_paired and a.is_proper_pair for a in rows)
+        assert by_end[1].query_name == by_end[2].query_name == "read0"
+        assert by_end[1].next_reference_start == 220
+        assert by_end[2].next_reference_start == 100
+        assert by_end[1].template_length == span
+        assert by_end[2].template_length == -span
+
+        back = read_reads(path, modality="illumina")
+        assert {r.mate_index for r in back} == {1, 2}
+        assert {r.pair_id for r in back} == {"read0"}
+        assert {r.read_id for r in back} == {"read0/1", "read0/2"}
+        print("paired BAM flags, mate positions and TLEN round-trip")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 # --------------------------------------------------------------------------- #
 # Coverage: every modality through every input format
 # --------------------------------------------------------------------------- #
@@ -221,6 +301,62 @@ def test_bam_and_cram_outputs():
 
         print(f"BAM {os.path.getsize(bam)}B (read back {len(back)} aligned reads) "
               f"and CRAM {os.path.getsize(cram)}B written")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_combined_short_and_long_bam():
+    """One BAM can hold Illumina + HiFi with distinct @RG / XM tags."""
+    import pysam
+    from graphmambaformer.alignment.types import AlignmentRecord
+    from graphmambaformer.data.alignment_io import write_alignments_split
+    from graphmambaformer.data.synthetic import ReadRecord
+
+    d = _tmp()
+    try:
+        refs = {0: SimpleNamespace(seq="ACGT" * 40)}
+        short = ReadRecord(
+            read_id="s1/1", ref_id=0, modality="illumina",
+            seq="ACGTACGTAC", quals=[30] * 10,
+            ref_start=0, ref_end=10, strand=1,
+            cigar=[("=", 10)], ref_positions=list(range(10)), mapq=60,
+            pair_id="s1", mate_index=1,
+        )
+        long = ReadRecord(
+            read_id="l1", ref_id=0, modality="pacbio_hifi",
+            seq="ACGT" * 20, quals=[40] * 80,
+            ref_start=4, ref_end=84, strand=1,
+            cigar=[("=", 80)], ref_positions=list(range(4, 84)), mapq=60,
+        )
+        combined = os.path.join(d, "both.sorted.bam")
+        write_bam([short, long], combined, references=refs,
+                  contig_names={0: "chr21"})
+
+        with pysam.AlignmentFile(combined, "rb") as bam:
+            rgs = {rg["ID"] for rg in bam.header.get("RG", [])}
+            assert rgs == {"illumina", "pacbio_hifi"}, rgs
+            tags = {(a.get_tag("RG"), a.get_tag("XM")) for a in bam.fetch(until_eof=True)}
+            assert tags == {("illumina", "illumina"), ("pacbio_hifi", "pacbio_hifi")}, tags
+
+        def _aln(rec: ReadRecord):
+            return SimpleNamespace(
+                read_id=rec.read_id,
+                records=[AlignmentRecord(
+                    read_id=rec.read_id, read_len=len(rec.seq),
+                    ref_id=rec.ref_id, ref_start=rec.ref_start,
+                    ref_end=rec.ref_end, strand=rec.strand, mapq=rec.mapq,
+                    cigar=list(rec.cigar), is_mapped=True, is_primary=True,
+                )],
+            )
+
+        paths = write_alignments_split(
+            [_aln(short), _aln(long)], [short, long],
+            os.path.join(d, "split.sorted.bam"),
+            references=refs, contig_names={0: "chr21"},
+        )
+        assert set(paths) == {"illumina", "pacbio_hifi"}, paths
+        assert all(os.path.getsize(p) > 0 for p in paths.values())
+        print("combined short+long BAM has @RG per modality; separate BAMs also write")
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

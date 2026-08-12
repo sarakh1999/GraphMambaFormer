@@ -34,7 +34,9 @@ class AnchorSet:
     Attributes:
         read_pos: start offset in the read (read orientation).
         ref_pos: start offset on the forward reference.
-        length: exact-match length of the anchor.
+        length: seed span in bases (exact-match length for contiguous indices;
+            full spaced-pattern span for fuzzy seeds, which may include
+            don't-care mismatches).
         strand: ``+1`` or ``-1`` per anchor.
         node_id: pangenome graph node containing ``ref_pos`` (``-1`` if unknown).
         source: index into :data:`SEEDING_SOURCES` recording which index emitted
@@ -373,6 +375,9 @@ class ReadAlignments:
     anchors: AnchorSet
     chains: list[Chain] = field(default_factory=list)
     records: list[AlignmentRecord] = field(default_factory=list)
+    #: Per-read slices of enabled multi-task head outputs. Keys remain the
+    #: configured head names; values are detached NumPy arrays.
+    signals: dict[str, np.ndarray] = field(default_factory=dict)
 
     def __iter__(self) -> Iterator[AlignmentRecord]:
         return iter(self.records)

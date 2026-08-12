@@ -29,7 +29,7 @@ from typing import Optional, Sequence
 import numpy as np
 
 from .export import read_bam, read_gfa
-from .formats import read_reads, validate_modality
+from .formats import read_paired_fastq, read_reads, validate_modality
 from .reference_build import pangenome_graph_batch
 from .synthetic import ReadRecord
 
@@ -214,6 +214,7 @@ def load_real_reads(
     max_reads: Optional[int] = None,
     reference: Optional[RealReference] = None,
     require_truth: bool = False,
+    layout: str = "auto",
 ) -> tuple[list[ReadRecord], bool]:
     """Load real reads, returning ``(records, has_truth)``.
 
@@ -221,13 +222,19 @@ def load_real_reads(
       ``ref_start``/``ref_end``/``cigar``/``mapq`` (supervision), shifted into
       the reference window when ``reference.offset`` is set. **Required for
       training.**
-    * ``reads`` — FASTQ(.gz)/BAM files for inference. No locus truth, so
+    * ``reads`` — FASTQ(.gz)/BAM files for inference. Two Illumina FASTQs are
+      auto-detected as paired R1/R2; single FASTQ/BAM remains single-end.
+      ``layout`` can force ``single`` or ``paired``.
+      No locus truth, so
       ``has_truth`` is ``False`` and only end-to-end alignment (not per-head
       loss) is meaningful.
 
-    Read ids are made unique (mates aligned single-end) by suffixing an index.
+    Paired mates are independently aligned model rows but retain fragment
+    metadata for paired BAM/SAM output. Long reads remain single-end.
     """
     modality = validate_modality(modality)
+    if layout not in {"auto", "single", "paired"}:
+        raise ValueError("layout must be auto, single, or paired")
     offset = reference.offset if reference else 0
     window_len = reference.length if reference else None
     ref_id = reference.ref_id if reference else 0
@@ -252,14 +259,32 @@ def load_real_reads(
                 break
         has_truth = True
     elif reads:
-        for p in reads:
+        paths = list(reads)
+        for p in paths:
             if not os.path.exists(p):
                 raise FileNotFoundError(f"reads file not found: {p}")
-            batch = read_reads(p, modality=modality)
-            records.extend(batch)
-            if max_reads and len(records) >= max_reads:
+        fastq = lambda p: p.lower().endswith(  # noqa: E731
+            (".fastq", ".fq", ".fastq.gz", ".fq.gz")
+        )
+        paired = layout == "paired" or (
+            layout == "auto" and modality == "illumina"
+            and len(paths) == 2 and all(fastq(p) for p in paths)
+        )
+        if paired:
+            if len(paths) != 2 or not all(fastq(p) for p in paths):
+                raise ValueError(
+                    "paired layout needs exactly two FASTQ files: R1 then R2"
+                )
+            records = read_paired_fastq(paths[0], paths[1], modality=modality)
+            if max_reads:
                 records = records[:max_reads]
-                break
+        else:
+            for p in paths:
+                batch = read_reads(p, modality=modality)
+                records.extend(batch)
+                if max_reads and len(records) >= max_reads:
+                    records = records[:max_reads]
+                    break
     else:
         raise ValueError("provide either truth_bam= (training/eval) or reads= (inference)")
 
@@ -269,8 +294,14 @@ def load_real_reads(
             "(an aligned BAM/SAM/CRAM). FASTQ-only reads carry no locus labels."
         )
 
-    for i, rec in enumerate(records):
-        rec.read_id = f"{rec.read_id}#{i}"
+    # Preserve already-unique IDs (including pair/1 and pair/2). Only suffix
+    # collisions, common when multiple single-end files reuse read names.
+    seen: dict[str, int] = {}
+    for rec in records:
+        count = seen.get(rec.read_id, 0)
+        seen[rec.read_id] = count + 1
+        if count:
+            rec.read_id = f"{rec.read_id}#{count}"
     return records, has_truth
 
 

@@ -286,8 +286,8 @@ def audit_spec_contradictions(audit: Audit) -> None:
 
     print(
         "\n  Stage count: the pipeline is advertised as 7 stages (seed, chain,\n"
-        "  extend, score, post, repeat, predict). Stages 1-5 are implemented;\n"
-        "  6-7 are unbuilt, so docstrings claim 5, not 7."
+        "  extend, score, post, repeat, predict). All seven now have callable\n"
+        "  implementations; Stages 5-7 require explicit versioned resources."
     )
 
 
@@ -354,14 +354,14 @@ CATALOGUE: dict[str, list[Feature]] = {
         Feature("SplitAlignmentDetector", "partial", "secondary chains, no explicit detector"),
     ],
     "Specialized Alignment (10)": [
-        Feature("RepeatResolver", "no", "-"),
-        Feature("HLAAligner", "no", "-"),
-        Feature("MultiReferenceIntegrator", "no", "-"),
-        Feature("PopulationAwareScorer", "no", "-"),
-        Feature("CoordinateLiftover", "no", "-"),
+        Feature("RepeatResolver", "yes", "alignment/specialized.py"),
+        Feature("HLAAligner", "yes", "alignment/specialized.py"),
+        Feature("MultiReferenceIntegrator", "yes", "alignment/postprocessing.py"),
+        Feature("PopulationAwareScorer", "yes", "alignment/postprocessing.py"),
+        Feature("CoordinateLiftover", "yes", "alignment/postprocessing.py"),
         Feature("PairedEndRescue", "no", "-"),
-        Feature("ReadCorrector", "no", "-"),
-        Feature("PhasingCorrector", "no", "-"),
+        Feature("ReadCorrector", "yes", "alignment/postprocessing.py"),
+        Feature("PhasingCorrector", "partial", "read-backed phasing in alignment/predictions.py"),
         Feature("SpliceAligner", "no", "-"),
         Feature("TranslatedGraphAligner", "no", "-"),
     ],
@@ -372,7 +372,7 @@ CATALOGUE: dict[str, list[Feature]] = {
                   "CopyNumberHead", "SomaticMutationHead", "PGxHead")
     ],
     "Predictive Genomics (4)": [
-        Feature("PredictiveGenomicsEngine", "no", "per-read heads exist; no aggregation"),
+        Feature("PredictiveGenomicsEngine", "yes", "alignment/end_to_end.py"),
         Feature("GenomePredictor (3-pass)", "no", "-"),
         Feature("GenomicReport (VCF 4.3 / JSON)", "no", "-"),
         Feature("Clinical Region Database (86 regions)", "no", "-"),
@@ -381,10 +381,10 @@ CATALOGUE: dict[str, list[Feature]] = {
         Feature("C Fast Aligner", "no", "-"),
         Feature("Two-Pass Architecture", "partial", "Python fast path"),
         Feature("CUDABatchAligner (SW RawKernel)", "yes", "accel/cuda_kernels.py"),
-        Feature("GPUWavefrontAligner", "no", "CPU WFA only"),
+        Feature("GPUWavefrontAligner", "yes", "accel/cuda_kernels.py"),
         Feature("GPUKmerIndex", "yes", "alignment/seeding.py"),
         Feature("GPU DP Chaining", "yes", "accel/cuda_kernels.py"),
-        Feature("SIMDAligner (SSE2/AVX2)", "no", "-"),
+        Feature("SIMDAligner (SSE2/AVX2)", "yes", "accel/simd_sw.py"),
         Feature("CuPy Acceleration", "yes", "accel/backend.py:array_namespace"),
         Feature("Triton SSD Scan", "partial", "delegates to mamba_ssm; no own kernel"),
         Feature("Triton Fused FFN", "yes", "accel/triton_ops.py"),
@@ -470,7 +470,7 @@ def main() -> int:
     print(
         "\nThe conformance checks are the contract: every number the architecture\n"
         "states for an implemented component is asserted above. Coverage gaps are\n"
-        "unbuilt scope (Stages 6-7, specialized aligners, training infrastructure),\n"
+        "adjacent catalogue scope (specialized modalities, training infrastructure),\n"
         "not deviations in what exists."
     )
     return 1 if audit.failed else 0

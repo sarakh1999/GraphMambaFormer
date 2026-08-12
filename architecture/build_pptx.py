@@ -592,7 +592,7 @@ FOR each read r:
             ["gpu_kmer", "same as minimizer", "CuPy binary-search lookup"],
         ],
         col_widths=[Inches(2.2), Inches(4.0), Inches(5.9)],
-        note='Default modes: ("smem","minimizer") · both strands · merge slack=4 · max_anchors=5000',
+        note='Default modes: ("smem","minimizer","fuzzy") · both strands · merge slack=4 · max_anchors=5000',
         font_size=11,
     )
 

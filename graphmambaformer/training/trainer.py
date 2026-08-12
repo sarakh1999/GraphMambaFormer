@@ -25,7 +25,12 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 
-from ..accel import AccelContext
+from ..accel import (
+    AccelContext,
+    Prefetcher,
+    configure_torch_threads,
+    default_worker_count,
+)
 from ..config import AccelConfig, LossConfig
 from ..device import resolve_device_ids, unwrap_model, wrap_data_parallel
 from ..losses import GraphMambaLoss
@@ -112,6 +117,20 @@ class Trainer:
 
         self.accel = accel or AccelContext(AccelConfig())
         self.device = self.accel.caps.device
+
+        # Size the host thread pools once, so the CPU-bound stages that feed the
+        # GPU (seeding/chaining/supervision) use every core instead of one.
+        if getattr(self.accel.cfg, "set_threads", True):
+            info = configure_torch_threads(
+                self.device.type, workers=self.accel.cfg.num_workers
+            )
+            if self.verbose and not info.get("skipped"):
+                print(f"host threads: torch={info.get('num_threads')} "
+                      f"(cores={info.get('requested_cores')})")
+        # How far ahead to build batches, and how many CPU workers feed the GPU.
+        self._feed_workers = default_worker_count(self.accel.cfg.num_workers)
+        self._prefetch = int(getattr(self.accel.cfg, "prefetch", 0))
+
         self.device_ids = resolve_device_ids(self.cfg.devices, primary=self.device)
         if self.device_ids and self.device.type in ("cuda", "xpu"):
             # Primary compute device is the first id in the multi-GPU list.
@@ -121,7 +140,17 @@ class Trainer:
 
         model = model.to(self.device)
         self.model = wrap_data_parallel(model, self.device_ids)
+        # Keep the true core module for the scoring heads / checkpoints; it must
+        # stay un-compiled so attribute access and state_dict keys are stable.
         self.raw_model = unwrap_model(self.model)
+        # torch.compile fuses the encoder/mamba/mapping forward. Skipped on MPS
+        # and under DataParallel (compiled replicas are fragile); opt-in via
+        # AccelConfig.compile. The heads still call the eager ``raw_model``.
+        if getattr(self.accel.cfg, "compile", False) and len(self.device_ids) <= 1:
+            compiled = self.accel.compile(self.model)
+            if compiled is not self.model and self.verbose:
+                print(f"torch.compile: on (mode={self.accel.cfg.compile_mode})")
+            self.model = compiled
 
         self.criterion = GraphMambaLoss(loss_cfg or LossConfig()).to(self.device)
         self.builder = TargetBuilder(pipeline, model=self.raw_model)
@@ -176,6 +205,25 @@ class Trainer:
         )
         return outputs, seed_scores, chain_scores
 
+    def _feed(self, batches: Sequence[tuple]):
+        """Yield ``(supervision_on_device, reference)`` with look-ahead.
+
+        The classical stages that build supervision run on the host every step,
+        so building the *next* batch on a background thread while the GPU is busy
+        with the current one is what keeps the accelerator from idling. The heavy
+        seeding/chaining runs in the worker; only the (cheap, ordered) device
+        transfer happens on the main thread, which keeps CUDA calls serialized.
+        """
+        def build(item):
+            reads, reference = item
+            return self.builder.build(reads, reference)
+
+        feed = Prefetcher(
+            build, list(batches), depth=self._prefetch, workers=self._feed_workers
+        )
+        for sup, item in feed:
+            yield sup.to(self.device), item[1]
+
     def _lr_at(self, step: int, total: int) -> float:
         """Linear warmup then cosine decay."""
         warmup = max(1, int(total * self.cfg.warmup_frac))
@@ -197,8 +245,7 @@ class Trainer:
         losses: list[float] = []
         started = time.time()
 
-        for reads, reference in batches:
-            sup = self.builder.build(reads, reference).to(self.device)
+        for sup, reference in self._feed(batches):
             lr = self._lr_at(self._step, total_steps)
             for group in self.optimizer.param_groups:
                 group["lr"] = lr
@@ -263,8 +310,7 @@ class Trainer:
         all_mapq, all_correct = [], []
         n_chain_scored = 0
 
-        for reads, reference in batches:
-            sup = self.builder.build(reads, reference).to(self.device)
+        for sup, reference in self._feed(batches):
             with self.accel.autocast():
                 outputs, seed_scores, chain_scores = self._forward(sup, reference)
                 loss = self.criterion(

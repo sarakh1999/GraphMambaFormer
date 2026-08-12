@@ -1,4 +1,4 @@
-"""The alignment pipeline: seed -> chain -> extend -> score -> post.
+"""The seven-stage alignment and predictive-genomics pipeline.
 
 Stages 1-3 are classical, array-programmed algorithms (exact-match seeding,
 affine-gap anchor chaining, banded affine DP); Stage 4 is the neural scoring
@@ -7,15 +7,22 @@ re-rank chains, and calibrate MAPQ. :func:`build_pipeline` selects the pipeline
 mode — ``"hybrid"`` (accuracy, the default), ``"fast"`` (throughput), or
 ``"two_pass"`` (fast path plus a neural rescue for the hard tail).
 
-Stages 1-5 of the architecture's seven are implemented here. Stage 6 (repeat /
-HLA resolution) and Stage 7 (the predictive-genomics aggregation that turns
-per-read multi-task outputs into a sample-level VCF and report) are not built
-yet; the per-read heads those stages consume do exist, in
-:mod:`graphmambaformer.heads.multitask_heads`.
+Stages 5-7 are resource-driven: post-processing, specialized Repeat/HLA
+resolution, and sample-level predictive aggregation. :class:`SevenStagePipeline`
+orchestrates all stages while the individual algorithms remain independently
+testable.
 """
 
 from .chaining import AffineChainer, ChainingContext, GraphDistanceOracle
 from .extension import ExtensionEngine, WavefrontAligner, banded_affine_sw_batch
+from .end_to_end import (
+    PredictionEvidence,
+    ReadStageResult,
+    SevenStagePipeline,
+    SevenStageResources,
+    SevenStageResult,
+    SpecializedEvidence,
+)
 from .pipeline import (
     AlignmentPipeline,
     FastAlignmentPipeline,
@@ -27,6 +34,23 @@ from .pipeline import (
     build_pipeline,
 )
 from .scoring import NeuralScorer, ScoredBatch, chain_features, encode_read_batch
+from .postprocessing import (
+    CoordinateLiftover,
+    LiftoverBlock,
+    MultiReferenceIntegrator,
+    PopulationAwareMAPQ,
+    ReadCorrector,
+)
+from .predictions import (
+    AncestryPainter,
+    ClinicalRegion,
+    ClinicalRegionFlagger,
+    HaplotypePhaser,
+    PGxStarAlleleCaller,
+    StarAlleleDefinition,
+    VariantGenotyper,
+    VariantSite,
+)
 from .seeding import (
     FMIndex,
     MinimizerIndex,
@@ -47,6 +71,15 @@ from .types import (
     merge_cigar,
     run_length_encode,
     source_id,
+)
+from .specialized import (
+    DiagnosticSite,
+    DiploidMHCTyper,
+    HLAAllele,
+    HLAAlleleAligner,
+    ParalogDisambiguator,
+    RepeatFamilyResolver,
+    RepeatLocus,
 )
 
 __all__ = [
@@ -82,6 +115,36 @@ __all__ = [
     "ScoredBatch",
     "chain_features",
     "encode_read_batch",
+    # stage 5
+    "ReadCorrector",
+    "PopulationAwareMAPQ",
+    "LiftoverBlock",
+    "CoordinateLiftover",
+    "MultiReferenceIntegrator",
+    # stage 6
+    "RepeatLocus",
+    "RepeatFamilyResolver",
+    "DiagnosticSite",
+    "ParalogDisambiguator",
+    "HLAAllele",
+    "HLAAlleleAligner",
+    "DiploidMHCTyper",
+    # stage 7
+    "VariantSite",
+    "VariantGenotyper",
+    "HaplotypePhaser",
+    "AncestryPainter",
+    "ClinicalRegion",
+    "ClinicalRegionFlagger",
+    "StarAlleleDefinition",
+    "PGxStarAlleleCaller",
+    # seven-stage orchestration
+    "PredictionEvidence",
+    "SpecializedEvidence",
+    "SevenStageResources",
+    "ReadStageResult",
+    "SevenStageResult",
+    "SevenStagePipeline",
     # pipeline
     "AlignmentPipeline",
     "HybridAlignmentPipeline",

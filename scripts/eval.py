@@ -212,7 +212,7 @@ def build_real_eval(args, pipeline, model_cfg):
         truth_bam=args.truth_bam, reads=args.reads_files or None,
         modality=args.modality, region=args.region,
         max_reads=args.max_reads or None, reference=anchor_ref,
-        require_truth=False,
+        require_truth=False, layout=args.read_layout,
     )
     if not reads:
         sys.exit("ERROR: no reads to evaluate (check --truth-bam/--reads-file/--region)")
@@ -247,7 +247,10 @@ def main() -> int:
     p.add_argument("--truth-bam", default=None,
                    help="aligned truth BAM/SAM/CRAM (enables locus/MAPQ metrics)")
     p.add_argument("--reads-file", dest="reads_files", action="append", default=None,
-                   help="FASTQ/BAM reads for inference (predicted BAM only)")
+                   help="FASTQ/BAM reads; for Illumina repeat R1 then R2")
+    p.add_argument("--read-layout", default="auto",
+                   choices=("auto", "single", "paired"),
+                   help="auto pairs two Illumina FASTQs; long reads stay single")
     p.add_argument("--region", default=None,
                    help="samtools-style window, e.g. chr21:5000000-6000000")
     p.add_argument("--contig", default=None)
@@ -265,6 +268,15 @@ def main() -> int:
     p.add_argument("--d-model", type=int, default=64,
                    help="must match the checkpoint's d_model when loading weights")
     p.add_argument("--device", default=None)
+    p.add_argument("--require-gpu", action="store_true",
+                   help="hard-fail instead of silently running on CPU")
+    p.add_argument("--workers", type=int, default=0,
+                   help="host worker threads for seeding/chaining + prefetch "
+                        "(0 = all CPU cores)")
+    p.add_argument("--prefetch", type=int, default=2,
+                   help="batches to build ahead on background threads (0 = off)")
+    p.add_argument("--compile", dest="compile", action="store_true",
+                   help="torch.compile the model forward (CUDA/XPU)")
     p.add_argument("--out", default="data/eval_runs/latest")
     p.add_argument("--no-bam", action="store_true",
                    help="skip writing predicted BAM/SAM")
@@ -300,8 +312,34 @@ def main() -> int:
     elif args.mode != "fast":
         print("note: no --checkpoint; hybrid/two_pass degrade to classical scoring")
 
+    try:
+        accel = AccelContext(AccelConfig(
+            device=args.device,
+            num_workers=args.workers,
+            prefetch=args.prefetch,
+            compile=args.compile,
+        ))
+    except RuntimeError as exc:
+        sys.exit(f"ERROR: {exc}")
+    print(f"device: {accel.summary()}")
+    if accel.caps.device.type == "cpu":
+        cuda_built = bool(getattr(torch.version, "cuda", None))
+        reason = ("this torch build has no CUDA support (CPU-only wheel)"
+                  if not cuda_built else
+                  "CUDA is built into torch but no GPU is visible "
+                  "(driver missing or container started without --gpus)")
+        banner = ("\n" + "!" * 74 +
+                  "\n! WARNING: running on CPU — the GPU will show 0% utilisation.\n"
+                  f"!   reason: {reason}.\n"
+                  "!   fix: install a CUDA torch wheel and pass `--device cuda`.\n" +
+                  "!" * 74 + "\n")
+        if args.require_gpu:
+            sys.exit(banner + "ERROR: --require-gpu was set but no GPU is usable.")
+        print(banner)
     pipeline = build_pipeline(
-        PipelineConfig(mode=args.mode, batch_size=args.batch_size), model=model,
+        PipelineConfig(mode=args.mode, batch_size=args.batch_size),
+        model=model,
+        accel=accel,
     )
 
     if args.data == "real":
@@ -311,11 +349,6 @@ def main() -> int:
         per_mode = build_synthetic_eval(args, pipeline, model_cfg)
         split_tag = args.split
 
-    try:
-        accel = AccelContext(AccelConfig(device=args.device))
-    except RuntimeError as exc:
-        sys.exit(f"ERROR: {exc}")
-    print(f"device: {accel.summary()}")
     trainer = Trainer(
         model, pipeline,
         cfg=TrainConfig(out_dir=args.out, save_checkpoint=False,

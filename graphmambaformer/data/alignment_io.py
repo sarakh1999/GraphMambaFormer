@@ -28,6 +28,7 @@ __all__ = [
     "alignment_to_read_record",
     "alignments_to_records",
     "write_alignments",
+    "write_alignments_split",
 ]
 
 
@@ -56,6 +57,7 @@ def alignment_to_read_record(
     seq: str,
     quals: Optional[Sequence[int]] = None,
     modality: str = "pacbio_hifi",
+    source=None,
 ) -> ReadRecord:
     """Turn one :class:`AlignmentRecord` plus its read into a :class:`ReadRecord`.
 
@@ -67,11 +69,21 @@ def alignment_to_read_record(
     if len(quals) < len(seq):
         quals = quals + [0] * (len(seq) - len(quals))
 
+    pair_fields = {
+        name: getattr(source, name, default)
+        for name, default in (
+            ("pair_id", None), ("mate_index", 0), ("mate_ref_id", -1),
+            ("mate_ref_start", -1), ("mate_strand", 1),
+            ("template_length", 0), ("proper_pair", False),
+        )
+    }
+
     if not record.is_mapped:
         return ReadRecord(
             read_id=record.read_id, ref_id=-1, modality=modality,
             seq=seq, quals=quals[: len(seq)], ref_start=0, ref_end=0, strand=1,
             cigar=[], ref_positions=[-1] * len(seq), mapq=0, edge_case="unmapped",
+            **pair_fields,
         )
 
     cigar = list(record.cigar)
@@ -90,7 +102,38 @@ def alignment_to_read_record(
         supplementary={"is_primary": bool(record.is_primary)}
         if not record.is_primary
         else None,
+        **pair_fields,
     )
+
+
+def _synchronize_pairs(records: Sequence[ReadRecord]) -> None:
+    """Fill mate coordinates/TLEN from independently aligned R1/R2 records."""
+    pairs: dict[str, dict[int, ReadRecord]] = {}
+    for rec in records:
+        if rec.pair_id and rec.mate_index in (1, 2) and rec.supplementary is None:
+            pairs.setdefault(rec.pair_id, {})[rec.mate_index] = rec
+
+    for mates in pairs.values():
+        if 1 not in mates or 2 not in mates:
+            continue
+        r1, r2 = mates[1], mates[2]
+        mapped1 = r1.ref_id >= 0 and bool(r1.cigar)
+        mapped2 = r2.ref_id >= 0 and bool(r2.cigar)
+        for rec, mate, mate_mapped in ((r1, r2, mapped2), (r2, r1, mapped1)):
+            rec.mate_ref_id = mate.ref_id if mate_mapped else -1
+            rec.mate_ref_start = mate.ref_start if mate_mapped else -1
+            rec.mate_strand = mate.strand
+        same_ref = mapped1 and mapped2 and r1.ref_id == r2.ref_id
+        # A conservative proper-pair definition; no library insert-size model
+        # is assumed, so orientation and same-contig mapping are required.
+        proper = same_ref and r1.strand != r2.strand
+        r1.proper_pair = r2.proper_pair = proper
+        if same_ref:
+            left = min(r1.ref_start, r2.ref_start)
+            right = max(r1.ref_end, r2.ref_end)
+            span = max(0, right - left)
+            r1.template_length = span if r1.ref_start <= r2.ref_start else -span
+            r2.template_length = -r1.template_length
 
 
 def _read_index(reads: Sequence) -> tuple[dict[str, object], list[object]]:
@@ -136,7 +179,11 @@ def alignments_to_records(
         for record in records:
             if record is None:
                 continue
-            out.append(alignment_to_read_record(record, seq, quals, mod))
+            out.append(alignment_to_read_record(
+                record, seq, quals, mod,
+                source=None if isinstance(source, str) else source,
+            ))
+    _synchronize_pairs(out)
     return out
 
 
@@ -157,10 +204,29 @@ def write_alignments(
     ``contig_names`` maps ``ref_id`` to the ``@SQ`` name to write, so aligning
     against a real reference emits ``chr21`` (matching the caller's FASTA)
     instead of the synthetic default ``ref0``.
+
+    Mixed short + long records are fine in one BAM: each modality becomes its
+    own ``@RG`` (see :func:`write_bam`). Prefer :func:`write_alignments_split`
+    only when a downstream caller needs homogeneous BAMs.
     """
     records = alignments_to_records(
         results, reads, modality=modality, include_secondary=include_secondary
     )
+    return _write_records(
+        records, path,
+        references=references,
+        reference_fasta=reference_fasta,
+        contig_names=contig_names,
+    )
+
+
+def _write_records(
+    records: Sequence,
+    path: str,
+    references: Optional[dict] = None,
+    reference_fasta: Optional[str] = None,
+    contig_names: Optional[dict] = None,
+) -> str:
     low = path.lower()
     if low.endswith(".cram"):
         if not reference_fasta:
@@ -180,3 +246,49 @@ def write_alignments(
         f"unsupported alignment output format: {path}. "
         "Expected .bam / .ubam / .sam / .cram."
     )
+
+
+def write_alignments_split(
+    results: Iterable,
+    reads: Sequence,
+    path_stem: str,
+    references: Optional[dict] = None,
+    reference_fasta: Optional[str] = None,
+    modality: str = "pacbio_hifi",
+    include_secondary: bool = False,
+    contig_names: Optional[dict] = None,
+    ext: str = ".bam",
+) -> dict[str, str]:
+    """Write one BAM/SAM/CRAM per modality (fallback when a combined file is unwanted).
+
+    ``path_stem`` may be ``out.sorted`` or ``out.sorted.bam``; the modality is
+    inserted before the final extension, e.g. ``out.sorted.illumina.bam``.
+    Returns ``{modality: path}``.
+    """
+    records = alignments_to_records(
+        results, reads, modality=modality, include_secondary=include_secondary
+    )
+    if not ext.startswith("."):
+        ext = "." + ext
+    stem = path_stem
+    low = stem.lower()
+    for suffix in (".bam", ".ubam", ".sam", ".cram"):
+        if low.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            ext = suffix
+            break
+
+    by_mod: dict[str, list] = {}
+    for rec in records:
+        by_mod.setdefault(rec.modality or modality, []).append(rec)
+
+    written: dict[str, str] = {}
+    for mod, group in by_mod.items():
+        out_path = f"{stem}.{mod}{ext}"
+        written[mod] = _write_records(
+            group, out_path,
+            references=references,
+            reference_fasta=reference_fasta,
+            contig_names=contig_names,
+        )
+    return written

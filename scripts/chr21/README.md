@@ -76,6 +76,11 @@ chr21 reads and writes a sorted+indexed BAM whose `@SQ` name is `chr21`, so
 DeepVariant/hap.py accept it exactly like the Giraffe BAM. It runs entirely in
 Python via `pysam` — **no Docker required** for this arm.
 
+Short and long reads can be aligned in **one command**. When both are present,
+the default is a **single combined BAM** with per-modality `@RG` / `XM` tags
+(Illumina vs PacBio HiFi / ONT). Use `OURS_BAM_MODE=separate` if a caller needs
+homogeneous BAMs.
+
 ```bash
 # run our aligner (uses the repo .venv if present)
 ./scripts/chr21/map_ours.sh
@@ -83,17 +88,45 @@ Python via `pysam` — **no Docker required** for this arm.
 # quick partial pass while iterating
 OURS_MAX_READS=50000 OURS_MODE=fast ./scripts/chr21/map_ours.sh
 
+# short + long in one command -> one combined BAM
+OURS_LONG_READS=/path/to/hifi.fastq.gz ./scripts/chr21/map_ours.sh
+
+# same, but write separate BAMs per modality
+OURS_LONG_READS=/path/to/hifi.fastq.gz OURS_BAM_MODE=separate ./scripts/chr21/map_ours.sh
+
+# faster: reuse Stage-1 index across separate R1 / R2 / long runs
+OURS_INDEX_CACHE=data/chr21/HG002/index_cache OURS_WORKERS=16 \
+  OURS_BATCH_SIZE=128 ./scripts/chr21/map_ours.sh
+
 # or plug in an externally produced BAM
 OURS_BAM=/path/to/ours.sorted.bam ./scripts/chr21/map_ours.sh
 ```
 
+Direct Python equivalent:
+
+```bash
+python scripts/chr21/align_ours.py \
+  --ref data/chr21/HG002/ref/GRCh38.chr21.fa \
+  --reads data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \
+  --reads data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz \
+  --long-reads /path/to/hifi.fastq.gz \
+  --out data/chr21/HG002/bam/HG002.chr21.ours.sorted.bam \
+  --bam-mode combined \
+  --index-cache data/chr21/HG002/index_cache \
+  --workers 16 --batch-size 128
+```
+
 Knobs: `OURS_MODE=fast|hybrid|two_pass` (default `fast`, fully classical, needs
 no trained model), `OURS_MAX_READS=N` (cap reads for speed), `OURS_FORCE=1`
-(rebuild), `PYTHON=...` (interpreter).
+(rebuild), `OURS_LONG_READS` / `HIFI_FASTQ` (optional long reads),
+`OURS_LONG_MODALITY=pacbio_hifi|ont`, `OURS_BAM_MODE=combined|separate|auto`,
+`OURS_INDEX_CACHE=DIR` (reuse Stage-1 index across separate-file runs),
+`OURS_WORKERS` / `GMF_NUM_WORKERS`, `OURS_BATCH_SIZE`, `OURS_DEVICE`,
+`OURS_SAM=1` (also write companion SAM; off by default), `PYTHON=...`.
 
-> The pipeline is a correct pure-Python reference implementation, not throughput
-> optimized. `hybrid`/`two_pass` only add neural re-ranking when a model with
-> alignment heads is supplied; without one they degrade to the classical path.
+> Companion SAM is opt-in now (`--sam` / `OURS_SAM=1`) so default runs stay
+> I/O-light. Combined short+long builds the index once; separate invocations
+> should set `OURS_INDEX_CACHE` so they do not rebuild it each time.
 
 ### Compare the two arms
 

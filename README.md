@@ -23,6 +23,10 @@ Current development focus: **long reads** — PacBio HiFi and ONT.
 | **Stage 2** · Chaining (affine-gap DP + graph bonus) | `graphmambaformer/alignment/chaining.py` |
 | **Stage 3** · DP extension (banded affine SW + WFA) | `graphmambaformer/alignment/extension.py` |
 | **Stage 4** · Neural scoring bridge | `graphmambaformer/alignment/scoring.py` |
+| **Stage 5** · Post-processing / liftover / concordance | `graphmambaformer/alignment/postprocessing.py` |
+| **Stage 6** · Repeat, paralog, and HLA/MHC resolution | `graphmambaformer/alignment/specialized.py` |
+| **Stage 7** · Genotyping, phasing, ancestry, clinical, PGx | `graphmambaformer/alignment/predictions.py` |
+| Seven-stage orchestration | `graphmambaformer/alignment/end_to_end.py` |
 | Alignment pipeline (hybrid / fast / two-pass) | `graphmambaformer/alignment/pipeline.py` |
 | Losses (alignment + Kendall multi-task) | `graphmambaformer/losses/alignment_loss.py` |
 | Training / validation / behaviour probes / plots | `graphmambaformer/training/`, `scripts/train.py` |
@@ -90,20 +94,25 @@ independently.
 
 ## Alignment pipeline
 
-Five stages, with the neural core woven into the classical ones rather than
+Seven stages, with the neural core woven into the classical ones rather than
 bolted on the end:
 
 | Stage | What it does | Key implementation notes |
 | --- | --- | --- |
 | **1 · Seeding** | reference → candidate anchors | minimizer sketch, FM-index SMEMs, De Bruijn, spaced/fuzzy seeds, multiplex-DBG, GPU k-mer table. Several modes can run together; anchors are merged and collapsed on shared diagonals. |
 | **2 · Chaining** | anchors → collinear chains | minimap2-style affine-gap DP, plus a graph-hop bonus and a reference-path bias from the pangenome graph. Batched DP on GPU. |
-| **3 · Extension** | chains → base-level CIGARs | banded affine Smith-Waterman (band widened by the chain's own diagonal spread, so a chain containing a large indel aligns through it) or WFA for low-divergence pairs. |
+| **3 · Extension** | chains → base-level CIGARs | banded affine Smith-Waterman (CUDA RawKernel, optional AVX2/SSE2 scoring, portable traceback) or WFA for low-divergence pairs (CUDA distance kernel with verified CPU traceback/fallback). |
 | **4 · Scoring** | neural refinement | anchor pruning **before** chaining, chain re-ranking **after** the DP, then MAPQ and a rescue locus for unplaced reads. |
-| **5 · Post** | records | primary/secondary selection, soft clips, `AlignmentRecord` per read. |
+| **5 · Post** | evidence-preserving records | quality-gated read correction, Bayesian population MAPQ, exact block ALT liftover, multi-reference concordance. |
+| **6 · Repeat/HLA** | specialized loci | repeat-family likelihoods, diagnostic-site paralog resolution, allele-specific HLA alignment, diploid MHC likelihood typing. |
+| **7 · Predictions** | sample-level calls | genotype likelihoods + population imputation, read-backed phasing, Viterbi ancestry painting, clinical interval flags, definition-based PGx star alleles. |
 
 Stage ordering is deliberate: pruning before Stage 2 shrinks the DP input and
 biases anchor weights, re-ranking after Stage 2 lets the head see complete
-chains, and MAPQ comes last, once the primary/secondary margin exists.
+chains, and MAPQ comes last, once the primary/secondary margin exists. Stages
+5–7 require explicit versioned reference panels/catalogues; the strict
+`SevenStagePipeline` refuses to claim a complete run when those resources are
+missing.
 
 ### Pipeline modes
 
@@ -250,7 +259,8 @@ train/eval — that is the path you wrap in Docker and run on GPU.
 | `--reference-fasta PATH` | real | linear reference **FASTA** (GRCh38 chr21, a windowed contig, …). The `.fai` is built on demand. |
 | `--gfa PATH` | real, pangenome | pangenome **GFA** graph (real HPRC window, or `vg convert -f graph.gbz > graph.gfa`). Attaches real nodes/edges to the graph towers. |
 | `--truth-bam PATH` | real | aligned **BAM/SAM/CRAM** truth. Supplies each read's `ref_start`/`ref_end`/`cigar`/`mapq` — the supervision. **Required to train.** |
-| `--reads-file PATH` | real (inference) | **FASTQ(.gz)/BAM** reads with no truth. Eval will align + write a BAM but cannot score locus/MAPQ. Repeat for R1/R2. |
+| `--reads-file PATH` | real (inference) | **FASTQ(.gz)/BAM** reads with no truth. For Illumina, pass R1 then R2; they are paired automatically. A single ONT/PacBio file remains single-end. |
+| `--read-layout` | real | `auto` (default), `paired`, or `single`. Auto pairs exactly two Illumina FASTQs and keeps long reads single. |
 | `--region chr:start-end` | real | window the reference (and truth reads) to a manageable span. **Strongly recommended** — the pipeline is a pure-Python reference impl, so indexing a whole chromosome is slow. |
 | `--contig NAME` | real | pick a contig when the FASTA has several (default: first). |
 | `--modality` | real | `illumina` (default) / `pacbio_hifi` / `ont` / … |
@@ -332,7 +342,8 @@ PYTHONPATH=. python scripts/eval.py --data real \
     --out data/eval_runs/chr21_pangenome
 ```
 
-Inference on FASTQ reads with **no** truth (writes a predicted BAM only):
+Inference on paired Illumina FASTQ reads with **no** truth (writes paired
+BAM/SAM with R1/R2 flags, mate coordinates and TLEN):
 
 ```bash
 PYTHONPATH=. python scripts/eval.py --data real \
@@ -340,7 +351,19 @@ PYTHONPATH=. python scripts/eval.py --data real \
     --region chr21:5000000-6000000 --ref-mode linear --mode fast \
     --reads-file data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \
     --reads-file data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz \
+    --read-layout auto --modality illumina \
     --out data/eval_runs/chr21_infer
+```
+
+Single-end long reads use one file; no pairing flags are added:
+
+```bash
+PYTHONPATH=. python scripts/eval.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --reads-file sample.hifi.fastq.gz --modality pacbio_hifi \
+    --read-layout auto --ref-mode linear --mode hybrid \
+    --checkpoint data/training_runs/hg002_linear/checkpoint.pt \
+    --out data/eval_runs/hifi_single
 ```
 
 ### On GPU / in Docker

@@ -182,7 +182,7 @@ def build_real(args, pipeline, model_cfg):
         truth_bam=args.truth_bam, reads=args.reads_files or None,
         modality=args.modality, region=args.region,
         max_reads=args.max_reads or None, reference=anchor_ref,
-        require_truth=True,
+        require_truth=True, layout=args.read_layout,
     )
     if not reads:
         sys.exit("ERROR: no truth reads inside the reference window "
@@ -248,8 +248,11 @@ def main() -> int:
     p.add_argument("--truth-bam", default=None,
                    help="aligned truth BAM/SAM/CRAM (required to TRAIN on real data)")
     p.add_argument("--reads-file", dest="reads_files", action="append", default=None,
-                   help="FASTQ/BAM reads file(s); repeat for R1/R2 "
+                   help="FASTQ/BAM reads; for Illumina repeat R1 then R2 "
                         "(inference only — training needs --truth-bam)")
+    p.add_argument("--read-layout", default="auto",
+                   choices=("auto", "single", "paired"),
+                   help="auto pairs two Illumina FASTQs; long reads stay single")
     p.add_argument("--region", default=None,
                    help="samtools-style window, e.g. chr21:5000000-6000000 "
                         "(strongly recommended: the reference pipeline is pure "
@@ -273,6 +276,18 @@ def main() -> int:
     p.add_argument("--devices", default="auto",
                    help="multi-GPU device list: 'auto' (all visible CUDA/XPU "
                         "when count>1), 'all', '0,1,2', or 'none' for single-GPU")
+    p.add_argument("--require-gpu", action="store_true",
+                   help="hard-fail instead of silently training on CPU (use in "
+                        "GPU jobs so a CPU-only torch wheel is caught immediately)")
+    p.add_argument("--workers", type=int, default=0,
+                   help="host worker threads for seeding/chaining + the batch "
+                        "prefetch that keeps the GPU fed (0 = all CPU cores)")
+    p.add_argument("--prefetch", type=int, default=2,
+                   help="batches to build ahead on background threads so the GPU "
+                        "is not starved by host-side seeding (0 disables)")
+    p.add_argument("--compile", dest="compile", action="store_true",
+                   help="torch.compile the model forward (CUDA/XPU; big speed-up "
+                        "after warmup, skipped automatically on MPS)")
     p.add_argument("--patience", type=int, default=4)
     p.add_argument("--monitor", default="locus_accuracy",
                    help="early-stopping metric (falls back to -val_loss if the "
@@ -300,12 +315,18 @@ def main() -> int:
     print("=" * 74)
 
     try:
-        accel = AccelContext(AccelConfig(device=args.device))
+        accel = AccelContext(AccelConfig(
+            device=args.device,
+            num_workers=args.workers,
+            prefetch=args.prefetch,
+            compile=args.compile,
+        ))
     except RuntimeError as exc:
         sys.exit(f"ERROR: {exc}")
     print(f"device: {accel.summary()}")
     from graphmambaformer.accel import list_visible_gpus
-    for g in list_visible_gpus():
+    visible = list_visible_gpus()
+    for g in visible:
         cc = g.get("compute_capability")
         mem = g.get("total_memory_gb")
         bits = [g["name"]]
@@ -315,12 +336,37 @@ def main() -> int:
             bits.append(f"{mem} GiB")
         print(f"  gpu[{g['index']}]: {', '.join(bits)}")
 
+    # Loud guard against the #1 cause of "GPU utilisation is 0": the process is
+    # silently on the CPU (a CPU-only torch wheel, a container started without
+    # --gpus, or CUDA_VISIBLE_DEVICES="") so nothing ever reaches the device.
+    if accel.caps.device.type == "cpu":
+        cuda_built = bool(getattr(torch.version, "cuda", None))
+        reason = ("this torch build has no CUDA support (CPU-only wheel)"
+                  if not cuda_built else
+                  "CUDA is built into torch but no GPU is visible "
+                  "(driver missing, container without --gpus, or "
+                  "CUDA_VISIBLE_DEVICES is empty)")
+        banner = (
+            "\n" + "!" * 74 +
+            "\n! WARNING: running on CPU — the GPU will show 0% utilisation.\n"
+            f"!   reason: {reason}.\n"
+            "!   fix: install a CUDA torch wheel and launch with `--device cuda`\n"
+            "!        (in Docker: `docker run --gpus all ...`).\n" +
+            "!" * 74 + "\n"
+        )
+        if args.require_gpu:
+            sys.exit(banner + "ERROR: --require-gpu was set but no GPU is usable.")
+        print(banner)
+    elif args.require_gpu and accel.caps.device.type == "mps":
+        print("note: --require-gpu is satisfied by Apple MPS (not CUDA).")
+
     model_cfg = GraphMambaConfig(d_model=args.d_model)
     model = build_core_model(
         CoreModelConfig(arch="graphmamba", graphmamba=model_cfg)
     ).model
     pipeline = build_pipeline(
-        PipelineConfig(mode="hybrid", batch_size=args.batch_size), model=model
+        PipelineConfig(mode="hybrid", batch_size=args.batch_size),
+        model=model, accel=accel,
     )
 
     if args.data == "real":

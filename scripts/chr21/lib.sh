@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Mentor task: one HPRC sample × chr21
 #   Giraffe vs GraphMambaFormer  →  DeepVariant (small variants)
-#   Long-read BAM                →  Sniffles   (structural variants)
+#   Long-read BAM                →  Sniffles / longcallD (SVs; longcallD also small)
 #
 # Defaults:
 #   SAMPLE=HG002   (GIAB truth; held out of HPRC pangenome training set)

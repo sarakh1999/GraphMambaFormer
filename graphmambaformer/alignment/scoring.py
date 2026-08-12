@@ -397,8 +397,9 @@ class NeuralScorer:
 
         values = np.rint(combined * self.cfg.max_mapq)
         unmapped = np.array([not chains for chains in chains_per_read], dtype=bool)
+        values = np.clip(values, self.cfg.mapq_floor, self.cfg.max_mapq).astype(np.int32)
         values[unmapped] = 0
-        return np.clip(values, self.cfg.mapq_floor, self.cfg.max_mapq).astype(np.int32)
+        return values
 
     # -- one-shot ------------------------------------------------------------- #
     def run(

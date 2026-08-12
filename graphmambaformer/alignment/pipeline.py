@@ -28,7 +28,7 @@ from typing import Iterable, Optional, Sequence
 import numpy as np
 import torch
 
-from ..accel import AccelContext
+from ..accel import AccelContext, default_worker_count, parallel_map
 from ..config import PIPELINE_MODES, PipelineConfig
 from .chaining import AffineChainer, ChainingContext, GraphDistanceOracle
 from .extension import ExtensionEngine
@@ -205,11 +205,29 @@ class AlignmentPipeline:
         self.accel = accel or AccelContext(self.cfg.accel, device=device)
         self.device = self.accel.caps.device
 
-        self.seeder = SeedingEngine(self.cfg.seeding, device=self.device)
-        self.chainer = AffineChainer(
-            self.cfg.chaining, backend=self.accel.kernel_backend("chaining")
+        # Host-side thread budget for the CPU-bound per-read loops (Stage 1/3).
+        # Threads (not processes) so the FM-index / reference bundle are shared
+        # rather than pickled; the NumPy index queries release the GIL.
+        acfg = self.accel.cfg
+        self._stage_workers = (
+            default_worker_count(acfg.num_workers)
+            if getattr(acfg, "stage_parallel", True)
+            else 1
         )
-        self.extender = ExtensionEngine(self.cfg.extension, device=self.device)
+
+        self.seeder = SeedingEngine(
+            self.cfg.seeding, device=self.device, workers=self._stage_workers
+        )
+        self.chainer = AffineChainer(
+            self.cfg.chaining,
+            backend=self.accel.kernel_backend("chaining"),
+            workers=self._stage_workers,
+        )
+        self.extender = ExtensionEngine(
+            self.cfg.extension,
+            device=self.device,
+            backend=self.accel.kernel_backend("extension"),
+        )
 
         self.model = model
         self.scorer: Optional[NeuralScorer] = None
@@ -271,15 +289,40 @@ class AlignmentPipeline:
 
     # ---- stages ------------------------------------------------------------- #
     def seed(self, reads: Sequence[str], reference: ReferenceIndex) -> list[AnchorSet]:
-        return [self.seeder.seed_read(read, reference.bundle) for read in reads]
+        """Seed every read against the reference bundle, one thread per read.
+
+        Seeding is independent per read and dominated by NumPy index queries
+        (which release the GIL), so fanning it across the host cores is a clean
+        throughput win and keeps the GPU from waiting on Stage 1.
+        """
+        return parallel_map(
+            lambda read: self.seeder.seed_read(read, reference.bundle),
+            reads,
+            workers=self._stage_workers,
+        )
 
     def chain(
-        self, anchor_sets: Sequence[AnchorSet], reference: ReferenceIndex
+        self, anchor_sets: Sequence[AnchorSet], reference: ReferenceIndex,
+        trust_neural: Optional[Sequence[Optional[bool]]] = None,
     ) -> list[list[Chain]]:
-        ctx = reference.chaining_context
-        return self.chainer.chain_batch(
-            anchor_sets, [ctx] * len(anchor_sets), device=self.device
-        )
+        """Chain each read, optionally with a per-read AGNES trust decision.
+
+        ``trust_neural[i]`` is the Algorithm-1 decision for read ``i`` (True /
+        False / None), computed on the *full* scored anchor set before pruning.
+        """
+        base = reference.chaining_context
+        if trust_neural is None:
+            contexts: list[Optional[ChainingContext]] = [base] * len(anchor_sets)
+        else:
+            contexts = [
+                ChainingContext(
+                    oracle=base.oracle,
+                    backbone=base.backbone,
+                    trust_neural=flag,
+                )
+                for flag in trust_neural
+            ]
+        return self.chainer.chain_batch(anchor_sets, contexts, device=self.device)
 
     def extend(
         self,
@@ -291,10 +334,18 @@ class AlignmentPipeline:
         """Extend every read's chains, or return empty lists when Stage 3 is off."""
         if not self.cfg.run_extension:
             return [[] for _ in reads]
-        return [
-            self.extender.extend_chains(read, chains, anchors, reference.ref_seq)
-            for read, chains, anchors in zip(reads, chains_per_read, anchor_sets)
-        ]
+        work = list(zip(reads, chains_per_read, anchor_sets))
+        # On CUDA the batched banded-SW already runs on the device; threading the
+        # host loop there only helps the Python glue, so keep it to the CPU path
+        # where the DP itself runs on the host.
+        workers = self._stage_workers if self.device.type == "cpu" else 1
+        return parallel_map(
+            lambda item: self.extender.extend_chains(
+                item[0], item[1], item[2], reference.ref_seq
+            ),
+            work,
+            workers=workers,
+        )
 
     # ---- record assembly ---------------------------------------------------- #
     def _records(
@@ -439,10 +490,14 @@ class FastAlignmentPipeline(AlignmentPipeline):
 class HybridAlignmentPipeline(AlignmentPipeline):
     """The full accuracy path, with the neural stage woven through Stages 1-4.
 
-    Ordering matters. Anchor scoring happens *before* chaining so pruning shrinks
-    the DP input and the surviving scores bias the anchor weights; chain
-    re-ranking happens *after* the DP so the head sees complete chains; MAPQ comes
-    last, once the primary/secondary margin is known.
+    Ordering matters. Anchor scoring happens *before* chaining so the AGNES
+    confidence decision (and optional pruning) can shrink or reweight the DP
+    input; chain re-ranking happens *after* the DP so the head sees complete
+    chains; MAPQ comes last, once the primary/secondary margin is known.
+
+    With adaptive seed scoring (default), trust is decided on the *full* scored
+    anchor set before any prune: confident reads keep every seed and the DP uses
+    a logit gate; under-confident reads are pruned and chained classically.
 
     With a model that has no alignment heads (the encoder baselines) this degrades
     to the classical path rather than failing, so mode and architecture can be
@@ -490,20 +545,38 @@ class HybridAlignmentPipeline(AlignmentPipeline):
         stats.n_neural_batches = 1
 
         scorer.score_anchors(outputs, anchor_sets)
-        pruned = [scorer.prune_anchors(a) for a in anchor_sets]
-        stats.n_anchors_pruned = stats.n_anchors - sum(len(a) for a in pruned)
 
-        # Stage 2 over the surviving anchors.
-        chains_per_read = self.chain(pruned, reference)
+        # AGNES Algorithm 1: decide trust on the *full* score distribution, then
+        # either keep every seed (confident → logit-gated DP) or prune and fall
+        # back to pure geometric DP. Deciding after prune would destroy the
+        # low-score tail that defines μ_low and spuriously reopen the gate.
+        adaptive = self.cfg.chaining.adaptive_seed_scoring
+        prepared: list[AnchorSet] = []
+        trust_flags: list[Optional[bool]] = []
+        for anchors in anchor_sets:
+            if adaptive and np.isfinite(anchors.score).any():
+                trust = self.chainer.trust_neural_scores(anchors)
+                trust_flags.append(trust)
+                # Confident: keep all seeds so the logit gate can down-weight
+                # bad ones inside the DP (AGNES never drops nodes up front).
+                # Under-confident: classical prune, then ignore residual scores.
+                prepared.append(anchors if trust else scorer.prune_anchors(anchors))
+            else:
+                trust_flags.append(None)
+                prepared.append(scorer.prune_anchors(anchors))
+        stats.n_anchors_pruned = stats.n_anchors - sum(len(a) for a in prepared)
+
+        # Stage 2 over the prepared anchors, with the per-read trust decision.
+        chains_per_read = self.chain(prepared, reference, trust_neural=trust_flags)
         stats.n_chains = sum(len(c) for c in chains_per_read)
 
         # Stage 4b — re-rank, then Stage 3 extends the chains in final order.
         scorer.score_chains(
-            outputs, chains_per_read, pruned, [len(r) for r in reads], reference.backbone
+            outputs, chains_per_read, prepared, [len(r) for r in reads], reference.backbone
         )
         chains_per_read = [scorer.rerank(list(chains)) for chains in chains_per_read]
 
-        extensions = self.extend(reads, chains_per_read, pruned, reference)
+        extensions = self.extend(reads, chains_per_read, prepared, reference)
         stats.n_extended = sum(len(e) for e in extensions)
 
         # Stage 4c — MAPQ, and a proposed locus for reads placed nowhere.
@@ -516,7 +589,7 @@ class HybridAlignmentPipeline(AlignmentPipeline):
             records = self._records(
                 ids[row],
                 len(read),
-                pruned[row],
+                prepared[row],
                 chains,
                 extensions[row],
                 reference,
@@ -533,10 +606,11 @@ class HybridAlignmentPipeline(AlignmentPipeline):
                 ReadAlignments(
                     read_id=ids[row],
                     read_len=len(read),
-                    anchors=pruned[row],
+                    anchors=prepared[row],
                     chains=list(chains),
                     records=records
                     or [AlignmentRecord.unmapped(ids[row], len(read), pass_name=self.mode)],
+                    signals=_signals_for_row(outputs, row),
                 )
             )
         stats.per_pass["hybrid"] = len(reads)
@@ -568,7 +642,13 @@ class HybridAlignmentPipeline(AlignmentPipeline):
         if starts is None or len(starts) == 0:
             return None
 
-        slot = int(np.flatnonzero(np.asarray(node_ids) == node)[0]) if node_ids is not None else node
+        if node_ids is not None:
+            matches = np.flatnonzero(np.asarray(node_ids) == node)
+            if matches.size == 0:
+                return None
+            slot = int(matches[0])
+        else:
+            slot = node
         if not 0 <= slot < len(starts):
             return None
 
@@ -674,6 +754,19 @@ def _route_names(model, outputs) -> list[str]:
     if router is None:
         return ["full"] * len(outputs.read_hidden)
     return model.router.route_names(router["route"])
+
+
+def _signals_for_row(outputs, row: int) -> dict[str, np.ndarray]:
+    """Detach one read's enabled multi-task outputs for Stages 5–7."""
+
+    multitask = getattr(outputs, "multitask", None)
+    if not multitask:
+        return {}
+    signals: dict[str, np.ndarray] = {}
+    for name, value in multitask.items():
+        if isinstance(value, torch.Tensor) and value.ndim > 0 and row < value.shape[0]:
+            signals[name] = value[row].float().detach().cpu().numpy()
+    return signals
 
 
 #: Pipeline mode -> implementation. ``"hybrid"`` is the default.

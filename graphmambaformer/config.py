@@ -549,6 +549,18 @@ class AccelConfig:
     compile: bool = False
     compile_mode: str = "max-autotune"
 
+    # ---- host-side CPU parallelism ---------------------------------------- #
+    #: Worker threads for the CPU-bound stages (seeding, extension) and the
+    #: supervision/prefetch feed. 0 = auto (all cores, or ``$GMF_NUM_WORKERS``).
+    num_workers: int = 0
+    #: Fan the per-read Stage-1/Stage-3 loops out across ``num_workers`` threads.
+    stage_parallel: bool = True
+    #: How many training batches to build ahead on background threads so the GPU
+    #: is not starved by host-side seeding/chaining. 0 disables prefetch.
+    prefetch: int = 2
+    #: Size torch's intra-op / BLAS thread pools to the host core count.
+    set_threads: bool = True
+
     # Per-stage kernel override: "auto" | "torch" | "cuda_rawkernel".
     stage_backends: dict[str, str] = field(
         default_factory=lambda: {"seeding": "auto", "chaining": "auto", "extension": "auto"}
@@ -577,10 +589,12 @@ class SeedingConfig:
     deduplicated, so combining e.g. SMEM with a fuzzy spaced-seed index recovers
     anchors in regions where exact matching fails. Defaults follow the
     architecture: ``min_seed=13``, ``max_occ=200``, minimizers at ``k=15, w=10``,
-    De Bruijn at ``k=21``, MultiplexDBG over ``k=15, 21, 31``.
+    De Bruijn at ``k=21``, MultiplexDBG over ``k=15, 21, 31``, plus spaced
+    fuzzy seeds for noisy / divergent reads.
     """
 
-    modes: tuple[str, ...] = ("smem", "minimizer")
+    # Fuzzy spaced seeds recover anchors after contiguous exact k-mers break.
+    modes: tuple[str, ...] = ("smem", "minimizer", "fuzzy")
 
     # Minimizer sketch.
     kmer: int = 15
@@ -591,6 +605,7 @@ class SeedingConfig:
     max_occ: int = 200  # drop k-mers occurring more often than this (repeats)
     fm_sa_sample: int = 8  # suffix-array sampling rate
     fm_occ_sample: int = 64  # rank-checkpoint spacing
+    fm_stride: int = 5  # exact-k-mer FM-index query stride
 
     # De Bruijn / multi-k.
     dbg_kmer: int = 21
@@ -606,6 +621,21 @@ class SeedingConfig:
     # Merge anchors that lie on the same diagonal within this distance.
     merge_diagonal_slack: int = 4
 
+    def __post_init__(self) -> None:
+        if self.fm_stride <= 0:
+            raise ValueError("fm_stride must be positive")
+        pattern = self.spaced_pattern
+        if not pattern:
+            raise ValueError("spaced_pattern must be non-empty")
+        if set(pattern) - {"0", "1"}:
+            raise ValueError(
+                f"spaced_pattern must contain only '0' and '1', got {pattern!r}"
+            )
+        if "1" not in pattern:
+            raise ValueError("spaced_pattern must contain at least one '1'")
+        if pattern.count("1") > 31:
+            raise ValueError("spaced_pattern weight must be <= 31")
+
 
 @dataclass
 class ChainingConfig:
@@ -620,6 +650,11 @@ class ChainingConfig:
     ``graph_bonus`` rewards pairs whose reference nodes are close in the
     pangenome graph, and ``ref_path_bias`` additionally rewards anchors sitting
     on the graph's backbone (reference) path.
+
+    On top of the DP, ``adaptive_seed_scoring`` adds an AGNES-style confidence
+    gate: when a neural seed score is available it steers the anchor weights only
+    for reads whose seed-score distribution is confidently separated, and
+    otherwise falls back to pure length-based chaining.
     """
 
     max_lookback: int = 64  # predecessors considered per anchor
@@ -632,6 +667,33 @@ class ChainingConfig:
     graph_bonus: float = 4.0
     graph_max_hops: int = 3  # bonus decays over this many hops
     ref_path_bias: float = 1.5  # extra weight for backbone-path anchors
+
+    # AGNES-style adaptive (confidence-gated) seed scoring
+    # (Arafat et al., 2025, "AGNES", Algorithm 1). When the Stage 4 seed head has
+    # written per-anchor probabilities into ``AnchorSet.score``, the DP trusts
+    # those scores only when the read's score distribution is *decisively*
+    # separated; otherwise it falls back to pure length-based (geometric) weights.
+    # This keeps an under-confident classifier from corrupting the chain, which is
+    # exactly the regime where a fixed neural blend hurts recall in repeats and
+    # low-complexity regions.
+    adaptive_seed_scoring: bool = True
+    # τ — minimum score separation ``(μ_high - μ_low) / σ`` required to let the
+    # seed scores steer the DP. Below it, the read is chained with uniform node
+    # scores (classical DP), matching AGNES's confidence-based method selection.
+    confidence_threshold: float = 0.7
+    high_confidence_prob: float = 0.7  # p above this = a confident true seed
+    low_confidence_prob: float = 0.3  # p below this = a confident spurious seed
+    # Degenerate-anchor guards: with too few anchors the confidence metric is
+    # meaningless, and with too many the guidance is both unreliable and costly,
+    # so both extremes fall back to pure DP (AGNES lines 3-5: |V|<5 or |V|>1000).
+    min_confidence_anchors: int = 5
+    max_confidence_anchors: int = 1000
+    # Logit transform of the seed probability, ``log(p/(1-p))``, mapped to a
+    # positive, length-preserving multiplicative gate ``1 + gain * logit`` and
+    # clamped. gain scales how hard a confident seed is up-/down-weighted.
+    logit_gate_gain: float = 0.25
+    logit_gate_min: float = 0.1
+    logit_gate_max: float = 3.0
 
     # Chain selection. A single SMEM can span an entire read, so chains are
     # filtered on score rather than anchor count; raise ``min_chain_anchors``
@@ -712,9 +774,8 @@ class PipelineConfig:
 
     ``mode`` selects the pipeline implementation:
       - ``"hybrid"`` (default): :class:`HybridAlignmentPipeline`, the accuracy
-        path — seed -> chain -> extend -> score -> post. (The architecture's
-        Stages 6-7, repeat/HLA resolution and predictive-genomics aggregation,
-        are not implemented yet.)
+        path — seed -> chain -> extend -> score. Resource-driven Stages 5-7 are
+        composed around it by :class:`alignment.SevenStagePipeline`.
       - ``"fast"``: :class:`FastAlignmentPipeline`, the throughput path — the
         classical stages only, with MAPQ from the primary/secondary score
         margin and no neural forward pass at all. (The architecture's fast mode

@@ -81,9 +81,10 @@ _CHAIN_DP_SRC = r"""
 // [i - lookback, i) in parallel, then reduces to the best (score, index).
 // Anchors must be pre-sorted by reference end position.
 //
-// anchors layout: (B, A, 3) int32 -> (read_pos_end, ref_pos_end, weight)
+// anchors layout: (B, A, 3) int32 -> (read_pos_end, ref_pos_end, reserved)
 extern "C" __global__
 void chain_dp(const int* __restrict__ anchors,
+              const float* __restrict__ weights,      // (B, A)
               const int* __restrict__ n_anchors,   // (B,) valid anchors per read
               const float* __restrict__ bonus,     // (B, A, K) graph bonus, K=lookback
               const int max_anchors,
@@ -107,9 +108,9 @@ void chain_dp(const int* __restrict__ anchors,
     for (int i = 0; i < n; ++i) {
         const int qi = anchors[base + (long long)i * 3 + 0];
         const int ri = anchors[base + (long long)i * 3 + 1];
-        const int wi = anchors[base + (long long)i * 3 + 2];
+        const float wi = weights[(long long)b * max_anchors + i];
 
-        float best = (float)wi;   // start a fresh chain at i
+        float best = wi;   // start a fresh chain at i
         int best_j = -1;
 
         const int j_lo = max(0, i - lookback);
@@ -123,7 +124,7 @@ void chain_dp(const int* __restrict__ anchors,
             if (dq <= 0 || dr <= 0 || dq > max_gap || dr > max_gap) continue;
 
             // Overlap-aware anchor weight (minimap2 `alpha`).
-            const int adv = min(min(dq, dr), wi);
+            const float adv = fminf((float)min(dq, dr), wi);
             const int gap = abs(dr - dq);
 
             float penalty = 0.0f;
@@ -131,7 +132,7 @@ void chain_dp(const int* __restrict__ anchors,
                 penalty = gap_open + gap_extend * (float)gap
                         + log_coeff * log2f((float)gap + 1.0f);
             }
-            float sc = f[(long long)b * max_anchors + j] + (float)adv - penalty;
+            float sc = f[(long long)b * max_anchors + j] + adv - penalty;
             if (use_bonus) {
                 sc += bonus[((long long)b * max_anchors + i) * lookback
                             + (j - (i - lookback) >= 0 ? j - (i - lookback) : 0)];
@@ -184,9 +185,11 @@ void banded_sw(const signed char* __restrict__ query,    // (B, M)
                const signed char* __restrict__ target,   // (B, N)
                const int* __restrict__ query_len,        // (B,)
                const int* __restrict__ target_len,       // (B,)
+               const int* __restrict__ band_offset,      // (B,)
                const int max_query,
                const int max_target,
                const int half_band,
+               const int band_width,
                const float match_score,
                const float mismatch_penalty,
                const float gap_open,
@@ -195,35 +198,37 @@ void banded_sw(const signed char* __restrict__ query,    // (B, M)
                int* __restrict__ out_query_end,          // (B,)
                int* __restrict__ out_target_end) {       // (B,)
     extern __shared__ char smem[];
-    const int band = blockDim.x;
-    float* h_prev = (float*)smem;              // band + 1 (guard column)
-    float* f_prev = h_prev + (band + 1);
-    float* m_cur  = f_prev + (band + 1);
-    float* scan   = m_cur  + (band + 1);
+    const int threads = blockDim.x;
+    float* h_prev = (float*)smem;              // threads + 1 (guard column)
+    float* f_prev = h_prev + (threads + 1);
+    float* m_cur  = f_prev + (threads + 1);
+    float* scan   = m_cur  + (threads + 1);
 
     const int b = blockIdx.x;
     const int d = threadIdx.x;
     const int m = query_len[b];
     const int n = target_len[b];
 
+    const bool active = d < band_width;
     h_prev[d] = 0.0f;
     f_prev[d] = -1e30f;
-    if (d == band - 1) { h_prev[band] = 0.0f; f_prev[band] = -1e30f; }
+    if (d == 0) { h_prev[band_width] = 0.0f; f_prev[band_width] = -1e30f; }
     __syncthreads();
 
     float best = 0.0f;
     int best_i = 0, best_j = 0;
 
     for (int i = 1; i <= m; ++i) {
-        const int j = i - half_band + d;
+        const int j = i + band_offset[b] - half_band + d;
 
         float m_val = -1e30f;
         float f_val = -1e30f;
-        if (j >= 1 && j <= n) {
+        if (active && j >= 1 && j <= n) {
             const signed char qb = query[(long long)b * max_query + (i - 1)];
             const signed char tb = target[(long long)b * max_target + (j - 1)];
             // Negative codes mark padding / ambiguous bases: never a match.
-            const float sub = (qb >= 0 && qb == tb) ? match_score : -mismatch_penalty;
+            const float sub = (qb >= 0 && qb != 5 && qb == tb)
+                            ? match_score : -mismatch_penalty;
             const float diag = h_prev[d] + sub;
             f_val = fmaxf(h_prev[d + 1] - gap_open, f_prev[d + 1] - gap_extend);
             m_val = fmaxf(0.0f, fmaxf(diag, f_val));
@@ -233,7 +238,7 @@ void banded_sw(const signed char* __restrict__ query,    // (B, M)
         // Exclusive max-plus prefix scan over (m_val + d * gap_extend).
         scan[d] = (m_val > -1e29f) ? (m_val + (float)d * gap_extend) : -1e30f;
         __syncthreads();
-        for (int stride = 1; stride < band; stride <<= 1) {
+        for (int stride = 1; stride < threads; stride <<= 1) {
             float left = -1e30f;
             if (d >= stride) left = scan[d - stride];
             __syncthreads();
@@ -245,7 +250,7 @@ void banded_sw(const signed char* __restrict__ query,    // (B, M)
         __syncthreads();
 
         float h_val = -1e30f;
-        if (j >= 1 && j <= n) {
+        if (active && j >= 1 && j <= n) {
             const float e_val = excl - gap_open - (float)(d - 1) * gap_extend;
             h_val = fmaxf(m_val, e_val);
             h_val = fmaxf(0.0f, h_val);
@@ -257,7 +262,7 @@ void banded_sw(const signed char* __restrict__ query,    // (B, M)
 
         h_prev[d] = h_val;
         f_prev[d] = f_val;
-        if (d == band - 1) { h_prev[band] = 0.0f; f_prev[band] = -1e30f; }
+        if (d == 0) { h_prev[band_width] = 0.0f; f_prev[band_width] = -1e30f; }
         __syncthreads();
     }
 
@@ -265,7 +270,7 @@ void banded_sw(const signed char* __restrict__ query,    // (B, M)
     scan[d] = best;
     m_cur[d] = (float)(best_i * (max_target + 1) + best_j);  // packed argmax
     __syncthreads();
-    for (int stride = band >> 1; stride > 0; stride >>= 1) {
+    for (int stride = threads >> 1; stride > 0; stride >>= 1) {
         if (d < stride && scan[d + stride] > scan[d]) {
             scan[d] = scan[d + stride];
             m_cur[d] = m_cur[d + stride];
@@ -278,6 +283,76 @@ void banded_sw(const signed char* __restrict__ query,    // (B, M)
         out_query_end[b] = packed / (max_target + 1);
         out_target_end[b] = packed % (max_target + 1);
     }
+}
+"""
+
+
+_WFA_DISTANCE_SRC = r"""
+// Unit-cost wavefront distance. One thread owns one sequence pair; diagonals
+// within that pair are stored in caller-allocated global scratch space.
+extern "C" __global__
+void wfa_distance(const signed char* __restrict__ query,
+                  const signed char* __restrict__ target,
+                  const int* __restrict__ query_len,
+                  const int* __restrict__ target_len,
+                  const int batch_size,
+                  const int max_query,
+                  const int max_target,
+                  const int max_distance,
+                  int* __restrict__ previous,
+                  int* __restrict__ current,
+                  int* __restrict__ out_distance) {
+    const int b = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= batch_size) return;
+    const int n = query_len[b];
+    const int m = target_len[b];
+    const int width = 2 * max_distance + 3;
+    const int centre = max_distance + 1;
+    int* prev = previous + (long long)b * width;
+    int* cur = current + (long long)b * width;
+    for (int t = 0; t < width; ++t) { prev[t] = -1; cur[t] = -1; }
+
+    int reach = 0;
+    while (reach < n && reach < m
+           && query[(long long)b * max_query + reach] != 5
+           && query[(long long)b * max_query + reach]
+              == target[(long long)b * max_target + reach]) ++reach;
+    prev[centre] = reach;
+    const int final_k = n - m;
+    if (final_k == 0 && reach >= n) { out_distance[b] = 0; return; }
+
+    for (int score = 1; score <= max_distance; ++score) {
+        for (int t = centre - score; t <= centre + score; ++t) cur[t] = -1;
+        for (int k = -score; k <= score; ++k) {
+            const int slot = centre + k;
+            int sub = prev[slot] >= 0 ? prev[slot] + 1 : -1;
+            int ins = prev[slot - 1] >= 0 ? prev[slot - 1] + 1 : -1;
+            int del = prev[slot + 1];
+            if (sub < 0 || sub > n || sub - k < 0 || sub - k > m) sub = -1;
+            if (ins < 0 || ins > n || ins - k < 0 || ins - k > m) ins = -1;
+            if (del < 0 || del > n || del - k < 0 || del - k > m) del = -1;
+            int best = max(sub, max(ins, del));
+            int col = best - k;
+            if (best < 0) {
+                cur[slot] = -1;
+                continue;
+            }
+            while (best < n && col < m
+                   && query[(long long)b * max_query + best] != 5
+                   && query[(long long)b * max_query + best]
+                      == target[(long long)b * max_target + col]) {
+                ++best; ++col;
+            }
+            cur[slot] = best;
+        }
+        if (final_k >= -score && final_k <= score
+            && cur[centre + final_k] >= n) {
+            out_distance[b] = score;
+            return;
+        }
+        int* swap = prev; prev = cur; cur = swap;
+    }
+    out_distance[b] = -1;
 }
 """
 
@@ -295,6 +370,7 @@ def _kernel(name: str) -> Any | None:
         "kmer_lookup": _KMER_LOOKUP_SRC,
         "chain_dp": _CHAIN_DP_SRC,
         "banded_sw": _BANDED_SW_SRC,
+        "wfa_distance": _WFA_DISTANCE_SRC,
     }[name]
     try:
         return cp.RawKernel(source, name, options=("--use_fast_math",))
@@ -304,7 +380,10 @@ def _kernel(name: str) -> Any | None:
 
 def kernels_available() -> bool:
     """True when the CuPy tier compiled successfully on this host."""
-    return all(_kernel(n) is not None for n in ("kmer_lookup", "chain_dp", "banded_sw"))
+    return all(
+        _kernel(n) is not None
+        for n in ("kmer_lookup", "chain_dp", "banded_sw", "wfa_distance")
+    )
 
 
 def _as_cupy(tensor: torch.Tensor) -> Any:
@@ -367,12 +446,15 @@ def chain_dp(
     gap_extend: float,
     log_coeff: float,
     bonus: torch.Tensor | None = None,
+    weights: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Run the batched chaining DP.
 
     Args:
-        anchors: ``(B, A, 3)`` int32 ``(read_end, ref_end, weight)``, sorted by
+        anchors: ``(B, A, 3)`` int32 ``(read_end, ref_end, reserved)``, sorted by
             reference end position.
+        weights: optional ``(B, A)`` float32 anchor weights. When omitted, the
+            legacy third anchors channel is used.
         n_anchors: ``(B,)`` int32 count of valid anchors per read.
         bonus: optional ``(B, A, lookback)`` float32 graph-distance bonus.
 
@@ -383,6 +465,10 @@ def chain_dp(
         raise RuntimeError("CuPy chaining kernel unavailable")
 
     B, A, _ = anchors.shape
+    if weights is None:
+        weights = anchors[..., 2].to(torch.float32)
+    if weights.shape != (B, A):
+        raise ValueError("weights must have shape (B, A)")
     f = torch.zeros((B, A), dtype=torch.float32, device=anchors.device)
     p = torch.full((B, A), NO_PREDECESSOR, dtype=torch.int32, device=anchors.device)
 
@@ -397,6 +483,7 @@ def chain_dp(
         (threads,),
         (
             _as_cupy(anchors.to(torch.int32)),
+            _as_cupy(weights.to(torch.float32)),
             _as_cupy(n_anchors.to(torch.int32)),
             _as_cupy(bonus),
             int(A),
@@ -424,6 +511,7 @@ def banded_sw(
     mismatch_penalty: float,
     gap_open: float,
     gap_extend: float,
+    band_offset: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Batched banded affine Smith-Waterman scores.
 
@@ -441,6 +529,10 @@ def banded_sw(
     N = target.shape[1]
     band = 2 * half_band + 1
     threads = min(1024, _next_pow2(band))
+    if band > 1024:
+        raise RuntimeError(f"CUDA SW band width {band} exceeds 1024")
+    if band_offset is None:
+        band_offset = torch.zeros(B, dtype=torch.int32, device=query.device)
 
     score = torch.zeros(B, dtype=torch.float32, device=query.device)
     q_end = torch.zeros(B, dtype=torch.int32, device=query.device)
@@ -456,9 +548,11 @@ def banded_sw(
             _as_cupy(target.to(torch.int8)),
             _as_cupy(query_len.to(torch.int32)),
             _as_cupy(target_len.to(torch.int32)),
+            _as_cupy(band_offset.to(torch.int32)),
             int(M),
             int(N),
             int(half_band),
+            int(band),
             float(match_score),
             float(mismatch_penalty),
             float(gap_open),
@@ -470,3 +564,43 @@ def banded_sw(
         shared_mem=shared,
     )
     return score, q_end.to(torch.long), t_end.to(torch.long)
+
+
+def wfa_distance(
+    query: torch.Tensor,
+    target: torch.Tensor,
+    query_len: torch.Tensor,
+    target_len: torch.Tensor,
+    max_distance: int,
+) -> torch.Tensor:
+    """Batched unit-cost WFA distance; ``-1`` means the bound was exceeded."""
+
+    kernel = _kernel("wfa_distance")
+    if kernel is None:
+        raise RuntimeError("CuPy WFA kernel unavailable")
+    B, M = query.shape
+    N = target.shape[1]
+    width = 2 * int(max_distance) + 3
+    previous = torch.empty((B, width), dtype=torch.int32, device=query.device)
+    current = torch.empty_like(previous)
+    distance = torch.full((B,), -1, dtype=torch.int32, device=query.device)
+    threads = 128
+    blocks = (B + threads - 1) // threads
+    kernel(
+        (blocks,),
+        (threads,),
+        (
+            _as_cupy(query.to(torch.int8)),
+            _as_cupy(target.to(torch.int8)),
+            _as_cupy(query_len.to(torch.int32)),
+            _as_cupy(target_len.to(torch.int32)),
+            int(B),
+            int(M),
+            int(N),
+            int(max_distance),
+            _as_cupy(previous),
+            _as_cupy(current),
+            _as_cupy(distance),
+        ),
+    )
+    return distance

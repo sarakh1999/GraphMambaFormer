@@ -11,7 +11,7 @@ Index                Method
 :class:`SMEMIndex`        super-maximal exact matches over an FM-index
 :class:`FMIndex`          BWT + sampled suffix array; exact k-mer occurrences
 :class:`DeBruijnIndex`    de Bruijn k-mer index (``k=21``), graph-node aware
-:class:`FuzzySeedIndex`   spaced seeds — tolerates a mismatch inside the seed
+:class:`FuzzySeedIndex`   spaced seeds — don't-care mismatches inside the pattern
 :class:`MultiplexDBG`     several ``k`` at once, adaptive to repeat scale
 :class:`GPUKmerIndex`     GPU-resident table; batched lookup for many reads
 ===================  ========================================================
@@ -36,6 +36,7 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 
+from ..accel.parallel import parallel_map
 from ..config import SeedingConfig
 from .types import AnchorSet, source_id
 
@@ -124,6 +125,20 @@ def pack_kmers(codes: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
     return packed, ~invalid
 
 
+def validate_spaced_pattern(pattern: str) -> None:
+    """Reject patterns that are not a non-empty ``0``/``1`` mask with a care bit."""
+    if not pattern:
+        raise ValueError("spaced pattern must be non-empty")
+    if set(pattern) - {"0", "1"}:
+        raise ValueError(
+            f"spaced pattern must contain only '0' and '1', got {pattern!r}"
+        )
+    if "1" not in pattern:
+        raise ValueError("spaced pattern must contain at least one '1'")
+    if pattern.count("1") > _MAX_K:
+        raise ValueError(f"spaced-seed weight must be <= {_MAX_K}")
+
+
 def pack_spaced_kmers(
     codes: np.ndarray, pattern: str
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -133,11 +148,8 @@ def pack_spaced_kmers(
     tolerates mismatches at the ``'0'`` (don't-care) positions, which recovers
     seeds in the noisy long reads where every contiguous k-mer is broken.
     """
+    validate_spaced_pattern(pattern)
     kept = [i for i, ch in enumerate(pattern) if ch == "1"]
-    if not kept:
-        raise ValueError("spaced pattern must contain at least one '1'")
-    if len(kept) > _MAX_K:
-        raise ValueError(f"spaced-seed weight must be <= {_MAX_K}")
 
     span = len(pattern)
     m = len(codes) - span + 1
@@ -538,11 +550,19 @@ class DeBruijnIndex:
         node_codes: Sequence[np.ndarray],
         k: int = 21,
         max_occ: int = 0,
+        node_ref_start: Optional[Sequence[int]] = None,
     ):
         self.k = k
         self.node_lengths = np.array([len(c) for c in node_codes], dtype=np.int64)
         self.node_starts = np.zeros(len(node_codes) + 1, dtype=np.int64)
         np.cumsum(self.node_lengths, out=self.node_starts[1:])
+        self.node_ref_start = (
+            np.asarray(node_ref_start, dtype=np.int64)
+            if node_ref_start is not None
+            else None
+        )
+        if self.node_ref_start is not None and len(self.node_ref_start) != len(node_codes):
+            raise ValueError("node_ref_start length must match node_codes")
 
         packed_parts, valid_parts = [], []
         for codes in node_codes:
@@ -581,11 +601,25 @@ class DeBruijnIndex:
         packed, valid = pack_kmers(read_codes, self.k)
         pos = np.flatnonzero(valid)
         read_pos, ref_pos = self.table.join(packed[pos], pos)
+        node_id = self.node_of(ref_pos)
+        if self.node_ref_start is not None:
+            projected = self.node_ref_start[node_id]
+            # Stage 3 extends against the linear reference. Graph-only nodes
+            # without an RS projection cannot be assigned a fake linear
+            # coordinate; retain only nodes that can be lifted exactly.
+            keep = projected >= 0
+            read_pos, ref_pos, node_id, projected = (
+                read_pos[keep],
+                ref_pos[keep],
+                node_id[keep],
+                projected[keep],
+            )
+            ref_pos = projected + self.local_offset(ref_pos)
         return (
             read_pos,
             ref_pos,
             np.full(len(read_pos), self.k, dtype=np.int64),
-            self.node_of(ref_pos),
+            node_id,
         )
 
 
@@ -601,6 +635,7 @@ class FuzzySeedIndex:
     name = "fuzzy"
 
     def __init__(self, ref_codes: np.ndarray, pattern: str, max_occ: int = 0):
+        validate_spaced_pattern(pattern)
         self.pattern = pattern
         self.span = len(pattern)
         self.weight = pattern.count("1")
@@ -891,9 +926,12 @@ class SeedingEngine:
     for no gain.
     """
 
-    def __init__(self, cfg: SeedingConfig | None = None, device: torch.device | str | None = None):
+    def __init__(self, cfg: SeedingConfig | None = None, device: torch.device | str | None = None,
+                 workers: int | None = None):
         self.cfg = cfg or SeedingConfig()
         self.device = torch.device(device) if device is not None else torch.device("cpu")
+        #: Host threads for building the (independent) per-mode indices. Auto.
+        self._workers = workers
 
     # ---- index construction ------------------------------------------------ #
     def build_indices(
@@ -916,45 +954,61 @@ class SeedingEngine:
                 ref_codes, sa_sample=cfg.fm_sa_sample, occ_sample=cfg.fm_occ_sample
             )
 
-        for mode in cfg.modes:
+        def build_mode(mode: str):
+            """Construct one index. Independent per mode (the shared FM-index is
+            built once above and only *read* here), so these run concurrently."""
             if mode == "minimizer":
-                indices[mode] = MinimizerIndex(
+                return MinimizerIndex(
                     ref_codes, k=cfg.kmer, window=cfg.window, max_occ=cfg.max_occ
                 )
-            elif mode == "smem":
-                indices[mode] = SMEMIndex(
+            if mode == "smem":
+                return SMEMIndex(
                     ref_codes,
                     min_seed_len=cfg.min_seed_len,
                     max_occ=cfg.max_occ,
                     fm=shared_fm,
                 )
-            elif mode == "fmindex":
-                indices[mode] = ExactKmerIndex(
-                    ref_codes, k=cfg.kmer, max_occ=cfg.max_occ, fm=shared_fm
+            if mode == "fmindex":
+                return ExactKmerIndex(
+                    ref_codes,
+                    k=cfg.kmer,
+                    stride=cfg.fm_stride,
+                    max_occ=cfg.max_occ,
+                    fm=shared_fm,
                 )
-            elif mode == "dbg":
+            if mode == "dbg":
                 seqs = node_seqs if node_seqs is not None else [ref_seq]
-                indices[mode] = DeBruijnIndex(
-                    [encode_bases(s) for s in seqs], k=cfg.dbg_kmer, max_occ=cfg.max_occ
+                return DeBruijnIndex(
+                    [encode_bases(s) for s in seqs],
+                    k=cfg.dbg_kmer,
+                    max_occ=cfg.max_occ,
+                    node_ref_start=node_ref_start,
                 )
-            elif mode == "fuzzy":
-                indices[mode] = FuzzySeedIndex(
+            if mode == "fuzzy":
+                return FuzzySeedIndex(
                     ref_codes, cfg.spaced_pattern, max_occ=cfg.max_occ
                 )
-            elif mode == "multiplex_dbg":
-                indices[mode] = MultiplexDBG(
+            if mode == "multiplex_dbg":
+                return MultiplexDBG(
                     ref_codes, kmers=cfg.multiplex_kmers, max_occ=cfg.max_occ
                 )
-            elif mode == "gpu_kmer":
-                indices[mode] = GPUKmerIndex(
+            if mode == "gpu_kmer":
+                return GPUKmerIndex(
                     ref_codes,
                     k=cfg.kmer,
                     window=cfg.window,
                     max_occ=cfg.max_occ,
                     device=self.device,
                 )
-            else:  # pragma: no cover - guarded by SeedingConfig validation
-                raise ValueError(f"Unknown seeding mode {mode!r}")
+            raise ValueError(f"Unknown seeding mode {mode!r}")  # pragma: no cover
+
+        # Index construction dominates single-reference startup (suffix arrays,
+        # minimizer sketches). Modes are independent, so build them across host
+        # threads; each constructor is NumPy-heavy and releases the GIL. The
+        # ``gpu_kmer`` index touches CUDA, which is thread-safe here.
+        _modes = list(cfg.modes)
+        _built = parallel_map(build_mode, _modes, workers=self._workers)
+        indices = {m: idx for m, idx in zip(_modes, _built)}
 
         node_starts = (
             np.asarray(
@@ -1006,7 +1060,8 @@ class SeedingEngine:
 
         anchors = self._merge_diagonals(anchors)
         anchors = self._cap(anchors)
-        anchors.node_id = bundle.node_of(anchors.ref_pos)
+        projected_nodes = bundle.node_of(anchors.ref_pos)
+        anchors.node_id = np.where(anchors.node_id >= 0, anchors.node_id, projected_nodes)
         return anchors
 
     def _seed_one_orientation(
@@ -1039,14 +1094,20 @@ class SeedingEngine:
     def _merge_diagonals(self, anchors: AnchorSet) -> AnchorSet:
         """Collapse anchors that describe the same match.
 
-        Two anchors on the same strand and diagonal whose read intervals touch or
-        overlap are one exact match seen through two indices (or two adjacent
+        Two *exact* anchors on the same strand and diagonal whose read intervals
+        touch or overlap are one match seen through two indices (or two adjacent
         k-mers of one longer match), so they are merged into the longer anchor.
+
+        Fuzzy / spaced seeds are different: their reported length is the pattern
+        span, which may contain don't-care mismatches. Growing that span into a
+        pseudo-MEM would overweight chaining, so fuzzy anchors are only
+        deduplicated when ``(read_pos, ref_pos, length)`` match exactly.
         """
         if len(anchors) <= 1:
             return anchors
 
         slack = self.cfg.merge_diagonal_slack
+        fuzzy = source_id("fuzzy")
         diagonal = anchors.diagonal
         order = np.lexsort((anchors.read_pos, diagonal, anchors.strand))
         ordered = anchors.take(order)
@@ -1065,6 +1126,18 @@ class SeedingEngine:
         for i in range(len(ordered)):
             if i > 0 and mergeable[i] and keep:
                 last = keep[-1]
+                involves_fuzzy = (
+                    ordered.source[last] == fuzzy or ordered.source[i] == fuzzy
+                )
+                if involves_fuzzy:
+                    duplicate = (
+                        read_pos[last] == ordered.read_pos[i]
+                        and length[last] == ordered.length[i]
+                        and ordered.ref_pos[last] == ordered.ref_pos[i]
+                    )
+                    if not duplicate:
+                        keep.append(i)
+                    continue
                 end = max(read_pos[last] + length[last], ordered.read_end[i])
                 length[last] = end - read_pos[last]
             else:

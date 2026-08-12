@@ -424,13 +424,28 @@ def read_bam(
 def _alignment_to_record(aln, ref_id_of: dict[str, int], modality: str) -> ReadRecord:
     seq = aln.query_sequence or ""
     quals = list(aln.query_qualities) if aln.query_qualities is not None else [0] * len(seq)
+    mate_index = 1 if aln.is_read1 else (2 if aln.is_read2 else 0)
+    pair_id = aln.query_name if aln.is_paired and mate_index else None
+    read_id = f"{aln.query_name}/{mate_index}" if pair_id else aln.query_name
+    pair_fields = {
+        "pair_id": pair_id,
+        "mate_index": mate_index,
+        "mate_ref_id": int(aln.next_reference_id)
+        if aln.next_reference_id is not None else -1,
+        "mate_ref_start": int(aln.next_reference_start)
+        if aln.next_reference_start is not None else -1,
+        "mate_strand": -1 if aln.mate_is_reverse else 1,
+        "template_length": int(aln.template_length),
+        "proper_pair": bool(aln.is_proper_pair),
+    }
 
     if aln.is_unmapped:
         return ReadRecord(
-            read_id=aln.query_name, ref_id=-1, modality=modality,
+            read_id=read_id, ref_id=-1, modality=modality,
             seq=seq, quals=quals, ref_start=0, ref_end=0, strand=1,
             cigar=[], ref_positions=[-1] * len(seq), mapq=int(aln.mapping_quality),
             edge_case="unmapped",
+            **pair_fields,
         )
 
     cigar = [
@@ -443,7 +458,7 @@ def _alignment_to_record(aln, ref_id_of: dict[str, int], modality: str) -> ReadR
         for p in aln.get_reference_positions(full_length=True)
     ]
     return ReadRecord(
-        read_id=aln.query_name,
+        read_id=read_id,
         ref_id=ref_id_of.get(aln.reference_name, -1),
         modality=modality,
         seq=seq,
@@ -454,6 +469,7 @@ def _alignment_to_record(aln, ref_id_of: dict[str, int], modality: str) -> ReadR
         cigar=cigar,
         ref_positions=ref_positions,
         mapq=int(aln.mapping_quality),
+        **pair_fields,
     )
 
 

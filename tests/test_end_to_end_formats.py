@@ -195,6 +195,42 @@ def test_every_input_format_aligns_and_writes_bam():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_paired_illumina_survives_pipeline_to_paired_bam():
+    """Independent mate alignment must still emit a standards-compliant pair."""
+    import pysam
+
+    d = _tmp()
+    try:
+        ds, ref, reads, _ = _fixture(d)
+        mates = reads[:2]
+        for i, read in enumerate(mates, 1):
+            read.read_id = f"fragment0/{i}"
+            read.pair_id = "fragment0"
+            read.mate_index = i
+            read.modality = "illumina"
+
+        pipe = _small_pipeline("fast")
+        reference = pipe.build_reference(ref.seq, ref_id=REF_ID)
+        results, _ = pipe.align(mates, reference)
+        out = write_alignments(
+            results, mates, os.path.join(d, "paired.out.bam"),
+            references=ds.references, modality="illumina",
+        )
+        with pysam.AlignmentFile(out, "rb") as af:
+            rows = list(af.fetch(until_eof=True))
+        assert len(rows) == 2
+        assert all(row.is_paired for row in rows)
+        assert {row.query_name for row in rows} == {"fragment0"}
+        assert {row.is_read1 for row in rows} == {True, False}
+        if all(not row.is_unmapped for row in rows):
+            assert all(not row.mate_is_unmapped for row in rows)
+            assert all(row.next_reference_start >= 0 for row in rows)
+            assert rows[0].template_length == -rows[1].template_length
+        print("paired Illumina metadata survives pipeline -> paired BAM")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_all_output_formats_from_a_real_run():
     """BAM, CRAM, GFA and GBZ all reachable from pipeline output."""
     d = _tmp()

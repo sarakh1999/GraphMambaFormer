@@ -18,20 +18,32 @@ Pytest-compatible but self-contained — run directly, or via
 import numpy as np
 import torch
 
-from graphmambaformer.alignment.chaining import chain_dp_numpy
+from graphmambaformer.alignment.chaining import (
+    AffineChainer,
+    ChainingContext,
+    GraphDistanceOracle,
+    chain_dp_batched,
+    chain_dp_numpy,
+)
 from graphmambaformer.alignment.extension import (
     WavefrontAligner,
     banded_affine_sw_batch,
     traceback_banded,
 )
 from graphmambaformer.alignment.seeding import (
+    DeBruijnIndex,
     FMIndex,
+    FuzzySeedIndex,
+    GPUKmerIndex,
+    MinimizerIndex,
+    MultiplexDBG,
     encode_bases,
     minimizer_mask,
     pack_kmers,
     reverse_complement_codes,
     suffix_array,
 )
+from graphmambaformer.alignment.types import AnchorSet, Chain
 from graphmambaformer.config import ChainingConfig, ExtensionConfig
 
 RNG = np.random.default_rng(3)
@@ -157,6 +169,203 @@ def test_reverse_complement_is_an_involution():
     print("reverse complement matches the string translation and is an involution")
 
 
+def test_dbg_projects_node_offsets_and_skips_unprojected_nodes():
+    nodes = [encode_bases("AACCGGTT"), encode_bases("TTTTAAAA")]
+    dbg = DeBruijnIndex(nodes, k=4, node_ref_start=[100, -1])
+    read_pos, ref_pos, length, node = dbg.query(encode_bases("AACCGGTTTTTTAAAA"))
+    assert len(read_pos) > 0
+    assert (node == 0).all(), node
+    assert (ref_pos >= 100).all() and (ref_pos < 108).all(), ref_pos
+    assert (length == 4).all()
+
+
+def test_fuzzy_spaced_seed_ignores_dont_care_mismatch():
+    index = FuzzySeedIndex(encode_bases("ACG"), pattern="101")
+    read_pos, ref_pos, length = index.query(encode_bases("ATG"))
+    assert np.array_equal(read_pos, [0])
+    assert np.array_equal(ref_pos, [0])
+    assert np.array_equal(length, [3])
+
+
+def test_pack_spaced_kmers_care_bits_and_n_bases():
+    from graphmambaformer.alignment.seeding import pack_spaced_kmers, validate_spaced_pattern
+
+    pattern = "111010010100110111"
+    care = [i for i, ch in enumerate(pattern) if ch == "1"]
+    ref = "ACGTACGTACGTACGTAC"
+    packed, valid = pack_spaced_kmers(encode_bases(ref), pattern)
+    assert valid.tolist() == [True]
+    manual = 0
+    for i in care:
+        manual = manual * 4 + "ACGT".index(ref[i])
+    assert int(packed[0]) == manual
+
+    noisy = list(ref)
+    for i, ch in enumerate(pattern):
+        if ch == "0":
+            noisy[i] = "A" if noisy[i] != "A" else "T"
+    assert pack_spaced_kmers(encode_bases("".join(noisy)), pattern)[0][0] == packed[0]
+
+    broken = list(ref)
+    broken[care[0]] = "A" if broken[care[0]] != "A" else "T"
+    assert pack_spaced_kmers(encode_bases("".join(broken)), pattern)[0][0] != packed[0]
+
+    n_care = list(ref)
+    n_care[care[2]] = "N"
+    assert not pack_spaced_kmers(encode_bases("".join(n_care)), pattern)[1][0]
+    n_dont = list(ref)
+    n_dont[pattern.index("0")] = "N"
+    assert pack_spaced_kmers(encode_bases("".join(n_dont)), pattern)[1][0]
+
+    for bad in ("", "000", "121", "11x"):
+        try:
+            validate_spaced_pattern(bad)
+            raise AssertionError(bad)
+        except ValueError:
+            pass
+
+
+def test_fuzzy_recovers_when_exact_contiguous_kmers_fail():
+    """Spaced seeds hit through don't-care mismatches; exact 15-mers do not."""
+    from graphmambaformer.config import SeedingConfig
+    from graphmambaformer.alignment.seeding import SeedingEngine
+
+    pattern = "111010010100110111"
+    care = {i for i, ch in enumerate(pattern) if ch == "1"}
+    span = len(pattern)
+    ref = random_seq(240)
+    start = 40
+    truth = ref[start : start + 120]
+    read = list(truth)
+    # Keep only the compared bases of one spaced seed at offset 0; mutate the rest
+    # so every contiguous 15-mer on the true diagonal is broken.
+    for pos in range(len(read)):
+        if pos in care:
+            continue
+        read[pos] = next(base for base in BASES if base != read[pos])
+    read = "".join(read)
+    assert sum(a != b for a, b in zip(read, truth)) >= span - len(care)
+
+    exact = SeedingEngine(SeedingConfig(modes=("minimizer",), kmer=15, window=1, max_occ=50))
+    fuzzy = SeedingEngine(
+        SeedingConfig(modes=("fuzzy",), spaced_pattern=pattern, max_occ=50)
+    )
+    exact_anchors = exact.seed_read(read, exact.build_indices(ref))
+    fuzzy_anchors = fuzzy.seed_read(read, fuzzy.build_indices(ref))
+
+    exact_diag = int(
+        ((exact_anchors.strand == 1) & (np.abs(exact_anchors.diagonal - start) <= 2)).sum()
+    ) if len(exact_anchors) else 0
+    fuzzy_diag = int(
+        ((fuzzy_anchors.strand == 1) & (np.abs(fuzzy_anchors.diagonal - start) <= 2)).sum()
+    ) if len(fuzzy_anchors) else 0
+    assert exact_diag == 0, exact_diag
+    assert fuzzy_diag > 0, fuzzy_diag
+
+    # Surviving fuzzy anchors match only the compared ('1') positions.
+    rc, fc = encode_bases(read), encode_bases(ref)
+    matched = False
+    for i in range(len(fuzzy_anchors)):
+        if fuzzy_anchors.strand[i] != 1:
+            continue
+        if abs(int(fuzzy_anchors.diagonal[i]) - start) > 2:
+            continue
+        rp = int(fuzzy_anchors.read_pos[i])
+        fp = int(fuzzy_anchors.ref_pos[i])
+        ln = int(fuzzy_anchors.length[i])
+        assert ln == span
+        assert not np.array_equal(rc[rp : rp + ln], fc[fp : fp + ln])
+        assert all(rc[rp + off] == fc[fp + off] for off in care if off < ln)
+        matched = True
+    assert matched
+
+
+def test_fuzzy_seeds_are_not_merged_into_pseudo_mems():
+    """Overlapping spaced seeds must keep pattern span, not grow like exact MEMs."""
+    from graphmambaformer.config import SeedingConfig
+    from graphmambaformer.alignment.seeding import SeedingEngine, source_id
+
+    pattern = "111010010100110111"
+    ref = random_seq(300)
+    read = ref[20:120]
+    eng = SeedingEngine(
+        SeedingConfig(modes=("fuzzy",), spaced_pattern=pattern, both_strands=False, max_occ=50)
+    )
+    anchors = eng.seed_read(read, eng.build_indices(ref))
+    assert len(anchors) > 1
+    assert (anchors.length == len(pattern)).all(), set(map(int, anchors.length))
+    assert (anchors.source == source_id("fuzzy")).all()
+
+
+def test_fuzzy_reverse_strand_and_default_modes():
+    from graphmambaformer.config import SeedingConfig
+    from graphmambaformer.alignment.seeding import SeedingEngine
+
+    def revcomp(seq: str) -> str:
+        return seq.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+
+    ref = random_seq(400)
+    start = 100
+    eng = SeedingEngine(SeedingConfig(modes=("fuzzy",), max_occ=50))
+    bundle = eng.build_indices(ref)
+    fwd = eng.seed_read(ref[start : start + 80], bundle)
+    rev = eng.seed_read(revcomp(ref[start : start + 80]), bundle)
+    assert ((fwd.strand == 1) & (np.abs(fwd.diagonal - start) <= 2)).any()
+    assert ((rev.strand == -1) & (np.abs(rev.diagonal - start) <= 2)).any()
+    assert "fuzzy" in SeedingConfig().modes
+
+
+def test_fuzzy_end_to_end_pipeline_locus():
+    from graphmambaformer.config import PipelineConfig
+    from graphmambaformer.alignment import build_pipeline
+
+    rng = np.random.default_rng(3)
+    ref = "".join(rng.choice(list(BASES), size=2500))
+    cfg = PipelineConfig(mode="fast")
+    cfg.seeding.modes = ("fuzzy",)
+    cfg.seeding.max_occ = 50
+    cfg.chaining.min_chain_score = 1.0
+    pipe = build_pipeline(cfg, model=None, device="cpu")
+    reference = pipe.build_reference(ref)
+    hits = 0
+    n = 16
+    for i in range(n):
+        start = int(rng.integers(0, len(ref) - 160))
+        read = list(ref[start : start + 160])
+        for j in range(len(read)):
+            if rng.random() < 0.12:
+                read[j] = next(base for base in BASES if base != read[j])
+        alignments, _ = pipe.align(["".join(read)], reference, [f"r{i}"])
+        record = alignments[0].primary
+        if record and record.is_mapped and abs(record.ref_start - start) <= 40:
+            hits += 1
+    assert hits / n >= 0.8, hits
+
+
+def test_multiplex_dbg_falls_back_to_shorter_k_near_errors():
+    ref = random_seq(80)
+    read = list(ref)
+    read[40] = next(base for base in BASES if base != read[40])
+    index = MultiplexDBG(encode_bases(ref), kmers=(3, 7), max_occ=20)
+    _, _, lengths = index.query(encode_bases("".join(read)))
+    assert (lengths == 7).any(), lengths
+    assert (lengths == 3).any(), lengths
+
+
+def test_gpu_kmer_cpu_fallback_matches_minimizer_index():
+    ref = random_seq(120)
+    read = ref[15:95]
+    expected = MinimizerIndex(encode_bases(ref), k=7, window=4).query(
+        encode_bases(read)
+    )
+    got = GPUKmerIndex(
+        encode_bases(ref), k=7, window=4, device="cpu"
+    ).query(encode_bases(read))
+    expected_rows = sorted(zip(*[values.tolist() for values in expected]))
+    got_rows = sorted(zip(*[values.tolist() for values in got]))
+    assert got_rows == expected_rows
+
+
 # --------------------------------------------------------------------------- #
 # Stage 2
 # --------------------------------------------------------------------------- #
@@ -221,6 +430,506 @@ def test_chaining_prefers_collinear_anchors():
     assert collinear_f[-1] > shifted_f[-1], (collinear_f, shifted_f)
     print(f"collinear chain scores {collinear_f[-1]:.1f} > "
           f"{shifted_f[-1]:.1f} with a 240 bp gap")
+
+
+def test_graph_distance_oracle_and_bonus_decay():
+    cfg = ChainingConfig(max_lookback=4, graph_bonus=6.0, graph_max_hops=3)
+    oracle = GraphDistanceOracle(
+        np.array([[0, 1], [1, 2]], dtype=np.int64), num_nodes=3, max_hops=3
+    )
+    hops, index = oracle.hop_matrix([0, 1, 2])
+    assert hops[index[0], index[0]] == 0
+    assert hops[index[0], index[1]] == 1
+    assert hops[index[0], index[2]] == 2
+
+    anchors = AnchorSet.from_lists(
+        read_pos=[0, 20, 40],
+        ref_pos=[0, 20, 40],
+        length=[10, 10, 10],
+        strand=[1, 1, 1],
+        node_id=[0, 1, 2],
+        read_len=60,
+        ref_len=60,
+    )
+    bonus = AffineChainer(cfg)._graph_bonus(
+        anchors, ChainingContext(oracle=oracle)
+    )
+    assert bonus is not None
+    assert np.isclose(bonus[1, 3], 4.0)  # one hop: 6 * (1 - 1/3)
+    assert np.isclose(bonus[2, 2], 2.0)  # two hops
+    assert np.isclose(bonus[2, 3], 4.0)  # one hop
+
+
+def test_batched_chaining_matches_numpy_with_ragged_rows():
+    cfg = ChainingConfig(max_lookback=4)
+    read_end = torch.tensor([[10, 20, 30], [8, 18, 0]], dtype=torch.float32)
+    ref_end = torch.tensor([[10, 21, 32], [8, 20, 0]], dtype=torch.float32)
+    weight = torch.tensor([[10.5, 9.25, 8.75], [7.5, 8.25, 0.0]])
+    counts = torch.tensor([3, 2])
+    got, parent = chain_dp_batched(read_end, ref_end, weight, counts, cfg)
+    for row, count in enumerate(counts.tolist()):
+        expected, expected_parent = chain_dp_numpy(
+            read_end[row, :count].numpy(),
+            ref_end[row, :count].numpy(),
+            weight[row, :count].numpy(),
+            cfg,
+        )
+        assert np.allclose(got[row, :count].numpy(), expected)
+        assert np.array_equal(parent[row, :count].numpy(), expected_parent)
+
+
+# --------------------------------------------------------------------------- #
+# Stage 2 — AGNES adaptive (confidence-gated) seed scoring
+# --------------------------------------------------------------------------- #
+def _anchor_set_with_scores(scores: np.ndarray) -> AnchorSet:
+    """A minimal forward-strand AnchorSet carrying the given neural seed scores."""
+    n = len(scores)
+    anchors = AnchorSet.from_lists(
+        read_pos=np.arange(n, dtype=np.int64) * 20,
+        ref_pos=np.arange(n, dtype=np.int64) * 20,
+        length=np.full(n, 15, dtype=np.int64),
+        strand=np.ones(n, dtype=np.int8),
+        read_len=n * 20 + 15,
+        ref_len=n * 20 + 15,
+    )
+    anchors.score[:] = np.asarray(scores, dtype=np.float32)
+    return anchors
+
+
+def test_confidence_gate_falls_back_when_scores_are_flat():
+    """A flat / undecisive score distribution must leave the weights untouched."""
+    chainer = AffineChainer(ChainingConfig())
+    anchors = _anchor_set_with_scores(np.full(12, 0.5, dtype=np.float32))
+
+    conf = chainer._seed_confidence(anchors.score)
+    gate = chainer._confidence_gate(anchors.score, np.isfinite(anchors.score))
+    weights = chainer._weights(anchors, None)
+
+    assert conf <= ChainingConfig().confidence_threshold, conf
+    assert np.allclose(gate, 1.0), gate
+    # Pure length-based chaining is recovered exactly (length == 15 per anchor).
+    assert np.allclose(weights, anchors.length.astype(np.float64)), weights
+    print(f"flat seed scores -> confidence {conf:.2f} <= tau, gate is identity")
+
+
+def test_confidence_gate_trusts_a_decisively_separated_distribution():
+    """When the classifier is decisive, good seeds are up-weighted and bad ones down."""
+    chainer = AffineChainer(ChainingConfig())
+    scores = np.array([0.97, 0.95, 0.96, 0.98, 0.03, 0.05, 0.02, 0.04,
+                       0.96, 0.97, 0.02, 0.03], dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+
+    conf = chainer._seed_confidence(anchors.score)
+    gate = chainer._confidence_gate(anchors.score, np.isfinite(anchors.score))
+
+    assert conf > ChainingConfig().confidence_threshold, conf
+    good, bad = scores > 0.5, scores < 0.5
+    assert (gate[good] > 1.0).all(), gate[good]
+    assert (gate[bad] < 1.0).all(), gate[bad]
+    print(f"separated seed scores -> confidence {conf:.2f} > tau; "
+          f"good gate ~{gate[good].mean():.2f}, bad gate ~{gate[bad].mean():.2f}")
+
+
+def test_confidence_gate_ignores_degenerate_anchor_counts():
+    """Below the minimum anchor count the metric is meaningless -> pure DP."""
+    cfg = ChainingConfig()
+    chainer = AffineChainer(cfg)
+    # Decisively separated, but too few anchors to be trusted.
+    scores = np.array([0.97, 0.02, 0.96], dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+    assert len(anchors) < cfg.min_confidence_anchors
+
+    gate = chainer._confidence_gate(anchors.score, np.isfinite(anchors.score))
+    assert np.allclose(gate, 1.0), gate
+    print(f"{len(anchors)} anchors (< {cfg.min_confidence_anchors}) -> gate is identity")
+
+
+def test_adaptive_scoring_changes_chain_choice_when_confident():
+    """End to end: a confident seed score should pull the chain to the right locus.
+
+    Two collinear diagonals of equal geometric weight compete. Without scores the
+    DP cannot separate them; with a decisively separated score distribution that
+    favours the second diagonal, the adaptive gate makes it the primary chain.
+    """
+    cfg = ChainingConfig(min_chain_score=1.0, min_confidence_anchors=4)
+    chainer = AffineChainer(cfg)
+
+    # Diagonal A at ref==read; diagonal B shifted by +500 bp. Four anchors each.
+    read_pos = np.array([0, 40, 80, 120, 0, 40, 80, 120], dtype=np.int64)
+    ref_pos = np.array([0, 40, 80, 120, 500, 540, 580, 620], dtype=np.int64)
+    anchors = AnchorSet.from_lists(
+        read_pos=read_pos,
+        ref_pos=ref_pos,
+        length=np.full(8, 15, dtype=np.int64),
+        strand=np.ones(8, dtype=np.int8),
+        read_len=200,
+        ref_len=700,
+    )
+    # Confidently favour diagonal B (the second four anchors).
+    anchors.score[:] = np.array([0.05, 0.03, 0.04, 0.02,
+                                 0.97, 0.98, 0.96, 0.97], dtype=np.float32)
+
+    chains = chainer.chain(anchors)
+    assert chains, "expected at least one chain"
+    primary = chains[0]
+    ref_starts = anchors.ref_pos[primary.anchor_idx]
+    assert ref_starts.min() >= 500, (ref_starts, "primary should be diagonal B")
+    print(f"adaptive gate steered the primary chain to ref {ref_starts.min()}-"
+          f"{anchors.ref_end[primary.anchor_idx].max()}")
+
+
+def test_seed_confidence_matches_hand_computed_formula():
+    """``(μ_high - μ_low) / σ`` must match a direct NumPy evaluation of AGNES."""
+    cfg = ChainingConfig()
+    chainer = AffineChainer(cfg)
+    scores = np.array([0.9, 0.85, 0.1, 0.15, 0.92, 0.08, 0.5, 0.55], dtype=np.float64)
+
+    high = scores[scores > cfg.high_confidence_prob]
+    low = scores[scores < cfg.low_confidence_prob]
+    expected = (high.mean() - low.mean()) / scores.std()
+    got = chainer._seed_confidence(scores)
+    assert np.isclose(got, expected), (got, expected)
+    assert got > cfg.confidence_threshold
+    print(f"confidence formula matches hand compute: {got:.4f} == {expected:.4f}")
+
+
+def test_seed_confidence_empty_or_zero_spread_is_zero():
+    chainer = AffineChainer(ChainingConfig())
+    assert chainer._seed_confidence(np.zeros(0)) == 0.0
+    assert chainer._seed_confidence(np.full(8, 0.8)) == 0.0  # σ ~ 0
+    # Only mid-band scores: μ_high=μ_low=0 by convention when those sets are empty.
+    mid = np.array([0.4, 0.5, 0.55, 0.45, 0.6, 0.35], dtype=np.float64)
+    assert chainer._seed_confidence(mid) == 0.0
+    print("empty / zero-spread / mid-only scores all report confidence 0")
+
+
+def test_seed_confidence_one_sided_high_or_low():
+    """Missing one tail zeros that mean; the other side still drives the metric."""
+    cfg = ChainingConfig()
+    chainer = AffineChainer(cfg)
+    only_high = np.array([0.8, 0.9, 0.85, 0.95, 0.5, 0.55], dtype=np.float64)
+    only_low = np.array([0.1, 0.2, 0.05, 0.15, 0.5, 0.55], dtype=np.float64)
+
+    conf_high = chainer._seed_confidence(only_high)
+    conf_low = chainer._seed_confidence(only_low)
+    # μ_low = 0 when no low seeds -> (μ_high - 0) / σ > 0
+    assert conf_high > 0.0, conf_high
+    # μ_high = 0 when no high seeds -> (0 - μ_low) / σ < 0 (never clears τ)
+    assert conf_low < 0.0, conf_low
+    print(f"one-sided high conf={conf_high:.2f}; one-sided low conf={conf_low:.2f}")
+
+
+def test_confidence_gate_logit_math_and_clamping():
+    """Trusted gates must equal clip(1 + gain * logit(p)), including extremes."""
+    cfg = ChainingConfig(
+        confidence_threshold=0.0,  # force the gate open once count clears
+        min_confidence_anchors=4,
+        logit_gate_gain=0.25,
+        logit_gate_min=0.1,
+        logit_gate_max=3.0,
+    )
+    chainer = AffineChainer(cfg)
+    # Mix mid + extremes so the gate is exercised at both clamps and the interior.
+    scores = np.array([0.5, 0.9, 1e-8, 1.0 - 1e-8, 0.7, 0.3], dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+    gate = chainer._confidence_gate(anchors.score, np.isfinite(anchors.score))
+
+    p = np.clip(scores.astype(np.float64), 1e-4, 1.0 - 1e-4)
+    expected = np.clip(1.0 + cfg.logit_gate_gain * np.log(p / (1.0 - p)),
+                       cfg.logit_gate_min, cfg.logit_gate_max)
+    assert np.allclose(gate, expected), (gate, expected)
+    assert gate.min() >= cfg.logit_gate_min - 1e-12
+    assert gate.max() <= cfg.logit_gate_max + 1e-12
+    # p=0.5 -> logit 0 -> gate exactly 1.
+    assert np.isclose(gate[0], 1.0)
+    print(f"logit gate matches hand compute; range [{gate.min():.3f}, {gate.max():.3f}]")
+
+
+def test_confidence_gate_falls_back_at_exact_threshold():
+    """AGNES uses ``conf > τ``; equality must fall back to the identity gate."""
+    cfg = ChainingConfig(min_confidence_anchors=4)
+    chainer = AffineChainer(cfg)
+    # Keep one dtype end-to-end: float32 scores are what the seed head writes.
+    scores = np.array([0.9, 0.1, 0.85, 0.15, 0.88, 0.12], dtype=np.float32)
+    conf = chainer._seed_confidence(scores)
+    assert conf > 0.0
+    # Re-point τ to the measured confidence so the comparison is exactly ``<=``.
+    chainer.cfg.confidence_threshold = float(conf)
+    gate = chainer._confidence_gate(scores, np.ones(len(scores), dtype=bool))
+    assert np.allclose(gate, 1.0), (conf, gate)
+    # Bumping τ just below conf must open the gate.
+    chainer.cfg.confidence_threshold = float(conf) - 1e-6
+    gate_open = chainer._confidence_gate(scores, np.ones(len(scores), dtype=bool))
+    assert not np.allclose(gate_open, 1.0), gate_open
+    print(f"conf == τ ({conf:.4f}) falls back; conf > τ opens the gate")
+
+
+def test_confidence_gate_counts_only_finite_scores():
+    """NaN slots must not inflate the finite count past the degenerate guards."""
+    cfg = ChainingConfig(min_confidence_anchors=5, max_confidence_anchors=1000)
+    chainer = AffineChainer(cfg)
+    # Four finite + many NaN: finite count is below the floor -> identity.
+    scores = np.array([0.97, 0.02, 0.96, 0.03, np.nan, np.nan, np.nan, np.nan],
+                      dtype=np.float32)
+    finite = np.isfinite(scores)
+    assert int(finite.sum()) < cfg.min_confidence_anchors
+    gate = chainer._confidence_gate(scores, finite)
+    assert np.allclose(gate, 1.0), gate
+    # Non-finite positions stay at 1 even when the finite subset is trusted.
+    scores_ok = np.array([0.97, 0.02, 0.96, 0.03, 0.95, 0.04, np.nan, np.nan],
+                         dtype=np.float32)
+    finite_ok = np.isfinite(scores_ok)
+    gate_ok = chainer._confidence_gate(scores_ok, finite_ok)
+    assert np.allclose(gate_ok[~finite_ok], 1.0), gate_ok
+    assert not np.allclose(gate_ok[finite_ok], 1.0), gate_ok[finite_ok]
+    print("NaN slots ignored for the count; unscored positions keep gate=1")
+
+
+def test_confidence_gate_falls_back_above_max_anchors():
+    """AGNES |V| > 1000 guard: too many anchors -> classical DP."""
+    cfg = ChainingConfig(max_confidence_anchors=10, min_confidence_anchors=5)
+    chainer = AffineChainer(cfg)
+    # Decisively separated, but over the cap.
+    n = 12
+    scores = np.array([0.95 if i % 2 == 0 else 0.05 for i in range(n)], dtype=np.float32)
+    assert n > cfg.max_confidence_anchors
+    gate = chainer._confidence_gate(scores, np.ones(n, dtype=bool))
+    assert np.allclose(gate, 1.0), gate
+    print(f"{n} anchors (> {cfg.max_confidence_anchors}) -> gate is identity")
+
+
+def test_weights_without_neural_scores_are_pure_length():
+    """Unscored anchors (NaN) must never enter the adaptive path."""
+    chainer = AffineChainer(ChainingConfig())
+    anchors = AnchorSet.from_lists(
+        read_pos=[0, 20, 40],
+        ref_pos=[0, 20, 40],
+        length=[10, 20, 30],
+        strand=[1, 1, 1],
+        read_len=100,
+        ref_len=100,
+    )
+    assert not np.isfinite(anchors.score).any()
+    weights = chainer._weights(anchors, None)
+    assert np.allclose(weights, [10.0, 20.0, 30.0]), weights
+    print("no neural scores -> pure length weights")
+
+
+def test_legacy_linear_blend_when_adaptive_disabled():
+    """``adaptive_seed_scoring=False`` keeps the historical ``0.5 + score`` blend."""
+    cfg = ChainingConfig(adaptive_seed_scoring=False)
+    chainer = AffineChainer(cfg)
+    scores = np.array([0.0, 0.5, 1.0, 0.25], dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+    weights = chainer._weights(anchors, None)
+    expected = anchors.length.astype(np.float64) * (0.5 + scores)
+    assert np.allclose(weights, expected), (weights, expected)
+    # Flat scores still blend under the legacy path (unlike adaptive fallback).
+    flat = _anchor_set_with_scores(np.full(6, 0.5, dtype=np.float32))
+    flat_w = chainer._weights(flat, None)
+    assert np.allclose(flat_w, flat.length * 1.0)  # 0.5 + 0.5
+    # And they differ from the adaptive identity-on-flat behaviour.
+    adaptive = AffineChainer(ChainingConfig(adaptive_seed_scoring=True))
+    adaptive_w = adaptive._weights(flat, None)
+    assert np.allclose(adaptive_w, flat.length.astype(np.float64))
+    print("legacy blend = length*(0.5+score); adaptive falls back on flat scores")
+
+
+def test_adaptive_and_legacy_weights_diverge_when_confident():
+    """On a decisive distribution the two scoring paths must not agree."""
+    scores = np.array([0.97, 0.95, 0.96, 0.02, 0.03, 0.04, 0.98, 0.01],
+                      dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+    adaptive_w = AffineChainer(ChainingConfig(adaptive_seed_scoring=True))._weights(
+        anchors, None
+    )
+    legacy_w = AffineChainer(ChainingConfig(adaptive_seed_scoring=False))._weights(
+        anchors, None
+    )
+    assert not np.allclose(adaptive_w, legacy_w), (adaptive_w, legacy_w)
+    # Adaptive up-weights the good seeds harder than the linear blend near p~1.
+    good = scores > 0.5
+    assert adaptive_w[good].mean() > legacy_w[good].mean()
+    print(f"adaptive/legacy diverge; good-seed means "
+          f"{adaptive_w[good].mean():.2f} vs {legacy_w[good].mean():.2f}")
+
+
+def test_backbone_bias_composes_with_confidence_gate():
+    """Reference-path bias is applied before the gate, so both effects stack."""
+    cfg = ChainingConfig(ref_path_bias=2.0, confidence_threshold=0.0,
+                         min_confidence_anchors=4)
+    chainer = AffineChainer(cfg)
+    scores = np.array([0.9, 0.1, 0.85, 0.15], dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+    anchors.node_id[:] = np.array([0, 1, 0, 1], dtype=np.int64)
+    backbone = np.array([True, False], dtype=bool)
+    from graphmambaformer.alignment.chaining import ChainingContext
+    ctx = ChainingContext(backbone=backbone)
+
+    weights = chainer._weights(anchors, ctx)
+    gate = chainer._confidence_gate(anchors.score, np.isfinite(anchors.score))
+    base = anchors.length.astype(np.float64) + np.array([2.0, 0.0, 2.0, 0.0])
+    assert np.allclose(weights, base * gate), (weights, base * gate)
+    print("backbone bias stacks with the confidence gate")
+
+
+def test_flat_scores_do_not_change_primary_chain():
+    """Under-confident scores must leave the classical primary undisturbed."""
+    cfg = ChainingConfig(min_chain_score=1.0, min_confidence_anchors=4)
+    # Diagonal A is geometrically stronger (more anchors on a clean diagonal).
+    read_pos = np.array([0, 30, 60, 90, 0, 40], dtype=np.int64)
+    ref_pos = np.array([0, 30, 60, 90, 400, 440], dtype=np.int64)
+    anchors = AnchorSet.from_lists(
+        read_pos=read_pos,
+        ref_pos=ref_pos,
+        length=np.full(6, 20, dtype=np.int64),
+        strand=np.ones(6, dtype=np.int8),
+        read_len=150,
+        ref_len=500,
+    )
+
+    classical = AffineChainer(cfg).chain(anchors)
+    assert classical, "expected a classical chain"
+    classical_ref = int(anchors.ref_pos[classical[0].anchor_idx].min())
+
+    anchors.score[:] = 0.5  # flat -> adaptive falls back
+    adaptive = AffineChainer(cfg).chain(anchors)
+    assert adaptive, "expected an adaptive (fallback) chain"
+    adaptive_ref = int(anchors.ref_pos[adaptive[0].anchor_idx].min())
+    assert adaptive_ref == classical_ref == 0, (adaptive_ref, classical_ref)
+    print(f"flat scores preserve classical primary at ref {classical_ref}")
+
+
+def test_adaptive_scoring_can_override_weaker_geometric_diagonal():
+    """A shorter but confidently-scored diagonal must beat a longer unscored one."""
+    cfg = ChainingConfig(min_chain_score=1.0, min_confidence_anchors=4,
+                         secondary_score_ratio=0.0, max_chains=4)
+    # Diagonal A: 5 long anchors, low neural score.
+    # Diagonal B: 4 shorter anchors, high neural score — should win under adaptive.
+    read_a = np.array([0, 40, 80, 120, 160], dtype=np.int64)
+    ref_a = np.array([0, 40, 80, 120, 160], dtype=np.int64)
+    read_b = np.array([0, 40, 80, 120], dtype=np.int64)
+    ref_b = np.array([500, 540, 580, 620], dtype=np.int64)
+    anchors = AnchorSet.from_lists(
+        read_pos=np.concatenate([read_a, read_b]),
+        ref_pos=np.concatenate([ref_a, ref_b]),
+        length=np.concatenate([np.full(5, 25), np.full(4, 15)]).astype(np.int64),
+        strand=np.ones(9, dtype=np.int8),
+        read_len=220,
+        ref_len=700,
+    )
+    anchors.score[:] = np.array(
+        [0.05, 0.04, 0.03, 0.02, 0.06, 0.97, 0.98, 0.96, 0.95], dtype=np.float32
+    )
+
+    classical_cfg = ChainingConfig(
+        min_chain_score=1.0, adaptive_seed_scoring=True, min_confidence_anchors=4,
+        # Force classical by wiping scores.
+    )
+    no_score = AnchorSet.from_lists(
+        read_pos=anchors.read_pos, ref_pos=anchors.ref_pos, length=anchors.length,
+        strand=anchors.strand, read_len=anchors.read_len, ref_len=anchors.ref_len,
+    )
+    classical_primary = AffineChainer(classical_cfg).chain(no_score)[0]
+    classical_ref = int(no_score.ref_pos[classical_primary.anchor_idx].min())
+    assert classical_ref == 0, "without scores the longer diagonal A should win"
+
+    adaptive_primary = AffineChainer(cfg).chain(anchors)[0]
+    adaptive_ref = int(anchors.ref_pos[adaptive_primary.anchor_idx].min())
+    assert adaptive_ref >= 500, (adaptive_ref, "confident shorter diagonal B must win")
+    print(f"classical picked ref {classical_ref}; adaptive overrode to ref {adaptive_ref}")
+
+
+def test_weights_are_strictly_positive_under_gate():
+    """Clamped gates must keep every weight > 0 so the DP never sees a dead anchor."""
+    cfg = ChainingConfig(confidence_threshold=0.0, min_confidence_anchors=4,
+                         logit_gate_min=0.1, logit_gate_max=3.0)
+    chainer = AffineChainer(cfg)
+    scores = np.array([1e-9, 1.0, 0.0, 0.999999, 0.5, 0.01], dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+    weights = chainer._weights(anchors, None)
+    assert (weights > 0).all(), weights
+    assert weights.min() >= anchors.length.min() * cfg.logit_gate_min - 1e-9
+    print(f"all weights positive under extreme scores; min={weights.min():.3f}")
+
+
+def test_agnes_algorithm1_decision_table():
+    """AGNES Algorithm 1 decision table: degenerate / flat / separated."""
+    cfg = ChainingConfig(confidence_threshold=0.7, min_confidence_anchors=5,
+                         max_confidence_anchors=1000)
+    chainer = AffineChainer(cfg)
+
+    # |V| < 5 → PureDP even if scores look perfect.
+    tiny = _anchor_set_with_scores(np.array([0.99, 0.01, 0.98, 0.02], dtype=np.float32))
+    assert chainer.trust_neural_scores(tiny) is False
+
+    # Flat mid scores → PureDP.
+    flat = _anchor_set_with_scores(np.full(12, 0.5, dtype=np.float32))
+    assert chainer.trust_neural_scores(flat) is False
+
+    # Decisively separated → GNN-guided.
+    sep = _anchor_set_with_scores(np.array(
+        [0.95, 0.97, 0.04, 0.03, 0.96, 0.02, 0.94, 0.05, 0.98, 0.01], dtype=np.float32
+    ))
+    assert chainer.trust_neural_scores(sep) is True
+
+    # |V| > max → PureDP.
+    big_cfg = ChainingConfig(max_confidence_anchors=8, min_confidence_anchors=5)
+    big = _anchor_set_with_scores(np.array(
+        [0.95 if i % 2 == 0 else 0.05 for i in range(12)], dtype=np.float32
+    ))
+    assert AffineChainer(big_cfg).trust_neural_scores(big) is False
+    print("Algorithm 1 decision table: tiny/flat/big=False, separated=True")
+
+
+def test_pruned_scores_cannot_reopen_gate_without_trust_flag():
+    """Regression: after pruning away p<0.3 seeds, auto-confidence would lie.
+
+    The survivors are all high-scoring, so ``(μ_high - 0) / σ`` looks decisive
+    even though the classifier was never trusted on the full set. ``trust_neural=
+    False`` must force classical weights; that is what the hybrid pipeline pins
+    after an under-confident Algorithm-1 decision.
+    """
+    from graphmambaformer.alignment.chaining import ChainingContext
+
+    chainer = AffineChainer(ChainingConfig(min_confidence_anchors=5))
+    # Full set is flat / under-confident.
+    full_scores = np.full(12, 0.55, dtype=np.float32)
+    full = _anchor_set_with_scores(full_scores)
+    assert chainer.trust_neural_scores(full) is False
+
+    # Simulate prune-to-top-k: only the "best" (still ~0.55) remain — or worse,
+    # a pruned set that is artificially all-high.
+    pruned = _anchor_set_with_scores(np.array(
+        [0.92, 0.91, 0.93, 0.90, 0.94, 0.89], dtype=np.float32
+    ))
+    # Auto path on the pruned set would *incorrectly* trust them:
+    assert chainer.trust_neural_scores(pruned) is True
+
+    classical = chainer._weights(pruned, ChainingContext(trust_neural=False))
+    assert np.allclose(classical, pruned.length.astype(np.float64)), classical
+
+    guided = chainer._weights(pruned, ChainingContext(trust_neural=True))
+    assert not np.allclose(guided, classical), (guided, classical)
+    print("trust_neural=False blocks reopen after prune; True still applies gate")
+
+
+def test_forced_trust_applies_logit_without_rechecking_confidence():
+    """``trust_neural=True`` must apply the logit gate even on a tiny set."""
+    from graphmambaformer.alignment.chaining import ChainingContext
+
+    cfg = ChainingConfig(min_confidence_anchors=5)  # tiny set would fail auto
+    chainer = AffineChainer(cfg)
+    scores = np.array([0.9, 0.1, 0.85], dtype=np.float32)
+    anchors = _anchor_set_with_scores(scores)
+    assert chainer.trust_neural_scores(anchors) is False  # |V|<5
+
+    auto = chainer._weights(anchors, None)
+    forced = chainer._weights(anchors, ChainingContext(trust_neural=True))
+    assert np.allclose(auto, anchors.length.astype(np.float64))
+    expected = anchors.length * chainer._logit_gate(anchors.score, np.isfinite(anchors.score))
+    assert np.allclose(forced, expected), (forced, expected)
+    print("forced trust bypasses the |V| guard and applies the logit gate")
 
 
 # --------------------------------------------------------------------------- #
@@ -336,6 +1045,10 @@ def test_wfa_matches_levenshtein():
         # The CIGAR must account for exactly the query it consumed.
         consumed = sum(n for op, n in cigar if op in "=XI")
         assert consumed == len(a), (a, b, cigar)
+        target_consumed = sum(n for op, n in cigar if op in "=XD")
+        assert target_consumed == len(b), (a, b, cigar)
+        edits = sum(n for op, n in cigar if op in "XID")
+        assert edits == distance, (a, b, distance, cigar)
     print(f"WFA distance == Levenshtein on {len(cases)} random indel/sub cases")
 
 
@@ -349,3 +1062,40 @@ def test_wfa_reports_when_over_budget():
         print(f"WFA over budget raises for the caller to fall back: {exc}")
         return
     raise AssertionError("expected RuntimeError once past wfa_max_distance")
+
+
+def test_wfa_does_not_treat_ambiguous_bases_as_matches():
+    wfa = WavefrontAligner(ExtensionConfig(algorithm="wfa"))
+    distance, cigar = wfa.align(encode_bases("AN"), encode_bases("AN"))
+    assert distance == 1
+    assert cigar == [("=", 1), ("X", 1)], cigar
+
+
+def test_wfa_extension_does_not_force_search_flanks_into_cigar():
+    from graphmambaformer.alignment.extension import ExtensionEngine
+
+    read = "ACGTACGT"
+    reference = "T" * 50 + read + "G" * 50
+    anchors = AnchorSet.from_lists(
+        read_pos=[0],
+        ref_pos=[50],
+        length=[8],
+        strand=[1],
+        read_len=8,
+        ref_len=len(reference),
+    )
+    chain = Chain(
+        anchor_idx=np.array([0]),
+        score=8.0,
+        strand=1,
+        read_start=0,
+        read_end=8,
+        ref_start=50,
+        ref_end=58,
+        is_primary=True,
+    )
+    result = ExtensionEngine(ExtensionConfig(algorithm="wfa", flank=25)).extend_chains(
+        read, [chain], anchors, reference
+    )[0]
+    assert result.cigar == [("=", 8)], result.cigar
+    assert (result.ref_start, result.ref_end) == (50, 58)

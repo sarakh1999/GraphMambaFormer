@@ -132,7 +132,12 @@ class Reference:
 
 @dataclass
 class ReadRecord:
-    """A simulated read with exact ground truth for every pipeline stage."""
+    """One read (single-end or one mate) plus optional alignment truth.
+
+    Pair fields are inert for single-end records, which keeps ONT/PacBio and
+    existing synthetic data unchanged.  For Illumina paired-end data both
+    mates share ``pair_id`` and use ``mate_index`` 1 (R1) or 2 (R2).
+    """
 
     read_id: str
     ref_id: int
@@ -161,6 +166,15 @@ class ReadRecord:
     supplementary: Optional[dict] = None  # second alignment for chimeric reads
 
     edge_case: Optional[str] = None       # tag for injected edge cases
+
+    # --- paired-end metadata (Illumina; zero/None means single-end) -------- #
+    pair_id: Optional[str] = None
+    mate_index: int = 0                   # 0=single, 1=R1, 2=R2
+    mate_ref_id: int = -1
+    mate_ref_start: int = -1
+    mate_strand: int = 1
+    template_length: int = 0
+    proper_pair: bool = False
 
     # -- convenience ------------------------------------------------------- #
     @property

@@ -25,6 +25,7 @@ from .reference_build import (
 from .real_data import (
     RealReference,
     build_batches,
+    build_dual_reference_from_files,
     build_reference_from_files,
     discover_hprc_reads,
     expand_read_inputs,
@@ -101,6 +102,7 @@ __all__ = [
     # real-data ingestion (FASTA + optional GFA + reads/truth BAM)
     "RealReference",
     "build_reference_from_files",
+    "build_dual_reference_from_files",
     "load_real_reads",
     "build_batches",
     "discover_hprc_reads",

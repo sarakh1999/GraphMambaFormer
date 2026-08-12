@@ -332,7 +332,8 @@ PYTHONPATH=. python scripts/train.py --data real \
     --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
     --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
     --region chr21:5000000-6000000 --ref-mode linear \
-    --device cuda --epochs 20 --batch-size 8 \
+    --device cuda --require-gpu --workers 16 --prefetch 3 \
+    --epochs 20 --batch-size 8 \
     --out data/training_runs/chr21_linear
 
 # EVALUATE the trained checkpoint → metrics + predicted BAM/SAM
@@ -341,8 +342,13 @@ PYTHONPATH=. python scripts/eval.py --data real \
     --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
     --region chr21:5000000-6000000 --ref-mode linear --mode hybrid \
     --checkpoint data/training_runs/chr21_linear/checkpoint.pt \
+    --device cuda --require-gpu --cuda-graphs \
     --out data/eval_runs/chr21_linear
 ```
+
+With `--ref-mode both`, eval also writes an **integrated** concordance BAM under
+`<out>/integrated/` (linear + pangenome, one pass). Pass `--no-integrate` to
+skip it.
 
 ### Real data — pangenome graph
 
@@ -472,20 +478,25 @@ run works and a missing install skips the plots instead of failing the training.
 the **same binary** runs on an A6000, A100, H100, H200, or a laptop CPU — no
 per-SKU rebuild:
 
-| Tier | Used for | Fallback |
-| --- | --- | --- |
-| CuPy `RawKernel` | k-mer lookup, chaining DP, banded SW | batched PyTorch |
-| Triton | fused LayerNorm + Linear + GELU | eager PyTorch |
-| `mamba_ssm` | fused selective scan | pure-PyTorch SSD scan |
-| TF32 / Flash-SDP / cuDNN autotune | matmul + attention | plain kernels |
-| AMP (`bf16`/`fp16`) + CUDA graphs | model forward | full precision |
+| Tier / feature | Module | Used for | Fallback |
+| --- | --- | --- | --- |
+| CuPy `RawKernel` | `accel/cuda_kernels.py` | k-mer lookup, chaining DP, banded SW | batched PyTorch |
+| Triton | `accel/triton_ops.py` | fused LayerNorm + Linear + GELU | eager PyTorch |
+| `mamba_ssm` | `layers/mamba2.py` | fused selective scan | pure-PyTorch SSD scan |
+| TF32 / Flash-SDP / cuDNN | `accel/backend.py` | matmul + attention | plain kernels |
+| AMP (`bf16`/`fp16`) | `AccelContext.autocast` | training + inference | full precision |
+| **CUDA Graphs** (default on) | `accel/cuda_graphs.py` | fixed-shape inference | eager |
+| **TransformerEngine FP8** | `accel/transformer_engine.py` | Ada/Hopper FP8 autocast | BF16 AMP on Ampere |
+| **TensorRT** (opt-in) | `accel/tensorrt_engine.py` | lazy `torch_tensorrt` compile | eager PyTorch |
+| Host multithreading | `accel/parallel.py` | seeding / chaining / index build / batch prefetch | serial |
 
 ```python
 from graphmambaformer import AccelContext
 from graphmambaformer.accel import list_visible_gpus
 print(AccelContext().summary())
 print(list_visible_gpus())
-# tier=torch_cuda | vendor=nvidia | device=cuda:0 | name=NVIDIA H100 | arch=Hopper/H100 (sm_90) | …
+# tier=torch_cuda | vendor=nvidia | device=cuda:0 | name=NVIDIA RTX A6000 | …
+#   … | cuda_graphs=True | fp8=False | tensorrt=False
 ```
 
 ```bash
@@ -494,10 +505,77 @@ PYTHONPATH=. python scripts/check_gpu.py
 PYTHONPATH=. python scripts/check_gpu.py --device cuda:0
 ```
 
+### Install CUDA extras (GPU box only)
+
+```bash
+# 1) CUDA torch wheel matching the box runtime (example: CUDA 12.1)
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+# 2) base + NVIDIA-only stack (mamba-ssm, Triton, CuPy, TE, torch-tensorrt, DeepSpeed)
+pip install -r requirements.txt -r requirements-gpu.txt
+```
+
+Every optional package is probed at runtime: a missing install never crashes the
+pipeline — it just stays on the next-lower tier.
+
+### Multithreading + keeping the GPU fed
+
+Stages 1–2 and supervision building are host-side NumPy/Python. Left
+single-threaded they **starve the GPU** (classic `nvidia-smi` ≈ 0 %). The stack
+fans seeding / chaining / index construction across CPU cores and **prefetches**
+the next training batch on background threads while the current one runs on the
+device:
+
+```bash
+# --require-gpu hard-fails on a CPU-only torch wheel (no silent 0% util)
+# --workers 0 = all host cores; --prefetch N = look-ahead batches
+PYTHONPATH=. python scripts/train.py --data real ... \
+    --device cuda --require-gpu \
+    --workers 16 --prefetch 3 \
+    --d-model 256 --batch-size 32 \
+    --out data/training_runs/chr21_linear
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--require-gpu` | off | exit if no CUDA/MPS/XPU (use in GPU jobs) |
+| `--workers N` | `0` (all cores) | host threads for stages + prefetch |
+| `--prefetch N` | `2` | batches built ahead on the host (`0` = off) |
+| `--compile` | off | `torch.compile` the model forward |
+| `--cuda-graphs` / `--no-cuda-graphs` | **on** | capture fixed-shape inference |
+| `--fp8` / `--no-fp8` | on | TE FP8 when HW supports it; **A6000 → BF16** |
+| `--tensorrt` | off | lazy TensorRT / `torch_tensorrt` inference |
+| `--devices` | `auto` | multi-GPU `DataParallel` list |
+
+The same flags work on `scripts/eval.py`.
+
+### Recommended A6000 / A100 command
+
+Ampere has no FP8 tensor cores — leave `--fp8` on (it auto-falls back to BF16):
+
+```bash
+PYTHONPATH=. python scripts/train.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+    --region chr21:5000000-6000000 --ref-mode linear \
+    --device cuda --require-gpu --devices auto \
+    --workers 16 --prefetch 3 --compile --cuda-graphs \
+    --d-model 256 --batch-size 32 --epochs 20 \
+    --out data/training_runs/chr21_linear
+
+# Inference with CUDA Graphs (+ optional TensorRT)
+PYTHONPATH=. python scripts/eval.py --data real \
+    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
+    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+    --region chr21:5000000-6000000 --ref-mode linear --mode hybrid \
+    --checkpoint data/training_runs/chr21_linear/checkpoint.pt \
+    --device cuda --require-gpu --cuda-graphs --tensorrt \
+    --out data/eval_runs/chr21_linear
+```
+
 ### Supported NVIDIA datacentre GPUs
 
 One CUDA wheel covers every card below. Capability gates (TF32 / AMP dtype /
-Flash SDP) follow the live compute capability, so an A6000 and an H200 take
+Flash SDP / FP8) follow the live compute capability, so an A6000 and an H200 take
 different fast paths automatically:
 
 | GPU | Arch | sm | TF32 | bf16 AMP | fp8 |
@@ -743,6 +821,8 @@ with Metal/MPS plus Apple's MLX stack:
 # If needed: recreate with a 3.10+ interpreter (e.g. from conda)
 # /path/to/python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+# On an NVIDIA GPU box, also install the CUDA extras:
+# .venv/bin/pip install -r requirements-gpu.txt
 ```
 
 ### Apple Silicon GPU (MacBook Pro M-series)

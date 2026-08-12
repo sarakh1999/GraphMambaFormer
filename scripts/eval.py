@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 
 from graphmambaformer.accel import AccelContext
+from graphmambaformer.alignment import DualReferenceAligner
 from graphmambaformer.alignment.pipeline import build_pipeline
 from graphmambaformer.config import (
     AccelConfig,
@@ -61,6 +62,7 @@ from graphmambaformer.config import (
 )
 from graphmambaformer.data import (
     build_batches,
+    build_dual_reference_from_files,
     build_reference_from_files,
     build_reference_from_synthetic,
     export_dataset,
@@ -153,6 +155,45 @@ def _write_pred_bam(mode_dir, split_tag, batches, pipeline, refs_meta,
             print(f"    note: CRAM export skipped ({exc})")
 
 
+def _write_integrated_bam(out_dir, split_tag, dual_ctx, pipeline):
+    """One pass over both references (shared read encoding) -> integrated BAM.
+
+    Uses :class:`DualReferenceAligner` so linear + pangenome are aligned in a
+    single sweep and folded into one concordance-picked primary per read, rather
+    than re-running the reads against each reference independently.
+    """
+    reads = dual_ctx["reads"]
+    references = dual_ctx["references"]
+    refs_meta = dual_ctx["refs_meta"]
+
+    aligner = DualReferenceAligner(pipeline)
+    result = aligner.align(reads, references, integrate=True)
+    concordant = sum(1 for c in result.integrated if c.concordant and c.primary)
+    mapped = sum(1 for c in result.integrated if c.primary is not None)
+    print(f"    integrated: refs={result.names} mapped={mapped}/{len(reads)} "
+          f"concordant={concordant}")
+    for name, stats in result.stats.items():
+        print(f"      [{name}] {stats.summary()}")
+
+    integrated_dir = os.path.join(out_dir, "integrated")
+    os.makedirs(integrated_dir, exist_ok=True)
+    bam_path = os.path.join(integrated_dir, f"pred.{split_tag}.bam")
+
+    class _Ref:
+        __slots__ = ("seq",)
+
+        def __init__(self, seq):
+            self.seq = seq
+
+    ref_objs = {rid: _Ref(seq) for rid, (seq, _name) in refs_meta.items()}
+    contig_names = {rid: name for rid, (_seq, name) in refs_meta.items()}
+    out = write_alignments(
+        result.integrated_alignments(), reads, bam_path,
+        references=ref_objs, contig_names=contig_names,
+    )
+    print(f"    integrated BAM -> {out} (+ .bai)")
+
+
 # --------------------------------------------------------------------------- #
 # synthetic and real batch builders -> {label: (batches, refs_meta, has_truth)}
 # --------------------------------------------------------------------------- #
@@ -188,7 +229,7 @@ def build_synthetic_eval(args, pipeline, model_cfg):
                 batches.append((group, references[ref_id]))
         refs_meta = {rid: (ds.references[rid].seq, f"ref{rid}") for rid in references}
         out[label] = (batches, refs_meta, True)
-    return out
+    return out, None
 
 
 def build_real_eval(args, pipeline, model_cfg):
@@ -199,14 +240,22 @@ def build_real_eval(args, pipeline, model_cfg):
     if any(w for _, w in modes) and not args.gfa:
         sys.exit("ERROR: --ref-mode pangenome/both needs --gfa (a real GFA graph)")
 
-    references = {}
-    for label, with_graph in modes:
-        references[label] = build_reference_from_files(
-            pipeline, args.reference_fasta,
-            gfa=args.gfa if with_graph else None,
-            contig=args.contig, region=args.region,
-            with_graph=with_graph, kmer_size=kmer_size,
+    # For "both" the FASTA is read once and both indexes share its ref_seq; for a
+    # single mode we build just that one.
+    if args.ref_mode == "both":
+        references = build_dual_reference_from_files(
+            pipeline, args.reference_fasta, gfa=args.gfa,
+            contig=args.contig, region=args.region, kmer_size=kmer_size,
         )
+    else:
+        references = {}
+        for label, with_graph in modes:
+            references[label] = build_reference_from_files(
+                pipeline, args.reference_fasta,
+                gfa=args.gfa if with_graph else None,
+                contig=args.contig, region=args.region,
+                with_graph=with_graph, kmer_size=kmer_size,
+            )
     anchor_ref = references[modes[0][0]]
     reads, has_truth = load_real_reads(
         truth_bam=args.truth_bam, reads=args.reads_files or None,
@@ -225,7 +274,17 @@ def build_real_eval(args, pipeline, model_cfg):
         batches = build_batches(reads, rr, args.batch_size)
         refs_meta = {rr.ref_id: (rr.ref_seq, rr.contig)}
         out[label] = (batches, refs_meta, has_truth)
-    return out
+
+    # A single pass over both references, sharing the read encoding, produces
+    # the integrated (concordance-picked) BAM alongside the per-mode outputs.
+    dual_ctx = None
+    if args.ref_mode == "both" and not args.no_integrate:
+        dual_ctx = {
+            "reads": reads,
+            "references": {label: references[label].reference for label, _ in modes},
+            "refs_meta": {anchor_ref.ref_id: (anchor_ref.ref_seq, anchor_ref.contig)},
+        }
+    return out, dual_ctx
 
 
 def main() -> int:
@@ -290,6 +349,9 @@ def main() -> int:
     p.add_argument("--out", default="data/eval_runs/latest")
     p.add_argument("--no-bam", action="store_true",
                    help="skip writing predicted BAM/SAM")
+    p.add_argument("--no-integrate", action="store_true",
+                   help="(--ref-mode both) skip the single-pass integrated BAM "
+                        "that folds linear + pangenome into one concordance call")
     p.add_argument("--write-cram", action="store_true",
                    help="also write predicted CRAM (needs reference FASTA)")
     args = p.parse_args()
@@ -356,10 +418,10 @@ def main() -> int:
     )
 
     if args.data == "real":
-        per_mode = build_real_eval(args, pipeline, model_cfg)
+        per_mode, dual_ctx = build_real_eval(args, pipeline, model_cfg)
         split_tag = "real"
     else:
-        per_mode = build_synthetic_eval(args, pipeline, model_cfg)
+        per_mode, dual_ctx = build_synthetic_eval(args, pipeline, model_cfg)
         split_tag = args.split
 
     trainer = Trainer(
@@ -412,6 +474,10 @@ def main() -> int:
                 reference_fasta=args.reference_fasta,
             )
 
+    if dual_ctx is not None and not args.no_bam:
+        print(f"[integrated] one-pass linear+pangenome concordance BAM")
+        _write_integrated_bam(args.out, split_tag, dual_ctx, pipeline)
+
     summary_path = os.path.join(args.out, "metrics.json")
     summary = {
         "data": args.data,
@@ -430,6 +496,7 @@ def main() -> int:
         "artifacts": {
             "metrics": "metrics.json + <mode>/metrics.json",
             "pred_bam": "<mode>/pred.<split>.bam (+ .bai)",
+            "integrated_bam": "integrated/pred.<split>.bam (+ .bai, --ref-mode both)",
             "pred_sam": "<mode>/pred.<split>.sam",
             "pred_cram": "<mode>/pred.<split>.cram (if --write-cram)",
             "run_meta": "run_meta.json",

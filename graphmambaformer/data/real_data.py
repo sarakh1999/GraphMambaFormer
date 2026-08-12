@@ -174,13 +174,31 @@ def build_reference_from_files(
     want_graph = (gfa is not None) if with_graph is None else with_graph
 
     if not want_graph or gfa is None:
-        reference = pipeline.build_reference(ref_seq, ref_id=ref_id)
-        return RealReference(
-            reference=reference, ref_seq=ref_seq, contig=contig_name,
-            ref_id=ref_id, offset=offset, with_graph=False, label="linear",
-            fasta_path=fasta,
+        return _build_linear(
+            pipeline, ref_seq, contig_name, offset, ref_id=ref_id, fasta=fasta
         )
+    return _build_pangenome(
+        pipeline, ref_seq, contig_name, offset, gfa,
+        ref_id=ref_id, kmer_size=kmer_size, device=device, fasta=fasta,
+    )
 
+
+def _build_linear(
+    pipeline, ref_seq, contig_name, offset, *, ref_id, fasta
+) -> RealReference:
+    """Wrap a linear-only pipeline index (no graph towers) as a RealReference."""
+    reference = pipeline.build_reference(ref_seq, ref_id=ref_id)
+    return RealReference(
+        reference=reference, ref_seq=ref_seq, contig=contig_name,
+        ref_id=ref_id, offset=offset, with_graph=False, label="linear",
+        fasta_path=fasta,
+    )
+
+
+def _build_pangenome(
+    pipeline, ref_seq, contig_name, offset, gfa, *, ref_id, kmer_size, device, fasta
+) -> RealReference:
+    """Attach a parsed GFA graph on top of ``ref_seq`` as a RealReference."""
     if not os.path.exists(gfa):
         raise FileNotFoundError(f"pangenome GFA not found: {gfa}")
     graph = read_gfa(gfa)
@@ -205,6 +223,41 @@ def build_reference_from_files(
         gfa_path=gfa, fasta_path=fasta,
         n_nodes=len(graph.node_seqs), n_edges=len(graph.edge_index),
     )
+
+
+def build_dual_reference_from_files(
+    pipeline,
+    fasta: str,
+    *,
+    gfa: str,
+    contig: Optional[str] = None,
+    region: Optional[str] = None,
+    ref_id: int = 0,
+    kmer_size: int = 3,
+    device=None,
+) -> dict[str, RealReference]:
+    """Build the linear **and** pangenome references from one FASTA read.
+
+    Both arms share the same (windowed) ``ref_seq`` and coordinate frame — the
+    pangenome index just adds graph context on top — so the FASTA is parsed once
+    here instead of once per :func:`build_reference_from_files` call. The result
+    (``{"linear": ..., "pangenome": ...}``) is exactly what
+    :class:`~graphmambaformer.alignment.DualReferenceAligner` consumes to align
+    against both in a single pass.
+    """
+    if not gfa:
+        raise ValueError(
+            "build_dual_reference_from_files needs a GFA for the pangenome arm"
+        )
+    contig_name, ref_seq, offset = read_fasta_contig(fasta, contig=contig, region=region)
+    linear = _build_linear(
+        pipeline, ref_seq, contig_name, offset, ref_id=ref_id, fasta=fasta
+    )
+    pangenome = _build_pangenome(
+        pipeline, ref_seq, contig_name, offset, gfa,
+        ref_id=ref_id, kmer_size=kmer_size, device=device, fasta=fasta,
+    )
+    return {"linear": linear, "pangenome": pangenome}
 
 
 def _shift_read_into_window(

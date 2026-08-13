@@ -188,8 +188,13 @@ LABEL org.opencontainers.image.title="graphmambaformer-gpu" \
 
 # Replace the CPU wheel in place; the venv layout and PATH are unchanged, so
 # nothing downstream has to know which channel was used.
+# PyTorch's CUDA index does not always carry every nvidia-* pin that
+# torch==2.4.1 declares (e.g. nvidia-cudnn-cu12==9.1.0.70 was removed while
+# 9.1.1.17 remains on PyPI). Keep the channel as primary and fall back to
+# PyPI for those companion wheels.
 RUN /opt/gmf/bin/pip install --no-cache-dir --force-reinstall \
         --index-url "https://download.pytorch.org/whl/${TORCH_CHANNEL}" \
+        --extra-index-url "https://pypi.org/simple" \
         "torch==${GPU_TORCH_VERSION}" \
     && if [ "$INSTALL_TRITON" = "1" ]; then \
          /opt/gmf/bin/pip install --no-cache-dir "triton" || \

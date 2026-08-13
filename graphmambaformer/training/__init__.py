@@ -18,6 +18,7 @@ from .metrics import (
 )
 from .plots import plot_all, plotting_available
 from .probes import BehaviorProbe, StepReport
+from .pseudo_labels import mapped_only, pseudo_label_reads
 from .targets import Supervision, TargetBuilder
 from .trainer import TrainConfig, Trainer, TrainHistory
 
@@ -34,6 +35,8 @@ __all__ = [
     "chain_accuracy",
     "locus_accuracy",
     "mapq_calibration",
+    "mapped_only",
     "plot_all",
     "plotting_available",
+    "pseudo_label_reads",
 ]

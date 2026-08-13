@@ -77,18 +77,32 @@ TRUTH=data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
 REGION=chr21:5000000-6000000
 ```
 
-### 3.1 Train (needs `--truth-bam`)
+### 3.1 Train (truth BAM *or* FASTQ with classical pseudo-labels)
 
 Swap `--modality {illumina|pacbio_hifi|ont|...}` and `--ref-mode {linear|pangenome|both}` freely (`--gfa` required for `pangenome`/`both`).
 
+Prefer `--truth-bam` when you have aligned labels. **Without a truth BAM**, pass
+`--reads-file` only — the classical `fast` aligner builds pseudo-labels and
+writes `pseudo_truth.bam` under `--out`.
+
 ```bash
-# Illumina · linear
+# Illumina · linear · with truth BAM
 PYTHONPATH=. python scripts/train.py --data real \
   --reference-fasta "$REF" --truth-bam "$TRUTH" \
   --region "$REGION" --ref-mode linear --modality illumina \
   --device cuda --require-gpu --workers 16 --prefetch 3 \
   --epochs 20 --batch-size 8 --d-model 256 \
   --out data/training_runs/illumina_linear
+
+# Illumina · linear · NO truth BAM (FASTQ → classical pseudo-labels → train)
+PYTHONPATH=. python scripts/train.py --data real \
+  --reference-fasta "$REF" \
+  --reads-file data/chr21/HG005/reads/HG005.chr21.R1.fastq.gz \
+  --reads-file data/chr21/HG005/reads/HG005.chr21.R2.fastq.gz \
+  --read-layout paired --modality illumina --ref-mode linear \
+  --region chr21 --device cuda --require-gpu \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/illumina_pseudo
 
 # PacBio HiFi · pangenome
 PYTHONPATH=. python scripts/train.py --data real \
@@ -486,6 +500,36 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
 
 Linear-only: drop `--gfa` and use `--ref-mode linear`. Swap `--modality` to
 `pacbio_hifi` / `ont` / etc. as needed.
+
+**Train without truth BAM (real FASTQ → classical pseudo-labels):**
+
+```bash
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/train.py --data real \
+  --reference-fasta "$REF" \
+  --reads-file /work/data/chr21/HG005/reads/HG005.chr21.R1.fastq.gz \
+  --reads-file /work/data/chr21/HG005/reads/HG005.chr21.R2.fastq.gz \
+  --read-layout paired --modality illumina --ref-mode linear \
+  --region chr21 --device cuda --require-gpu \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --out /work/data/training_runs/illumina_pseudo
+```
+
+**One-shot hybrid map (train-then-align via `align_ours.py`):**
+
+```bash
+PYTHONPATH=. python scripts/chr21/align_ours.py \
+  --ref "$REF" \
+  --illumina data/chr21/HG005/reads/HG005.chr21.R1.fastq.gz \
+  --illumina data/chr21/HG005/reads/HG005.chr21.R2.fastq.gz \
+  --read-layout paired --mode hybrid --device cuda \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --train-out data/training_runs/illumina_hybrid \
+  --out data/chr21/HG005/bam/HG005.chr21.ours.sorted.bam
+```
+
+`--epochs` / `--batch-size` / `--d-model` are accepted on `align_ours.py` in all
+modes; with `--mode hybrid` and no `--checkpoint` they trigger inline training.
 
 **Evaluate (metrics + predicted BAM):**
 

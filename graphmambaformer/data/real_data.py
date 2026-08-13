@@ -7,8 +7,11 @@ does the same job starting from the files a real project actually has on disk:
 * a reference **FASTA** (linear genome, one contig or a windowed slice),
 * an optional pangenome **GFA** graph (real HPRC window, or ``vg convert -f``
   output) so the graph towers see real nodes and edges,
-* reads as **FASTQ** (inference only) or an aligned **BAM/SAM/CRAM** truth set
+* reads as **FASTQ** (inference, or training via classical pseudo-labels) or an
+  aligned **BAM/SAM/CRAM** truth set
   (``ref_start`` / ``ref_end`` / ``cigar`` / ``mapq`` per read → supervision).
+  When training without a truth BAM, :func:`~graphmambaformer.training.pseudo_label_reads`
+  maps the FASTQ with the classical pipeline and attaches those labels.
 
 The same ``--ref-mode {linear,pangenome,both}`` switch used for synthetic data
 maps onto real data here: *linear* passes only the FASTA sequence, *pangenome*

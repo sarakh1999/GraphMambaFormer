@@ -41,6 +41,14 @@ Examples
         --hifi 'data/hprc/reads/HG00438/hifi/*.fastq.gz' \\
         --ont data/hprc/reads/HG00438/ont/ \\
         --out out.combined.bam
+
+    # Hybrid with train-then-map when no checkpoint (pseudo-labels from FASTQ)
+    python scripts/chr21/align_ours.py --ref REF \\
+        --illumina R1.fastq.gz --illumina R2.fastq.gz \\
+        --read-layout paired --mode hybrid --device cuda \\
+        --epochs 20 --batch-size 8 --d-model 256 \\
+        --train-out data/training_runs/illumina_hybrid \\
+        --out out.hybrid.bam
 """
 from __future__ import annotations
 
@@ -258,6 +266,150 @@ def _collect_modality_inputs(args) -> list[tuple[str, list[str], str]]:
     return jobs
 
 
+def _load_checkpoint(path: str, model) -> dict:
+    import torch
+
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    state = payload["model"] if isinstance(payload, dict) and "model" in payload else payload
+    model.load_state_dict(state)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _d_model_from_checkpoint(path: str, default: int) -> int:
+    import torch
+
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    if isinstance(payload, dict):
+        cfg = payload.get("model_cfg") or {}
+        if isinstance(cfg, dict) and isinstance(cfg.get("d_model"), int):
+            return cfg["d_model"]
+    return default
+
+
+def _train_with_pseudo_labels(
+    reads,
+    reference,
+    *,
+    ref_seq: str,
+    contig: str,
+    ref_id: int,
+    reference_fasta: str,
+    modality: str,
+    device,
+    epochs: int,
+    batch_size: int,
+    d_model: int,
+    train_out: str,
+    workers: int | None,
+) -> tuple[object, str]:
+    """Pseudo-label ``reads``, train GraphMamba, return ``(model, checkpoint_path)``."""
+    from graphmambaformer import build_pipeline
+    from graphmambaformer.accel import AccelContext
+    from graphmambaformer.config import (
+        AccelConfig,
+        CoreModelConfig,
+        GraphMambaConfig,
+        PipelineConfig,
+    )
+    from graphmambaformer.data import build_batches
+    from graphmambaformer.data.real_data import RealReference
+    from graphmambaformer.models import build_core_model
+    from graphmambaformer.training import (
+        TrainConfig,
+        Trainer,
+        pseudo_label_reads,
+    )
+
+    os.makedirs(train_out, exist_ok=True)
+    accel = AccelContext(
+        AccelConfig(
+            device=device,
+            num_workers=workers or 0,
+            prefetch=2,
+            set_threads=True,
+        )
+    )
+    print(f"[ours] train device: {accel.summary()}")
+
+    model_cfg = GraphMambaConfig(d_model=d_model)
+    model = build_core_model(
+        CoreModelConfig(arch="graphmamba", graphmamba=model_cfg)
+    ).model
+    train_pipeline = build_pipeline(
+        PipelineConfig(mode="hybrid", batch_size=batch_size),
+        model=model,
+        accel=accel,
+    )
+
+    print(
+        "[ours] no --checkpoint — generating classical pseudo-labels then training"
+    )
+    pseudo_bam = os.path.join(train_out, "pseudo_truth.bam")
+    labeled = pseudo_label_reads(
+        reads,
+        reference,
+        modality=modality,
+        batch_size=batch_size,
+        device=device,
+        write_bam=pseudo_bam,
+        references={ref_id: _RefShim(ref_seq)},
+        contig_names={ref_id: contig},
+        reference_fasta=reference_fasta,
+    )
+    if not labeled:
+        sys.exit(
+            "ERROR: classical aligner mapped 0 reads; cannot train without labels"
+        )
+
+    real_ref = RealReference(
+        reference=reference,
+        ref_seq=ref_seq,
+        contig=contig,
+        ref_id=ref_id,
+        fasta_path=reference_fasta,
+        label="linear",
+    )
+    n_val = max(1, int(len(labeled) * 0.2))
+    val_reads, train_reads = labeled[:n_val], labeled[n_val:]
+    if not train_reads:
+        train_reads, val_reads = labeled, labeled[:1]
+
+    train_batches = build_batches(train_reads, real_ref, batch_size)
+    val_batches = build_batches(val_reads, real_ref, batch_size)
+    print(
+        f"[ours] train: {len(train_reads):,} reads / {len(train_batches)} batches; "
+        f"val: {len(val_reads):,} / {len(val_batches)}  epochs={epochs} d_model={d_model}"
+    )
+
+    trainer = Trainer(
+        model,
+        train_pipeline,
+        accel=accel,
+        cfg=TrainConfig(
+            out_dir=train_out,
+            epochs=epochs,
+            batch_size=batch_size,
+            patience=max(2, epochs),
+            save_checkpoint=True,
+            checkpoint_history=True,
+        ),
+        verbose=True,
+    )
+    trainer.fit(train_batches, val_batches)
+    ckpt = os.path.join(train_out, "checkpoint.pt")
+    if not os.path.isfile(ckpt):
+        ckpt = os.path.join(train_out, "last.pt")
+    if not os.path.isfile(ckpt):
+        sys.exit(f"ERROR: training finished but no checkpoint under {train_out}")
+    print(f"[ours] trained checkpoint -> {ckpt}")
+    # Reload into a fresh module so mapping uses the saved weights cleanly.
+    map_model = build_core_model(
+        CoreModelConfig(arch="graphmamba", graphmamba=model_cfg)
+    ).model
+    _load_checkpoint(ckpt, map_model)
+    return map_model, ckpt
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -309,7 +461,34 @@ def main() -> None:
                     help="host threads for Stage 1/3 (default: all CPUs)")
     ap.add_argument("--batch-size", type=int,
                     default=_env_int("OURS_BATCH_SIZE", 64),
-                    help="reads per pipeline batch (default: 64)")
+                    help="reads per pipeline batch (default: 64); also used for "
+                         "inline training when --epochs/--train-out is set")
+    ap.add_argument(
+        "--epochs",
+        type=int,
+        default=_env_int("OURS_EPOCHS"),
+        help="when set with hybrid/two_pass and no --checkpoint: train this many "
+             "epochs on classical pseudo-labels before mapping (accepted always; "
+             "ignored for --mode fast)",
+    )
+    ap.add_argument(
+        "--d-model",
+        type=int,
+        default=_env_int("OURS_D_MODEL", 256),
+        help="model width for hybrid training / checkpoint build (default: 256; "
+             "accepted always; ignored for --mode fast without training)",
+    )
+    ap.add_argument(
+        "--checkpoint",
+        default=os.environ.get("OURS_CHECKPOINT"),
+        help="trained checkpoint.pt for hybrid/two_pass neural scoring",
+    )
+    ap.add_argument(
+        "--train-out",
+        default=os.environ.get("OURS_TRAIN_OUT"),
+        help="directory for inline training checkpoints when hybrid/two_pass "
+             "runs without --checkpoint (implies train-then-map)",
+    )
     ap.add_argument("--index-cache", default=os.environ.get("OURS_INDEX_CACHE"),
                     help="directory to reuse Stage-1 indices across separate runs")
     ap.add_argument("--device", default=os.environ.get("OURS_DEVICE", "auto"),
@@ -372,10 +551,76 @@ def main() -> None:
 
     from graphmambaformer import build_pipeline
     from graphmambaformer.accel.parallel import configure_torch_threads, default_worker_count
-    from graphmambaformer.config import AccelConfig, PipelineConfig
+    from graphmambaformer.config import AccelConfig, CoreModelConfig, GraphMambaConfig, PipelineConfig
+    from graphmambaformer.models import build_core_model
 
     workers = default_worker_count(args.workers)
     device = None if args.device in (None, "", "auto") else args.device
+    want_neural = args.mode in ("hybrid", "two_pass")
+    want_train = want_neural and not args.checkpoint and (
+        args.epochs is not None or bool(args.train_out)
+    )
+
+    if args.mode == "fast" and (args.epochs is not None or args.train_out or args.checkpoint):
+        print(
+            "[ours] note: --epochs/--d-model/--checkpoint/--train-out are accepted "
+            "but ignored for --mode fast (classical mapping only)"
+        )
+
+    model = None
+    if want_neural and args.checkpoint:
+        if not os.path.isfile(args.checkpoint):
+            sys.exit(f"ERROR: checkpoint not found: {args.checkpoint}")
+        d_model = _d_model_from_checkpoint(args.checkpoint, args.d_model)
+        model = build_core_model(
+            CoreModelConfig(
+                arch="graphmamba",
+                graphmamba=GraphMambaConfig(d_model=d_model),
+            )
+        ).model
+        _load_checkpoint(args.checkpoint, model)
+        print(f"[ours] loaded checkpoint: {args.checkpoint} (d_model={d_model})")
+    elif want_train:
+        # Need a reference index first (classical + hybrid share Stage-1 bundle).
+        index_pipeline = build_pipeline(
+            PipelineConfig(
+                mode="fast",
+                batch_size=max(1, int(args.batch_size)),
+                accel=AccelConfig(device=device, num_workers=workers, set_threads=True),
+            ),
+            device=device,
+        )
+        reference = _build_or_load_reference(
+            index_pipeline, ref_seq, args.ref_id, args.ref, args.index_cache
+        )
+        train_out = args.train_out or os.path.join(
+            os.path.dirname(os.path.abspath(args.out)) or ".",
+            "training_runs",
+            "align_ours_inline",
+        )
+        epochs = int(args.epochs) if args.epochs is not None else 6
+        model, _ckpt = _train_with_pseudo_labels(
+            reads,
+            reference,
+            ref_seq=ref_seq,
+            contig=contig,
+            ref_id=args.ref_id,
+            reference_fasta=args.ref,
+            modality=loaded[0][1],
+            device=device,
+            epochs=epochs,
+            batch_size=max(1, int(args.batch_size)),
+            d_model=int(args.d_model),
+            train_out=train_out,
+            workers=workers,
+        )
+    elif want_neural:
+        print(
+            "[ours] warning: hybrid/two_pass without --checkpoint or "
+            "--epochs/--train-out — neural scoring disabled (classical only). "
+            "Pass --checkpoint PATH or --epochs N --train-out DIR to train."
+        )
+
     cfg = PipelineConfig(
         mode=args.mode,
         batch_size=max(1, int(args.batch_size)),
@@ -391,13 +636,21 @@ def main() -> None:
         workers=workers,
     )
     print(f"[ours] workers={workers} batch_size={cfg.batch_size} "
-          f"threads={thread_info.get('num_threads')}")
+          f"threads={thread_info.get('num_threads')} d_model={args.d_model}")
 
-    pipeline = build_pipeline(cfg, device=device)
+    pipeline = build_pipeline(cfg, model=model, device=device)
     t1 = time.time()
-    reference = _build_or_load_reference(
-        pipeline, ref_seq, args.ref_id, args.ref, args.index_cache
-    )
+    # Reuse index from training when we already built it; otherwise build now.
+    if want_train:
+        # `_train_with_pseudo_labels` used the same Stage-1 reference object;
+        # rebuild via cache so mapping pipeline owns a matching bundle.
+        reference = _build_or_load_reference(
+            pipeline, ref_seq, args.ref_id, args.ref, args.index_cache
+        )
+    else:
+        reference = _build_or_load_reference(
+            pipeline, ref_seq, args.ref_id, args.ref, args.index_cache
+        )
     print(f"[ours] reference index ready  ({time.time()-t1:.1f}s)")
 
     t2 = time.time()

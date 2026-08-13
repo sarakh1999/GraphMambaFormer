@@ -4,10 +4,12 @@
 Two data sources, one training loop:
 
 * ``--data real`` — real files on disk: a reference **FASTA** (linear genome),
-  an optional pangenome **GFA** graph, and an aligned **truth BAM/SAM/CRAM**
-  that supplies the ground-truth locus / CIGAR / MAPQ every read is trained to
-  reproduce. This is the mode to use before building the Docker image and
-  running on GPU. (auto-selected when ``--reference-fasta`` is given.)
+  an optional pangenome **GFA** graph, plus either an aligned **truth
+  BAM/SAM/CRAM** *or* unaligned ``--reads-file`` FASTQ/BAM. Without
+  ``--truth-bam``, the classical ``fast`` aligner generates pseudo-labels
+  (locus / CIGAR / MAPQ) so training can still run on real reads. Prefer a
+  real truth BAM when available. (auto-selected when ``--reference-fasta``
+  is given.)
 * ``--data synthetic`` (default) — the fully-labelled synthetic dataset, handy
   for a CPU smoke test.
 
@@ -29,15 +31,18 @@ Examples
         --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
         --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
         --region chr21:5000000-6000000 --ref-mode linear \
-        --device cuda --epochs 20 --out data/training_runs/chr21_linear
+        --device cuda --epochs 20 --batch-size 8 --d-model 256 \
+        --out data/training_runs/chr21_linear
 
-    # REAL pangenome: same reads, attach the real GFA graph
+    # REAL without truth BAM: FASTQ + ref → classical pseudo-labels → train
     PYTHONPATH=. python scripts/train.py --data real \
-        --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-        --gfa data/chr21/HG002/chr21.gfa \
-        --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-        --region chr21:5000000-6000000 --ref-mode pangenome \
-        --device cuda --epochs 20 --out data/training_runs/chr21_pangenome
+        --reference-fasta data/chr21/HG005/ref/GRCh38.chr21.fa \
+        --reads-file data/chr21/HG005/reads/HG005.chr21.R1.fastq.gz \
+        --reads-file data/chr21/HG005/reads/HG005.chr21.R2.fastq.gz \
+        --read-layout paired --modality illumina --ref-mode linear \
+        --region chr21 --device cuda --require-gpu \
+        --epochs 20 --batch-size 8 --d-model 256 \
+        --out data/training_runs/hg005_illumina_pseudo
 
     # SYNTHETIC CPU smoke (linear + pangenome)
     PYTHONPATH=. python scripts/train.py --preset tiny --epochs 3
@@ -73,7 +78,7 @@ from graphmambaformer.data import (
     preset,
 )
 from graphmambaformer.models import build_core_model
-from graphmambaformer.training import TrainConfig, Trainer, plot_all
+from graphmambaformer.training import TrainConfig, Trainer, plot_all, pseudo_label_reads
 
 
 def chunk(items, size):
@@ -176,18 +181,62 @@ def build_real(args, pipeline, model_cfg):
         print(f"[{label}] reference contig={rr.contig} len={rr.length:,}bp "
               f"offset={rr.offset}{extra}")
 
-    # Truth reads (required to train). Use any reference for the window frame.
+    # Labels: prefer --truth-bam; otherwise classical pseudo-labels from FASTQ.
     anchor_ref = references[modes[0][0]]
-    reads, has_truth = load_real_reads(
-        truth_bam=args.truth_bam, reads=args.reads_files or None,
-        modality=args.modality, region=args.region,
-        max_reads=args.max_reads or None, reference=anchor_ref,
-        require_truth=True, layout=args.read_layout,
-    )
+    label_source = "truth_bam"
+    pseudo_bam = None
+    if args.truth_bam:
+        reads, has_truth = load_real_reads(
+            truth_bam=args.truth_bam, reads=args.reads_files or None,
+            modality=args.modality, region=args.region,
+            max_reads=args.max_reads or None, reference=anchor_ref,
+            require_truth=True, layout=args.read_layout,
+        )
+    else:
+        if not args.reads_files:
+            sys.exit(
+                "ERROR: real training needs --truth-bam or --reads-file "
+                "(FASTQ/BAM). Without --truth-bam the classical aligner "
+                "builds pseudo-labels from --reads-file."
+            )
+        raw_reads, _ = load_real_reads(
+            reads=args.reads_files,
+            modality=args.modality, region=args.region,
+            max_reads=args.max_reads or None, reference=anchor_ref,
+            require_truth=False, layout=args.read_layout,
+            reference_fasta=args.reference_fasta,
+            as_sequences=True,
+        )
+        if not raw_reads:
+            sys.exit(
+                "ERROR: no reads loaded from --reads-file inside "
+                f"({args.region or args.contig or 'full contig'})."
+            )
+        print(
+            "note: no --truth-bam — generating pseudo-labels from classical "
+            "aligner (distillation, not GIAB gold truth)"
+        )
+        pseudo_bam = os.path.join(args.out, "pseudo_truth.bam")
+        reads = pseudo_label_reads(
+            raw_reads,
+            anchor_ref.reference,
+            modality=args.modality,
+            batch_size=args.batch_size,
+            write_bam=pseudo_bam,
+            references={anchor_ref.ref_id: type("R", (), {"seq": anchor_ref.ref_seq})()},
+            contig_names={anchor_ref.ref_id: anchor_ref.contig},
+            reference_fasta=args.reference_fasta,
+        )
+        has_truth = True
+        label_source = "pseudo_classical"
+
     if not reads:
-        sys.exit("ERROR: no truth reads inside the reference window "
-                 f"({args.region or args.contig or 'full contig'}). "
-                 "Widen --region or check --truth-bam.")
+        sys.exit(
+            "ERROR: no labelled reads inside the reference window "
+            f"({args.region or args.contig or 'full contig'}). "
+            "Widen --region, check --truth-bam / --reads-file, or ensure "
+            "the classical aligner can map some reads."
+        )
 
     # Split reads into train / val once, then batch each split under every mode.
     n_val = max(1, int(len(reads) * args.val_fraction))
@@ -206,6 +255,8 @@ def build_real(args, pipeline, model_cfg):
         "reference_fasta": os.path.abspath(args.reference_fasta),
         "gfa": os.path.abspath(args.gfa) if args.gfa else None,
         "truth_bam": os.path.abspath(args.truth_bam) if args.truth_bam else None,
+        "pseudo_truth_bam": os.path.abspath(pseudo_bam) if pseudo_bam else None,
+        "label_source": label_source,
         "region": args.region,
         "contig": {label: references[label].contig for label, _ in modes},
         "modality": args.modality,
@@ -224,8 +275,13 @@ def build_real(args, pipeline, model_cfg):
             for label, _ in modes
         },
     }
-    print(f"source: real  reads={len(reads)} truth={has_truth} "
-          f"(train {len(train_reads)} / val {len(val_reads)})")
+    print(
+        f"source: real  reads={len(reads)} truth={has_truth} "
+        f"labels={label_source} "
+        f"(train {len(train_reads)} / val {len(val_reads)})"
+    )
+    if pseudo_bam:
+        print(f"pseudo truth BAM: {pseudo_bam}")
     return train_batches, val_batches, info
 
 
@@ -246,10 +302,13 @@ def main() -> int:
     p.add_argument("--gfa", default=None,
                    help="real pangenome GFA graph (needed for pangenome/both)")
     p.add_argument("--truth-bam", default=None,
-                   help="aligned truth BAM/SAM/CRAM (required to TRAIN on real data)")
+                   help="aligned truth BAM/SAM/CRAM (preferred for real training). "
+                        "If omitted, pass --reads-file and classical pseudo-labels "
+                        "are generated automatically")
     p.add_argument("--reads-file", dest="reads_files", action="append", default=None,
-                   help="FASTQ/BAM reads; for Illumina repeat R1 then R2 "
-                        "(inference only — training needs --truth-bam)")
+                   help="FASTQ/BAM reads; for Illumina repeat R1 then R2. "
+                        "With --truth-bam optional; without it these are mapped "
+                        "by the classical aligner to build training labels")
     p.add_argument("--read-layout", default="auto",
                    choices=("auto", "single", "paired"),
                    help="auto pairs two Illumina FASTQs; long reads stay single")

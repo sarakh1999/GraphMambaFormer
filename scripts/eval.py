@@ -324,6 +324,9 @@ def main() -> int:
                    choices=("fast", "hybrid", "two_pass"),
                    help="pipeline mode; hybrid/two_pass use the model when loaded")
     p.add_argument("--batch-size", type=int, default=4)
+    p.add_argument("--epochs", type=int, default=None,
+                   help="accepted for CLI compatibility with train.py; ignored "
+                        "(evaluation does not train)")
     p.add_argument("--d-model", type=int, default=64,
                    help="must match the checkpoint's d_model when loading weights")
     p.add_argument("--device", default=None)

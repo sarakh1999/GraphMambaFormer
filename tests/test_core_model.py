@@ -103,10 +103,32 @@ def test_scoring_heads():
     node = torch.randint(-1, 10, (2, A))
     amask = torch.ones(2, A, dtype=torch.bool)
     amask[1, 5:] = False
-    seed = model.score_seeds(out, feats, pos, node, amask)
+    edge_index = torch.tensor(
+        [
+            [[0, 1], [1, 2], [2, 3], [3, 4]],
+            [[0, 1], [1, 2], [2, 3], [0, 0]],
+        ]
+    )
+    edge_features = torch.randn(2, 4, cfg.seed_scoring.anchor_edge_features)
+    edge_mask = torch.tensor(
+        [[True, True, True, True], [True, True, True, False]]
+    )
+    seed = model.score_seeds(
+        out,
+        feats,
+        pos,
+        node,
+        amask,
+        edge_index=edge_index,
+        edge_features=edge_features,
+        edge_mask=edge_mask,
+        gnn_active=torch.tensor([True, True]),
+    )
     assert seed["score"].shape == (2, A)
     assert (seed["score"][1, 5:] == 0).all(), "padded anchors must score 0"
     assert ((seed["score"] >= 0) & (seed["score"] <= 1)).all()
+    assert seed["transition_score"].shape == (2, 4)
+    assert seed["transition_score"][1, 3] == 0
 
     C, M = 3, 4
     chain_feats = torch.randn(2, C, 10)

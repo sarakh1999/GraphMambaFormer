@@ -367,6 +367,18 @@ class SeedScoringConfig:
     # ScoringConfig.min_anchors_kept.
     seed_keep_threshold: float = 0.5
 
+    # AGNES-style seed-match GNN. Classical indices still generate a high-recall
+    # candidate set; this network performs context-aware dynamic seed selection
+    # and predicts transition confidence for the chaining DP.
+    use_anchor_gnn: bool = True
+    anchor_gnn_hidden: tuple[int, ...] = (64, 128, 128)
+    anchor_edge_features: int = 8
+    anchor_gnn_dropout: float = 0.3
+    anchor_gnn_max_neighbors: int = 16
+    anchor_gnn_gap_threshold: int = 500
+    anchor_gnn_min_nodes: int = 5
+    anchor_gnn_max_nodes: int = 1000
+
 
 @dataclass
 class MultiTaskConfig:
@@ -701,6 +713,13 @@ class ChainingConfig:
     logit_gate_min: float = 0.1
     logit_gate_max: float = 3.0
 
+    # Learned seed-graph transition guidance. Applied only when the same AGNES
+    # confidence decision that gates node scores trusts the GNN for this read.
+    # Probabilities are converted to centered logits and clipped before entering
+    # the DP as an additive edge term.
+    gnn_transition_bonus: float = 2.0
+    gnn_transition_logit_clip: float = 3.0
+
     # Chain selection. A single SMEM can span an entire read, so chains are
     # filtered on score rather than anchor count; raise ``min_chain_anchors``
     # only when seeding with a fixed-k index that cannot produce long anchors.
@@ -843,6 +862,7 @@ class LossConfig:
 
     # Stage losses.
     w_seed: float = 1.0  # per-anchor true/false BCE
+    w_transition: float = 0.5  # seed-graph edge BCE (both endpoints are true)
     w_chain: float = 1.0  # listwise chain-ranking cross-entropy
     w_node: float = 1.0  # MappingHead node classification
     w_position: float = 1.0  # within-node position regression

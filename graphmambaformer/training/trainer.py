@@ -191,6 +191,10 @@ class Trainer:
             anchor_read_pos=sup.anchor_read_pos,
             anchor_node=sup.anchor_node,
             anchor_mask=sup.anchor_mask,
+            edge_index=sup.seed_edge_index,
+            edge_features=sup.seed_edge_features,
+            edge_mask=sup.seed_edge_mask,
+            gnn_active=sup.seed_gnn_active,
         )
         b, n_chain, n_members = sup.member_states_shape
         chain_scores = self.raw_model.score_chains(

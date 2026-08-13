@@ -155,6 +155,27 @@ class AlignmentLoss(nn.Module):
         )
         return _masked_mean(per_anchor, anchor_mask)
 
+    def transition_loss(
+        self,
+        logits: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_mask: torch.Tensor,
+        seed_labels: torch.Tensor,
+        gnn_active: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """BCE for chaining edges; a positive edge joins two true seeds."""
+        labels = seed_labels.to(logits.device)
+        src = edge_index[..., 0].clamp(0, max(labels.shape[1] - 1, 0))
+        dst = edge_index[..., 1].clamp(0, max(labels.shape[1] - 1, 0))
+        src_label = labels.gather(1, src)
+        dst_label = labels.gather(1, dst)
+        targets = (src_label.bool() & dst_label.bool()).to(logits.dtype)
+        live = edge_mask.bool()
+        if gnn_active is not None:
+            live = live & gnn_active.bool()[:, None]
+        per_edge = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
+        return _masked_mean(per_edge, live)
+
     def chain_loss(
         self,
         logits: torch.Tensor,
@@ -256,6 +277,18 @@ class AlignmentLoss(nn.Module):
             losses["seed"] = self.seed_loss(
                 seed_scores["logits"], targets["seed_labels"], targets.get("anchor_mask")
             )
+            if {
+                "transition_logits",
+                "edge_index",
+                "edge_mask",
+            } <= seed_scores.keys():
+                losses["transition"] = self.transition_loss(
+                    seed_scores["transition_logits"],
+                    seed_scores["edge_index"],
+                    seed_scores["edge_mask"],
+                    targets["seed_labels"],
+                    seed_scores.get("gnn_active"),
+                )
 
         if chain_scores is not None and "chain_target" in targets:
             losses["chain"] = self.chain_loss(
@@ -300,6 +333,7 @@ class AlignmentLoss(nn.Module):
     def static_weights(self) -> dict[str, float]:
         return {
             "seed": self.cfg.w_seed,
+            "transition": self.cfg.w_transition,
             "chain": self.cfg.w_chain,
             "node": self.cfg.w_node,
             "position": self.cfg.w_position,

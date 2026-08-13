@@ -3,7 +3,7 @@
 Three modes share the same stages and differ only in how much work they spend:
 
 :class:`HybridAlignmentPipeline` (``"hybrid"``, the default)
-    The full accuracy path: seed -> neural anchor pruning -> chain -> extend ->
+    The full accuracy path: seed -> seed-graph GNN -> adaptive chain -> extend ->
     neural re-rank + MAPQ -> post-process.
 
 :class:`FastAlignmentPipeline` (``"fast"``)
@@ -312,6 +312,7 @@ class AlignmentPipeline:
     def chain(
         self, anchor_sets: Sequence[AnchorSet], reference: ReferenceIndex,
         trust_neural: Optional[Sequence[Optional[bool]]] = None,
+        learned_transitions: Optional[Sequence[Optional[dict]]] = None,
     ) -> list[list[Chain]]:
         """Chain each read, optionally with a per-read AGNES trust decision.
 
@@ -319,16 +320,19 @@ class AlignmentPipeline:
         False / None), computed on the *full* scored anchor set before pruning.
         """
         base = reference.chaining_context
-        if trust_neural is None:
+        if trust_neural is None and learned_transitions is None:
             contexts: list[Optional[ChainingContext]] = [base] * len(anchor_sets)
         else:
+            flags = list(trust_neural or [None] * len(anchor_sets))
+            transitions = list(learned_transitions or [None] * len(anchor_sets))
             contexts = [
                 ChainingContext(
                     oracle=base.oracle,
                     backbone=base.backbone,
                     trust_neural=flag,
+                    learned_transitions=edge_scores,
                 )
-                for flag in trust_neural
+                for flag, edge_scores in zip(flags, transitions)
             ]
         return self.chainer.chain_batch(anchor_sets, contexts, device=self.device)
 
@@ -502,14 +506,15 @@ class FastAlignmentPipeline(AlignmentPipeline):
 class HybridAlignmentPipeline(AlignmentPipeline):
     """The full accuracy path, with the neural stage woven through Stages 1-4.
 
-    Ordering matters. Anchor scoring happens *before* chaining so the AGNES
-    confidence decision (and optional pruning) can shrink or reweight the DP
-    input; chain re-ranking happens *after* the DP so the head sees complete
-    chains; MAPQ comes last, once the primary/secondary margin is known.
+    Ordering matters. Seed-graph scoring happens *before* chaining so the AGNES
+    confidence decision can reweight the DP; chain re-ranking happens *after*
+    the DP so the head sees complete chains; MAPQ comes last, once the
+    primary/secondary margin is known.
 
-    With adaptive seed scoring (default), trust is decided on the *full* scored
-    anchor set before any prune: confident reads keep every seed and the DP uses
-    a logit gate; under-confident reads are pruned and chained classically.
+    With adaptive seed scoring (default), trust is decided on the full scored
+    graph: confident reads use GNN node/edge guidance, while under-confident or
+    degenerate graphs run pure geometric DP over the unchanged candidate set.
+    Pruning remains available only for the non-adaptive ablation path.
 
     With a model that has no alignment heads (the encoder baselines) this degrades
     to the classical path rather than failing, so mode and architecture can be
@@ -517,6 +522,33 @@ class HybridAlignmentPipeline(AlignmentPipeline):
     """
 
     mode = "hybrid"
+
+    def _prepare_anchors_agnes(
+        self, anchor_sets: Sequence[AnchorSet], seed_head: dict
+    ) -> tuple[list[AnchorSet], list[Optional[bool]]]:
+        """Apply AGNES Algorithm 1 without changing the PureDP candidate graph."""
+        scorer = self.scorer
+        assert scorer is not None
+        adaptive = self.cfg.chaining.adaptive_seed_scoring
+        gnn_active = seed_head.get("gnn_active")
+        active_rows = (
+            gnn_active.detach().cpu().numpy().astype(bool)
+            if isinstance(gnn_active, torch.Tensor)
+            else None
+        )
+        prepared: list[AnchorSet] = []
+        trust_flags: list[Optional[bool]] = []
+        for row, anchors in enumerate(anchor_sets):
+            if adaptive and np.isfinite(anchors.score).any():
+                trust = self.chainer.trust_neural_scores(anchors)
+                if active_rows is not None:
+                    trust = trust and bool(active_rows[row])
+                trust_flags.append(trust)
+                prepared.append(anchors)
+            else:
+                trust_flags.append(None)
+                prepared.append(scorer.prune_anchors(anchors))
+        return prepared, trust_flags
 
     def align_batch(self, reads, reference, read_ids=None, encoded=None):
         batch = as_read_batch(reads, read_ids)
@@ -565,30 +597,24 @@ class HybridAlignmentPipeline(AlignmentPipeline):
             )
         stats.n_neural_batches = 1
 
-        scorer.score_anchors(outputs, anchor_sets)
+        _, seed_head = scorer.score_anchors(outputs, anchor_sets)
+        learned_transitions = seed_head.get("transition_guidance")
 
-        # AGNES Algorithm 1: decide trust on the *full* score distribution, then
-        # either keep every seed (confident → logit-gated DP) or prune and fall
-        # back to pure geometric DP. Deciding after prune would destroy the
-        # low-score tail that defines μ_low and spuriously reopen the gate.
-        adaptive = self.cfg.chaining.adaptive_seed_scoring
-        prepared: list[AnchorSet] = []
-        trust_flags: list[Optional[bool]] = []
-        for anchors in anchor_sets:
-            if adaptive and np.isfinite(anchors.score).any():
-                trust = self.chainer.trust_neural_scores(anchors)
-                trust_flags.append(trust)
-                # Confident: keep all seeds so the logit gate can down-weight
-                # bad ones inside the DP (AGNES never drops nodes up front).
-                # Under-confident: classical prune, then ignore residual scores.
-                prepared.append(anchors if trust else scorer.prune_anchors(anchors))
-            else:
-                trust_flags.append(None)
-                prepared.append(scorer.prune_anchors(anchors))
+        # AGNES Algorithm 1: classify the full seed graph, then either guide DP
+        # with logits or run PureDP over the unchanged candidate graph. It does
+        # not prune the low-confidence branch. Graphs outside the |V| guards or
+        # with |E|=0 are marked inactive by the seed-graph builder and must also
+        # take PureDP, regardless of any fallback MLP score distribution.
+        prepared, trust_flags = self._prepare_anchors_agnes(anchor_sets, seed_head)
         stats.n_anchors_pruned = stats.n_anchors - sum(len(a) for a in prepared)
 
         # Stage 2 over the prepared anchors, with the per-read trust decision.
-        chains_per_read = self.chain(prepared, reference, trust_neural=trust_flags)
+        chains_per_read = self.chain(
+            prepared,
+            reference,
+            trust_neural=trust_flags,
+            learned_transitions=learned_transitions,
+        )
         stats.n_chains = sum(len(c) for c in chains_per_read)
 
         # Stage 4b — re-rank, then Stage 3 extends the chains in final order.

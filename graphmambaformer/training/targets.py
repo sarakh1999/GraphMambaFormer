@@ -47,6 +47,10 @@ class Supervision:
     anchor_read_pos: Optional[torch.Tensor] = None
     anchor_node: Optional[torch.Tensor] = None
     anchor_mask: Optional[torch.Tensor] = None
+    seed_edge_index: Optional[torch.Tensor] = None
+    seed_edge_features: Optional[torch.Tensor] = None
+    seed_edge_mask: Optional[torch.Tensor] = None
+    seed_gnn_active: Optional[torch.Tensor] = None
     chain_feats: Optional[torch.Tensor] = None
     chain_mask: Optional[torch.Tensor] = None
     member_states_shape: tuple[int, ...] = ()
@@ -62,8 +66,11 @@ class Supervision:
         self.qualities = move(self.qualities)
         for key, value in list(self.targets.items()):
             self.targets[key] = value.to(device)
-        for name in ("seed_features", "anchor_read_pos", "anchor_node", "anchor_mask",
-                     "chain_feats", "chain_mask"):
+        for name in (
+            "seed_features", "anchor_read_pos", "anchor_node", "anchor_mask",
+            "seed_edge_index", "seed_edge_features", "seed_edge_mask",
+            "seed_gnn_active", "chain_feats", "chain_mask",
+        ):
             setattr(self, name, move(getattr(self, name)))
         return self
 
@@ -194,6 +201,20 @@ class TargetBuilder:
             # every step after, so it is scrubbed here rather than debugged later.
             features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
 
+        seed_edge_index = seed_edge_features = seed_edge_mask = seed_gnn_active = None
+        scorer = getattr(self.pipeline, "scorer", None)
+        if scorer is not None and scorer.model.cfg.seed_scoring.use_anchor_gnn:
+            truncated = [
+                anchors.take(np.arange(min(len(anchors), n_anchor), dtype=np.int64))
+                for anchors in anchor_sets
+            ]
+            (
+                seed_edge_index,
+                seed_edge_features,
+                seed_edge_mask,
+                seed_gnn_active,
+            ) = scorer._pad_seed_graph(truncated, torch.device("cpu"))
+
         targets: dict[str, torch.Tensor] = {
             "seed_labels": torch.from_numpy(np.stack(label_rows)),
             "anchor_mask": torch.from_numpy(np.stack(amask_rows)),
@@ -226,10 +247,14 @@ class TargetBuilder:
             ),
             anchor_node=torch.from_numpy(_pad(node_rows, n_anchor, np.int64)),
             anchor_mask=torch.from_numpy(np.stack(amask_rows)),
+            seed_edge_index=seed_edge_index,
+            seed_edge_features=seed_edge_features,
+            seed_edge_mask=seed_edge_mask,
+            seed_gnn_active=seed_gnn_active,
             chain_feats=torch.from_numpy(chain_feat),
             chain_mask=torch.from_numpy(chain_mask),
             member_states_shape=(n, n_chain, self.max_members),
-            supervised=supervised,
+            supervised=supervised + (("transition",) if seed_edge_mask is not None else ()),
             n_reads=n,
         )
 

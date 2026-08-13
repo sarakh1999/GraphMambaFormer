@@ -160,5 +160,8 @@ if [ "$PHASED_BAM" = "1" ] && [ -s "$OUT_BAM" ]; then
 fi
 
 echo "Done: $OUT_VCF"
-ls -lh "$OUT_VCF" "$OUT_BAM_SORTED" "$OUT_REPORT" 2>/dev/null || true
+PRODUCED=("$OUT_VCF")
+[ "$PHASED_BAM" = "1" ] && PRODUCED+=("$OUT_BAM_SORTED")
+[ "$REFINE_ALN" = "1" ] && PRODUCED+=("$OUT_REPORT")
+ls -lh "${PRODUCED[@]}" 2>/dev/null || true
 wc -l "$OUT_VCF"

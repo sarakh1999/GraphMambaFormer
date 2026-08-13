@@ -41,6 +41,10 @@ __all__ = [
 #: ``SeedScoringConfig.num_chain_features``.
 NUM_CHAIN_FEATURES = 10
 
+# Stable identity for a candidate anchor and for a directed anchor transition.
+AnchorKey = tuple[int, int, int, int]
+TransitionKey = tuple[AnchorKey, AnchorKey]
+
 
 def encode_read_batch(
     reads: Sequence[str],
@@ -225,12 +229,121 @@ class NeuralScorer:
             mask.to(device),
         )
 
+    def _pad_seed_graph(
+        self, anchor_sets: Sequence[AnchorSet], device: torch.device
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Build AGNES seed-match DAGs and pad them for one GNN pass.
+
+        Edges obey read order, reference order, strand consistency, and the
+        configured gap-discrepancy threshold. Only a bounded successor
+        neighborhood is materialized, keeping construction O(A*K).
+        """
+        cfg = self.model.cfg.seed_scoring
+        rows: list[tuple[np.ndarray, np.ndarray]] = []
+        active: list[bool] = []
+        max_edges = 0
+
+        for anchors in anchor_sets:
+            n = len(anchors)
+            edge_rows: list[tuple[int, int]] = []
+            feature_rows: list[list[float]] = []
+            valid_size = cfg.anchor_gnn_min_nodes <= n <= cfg.anchor_gnn_max_nodes
+            if valid_size:
+                for strand in (1, -1):
+                    strand_idx = np.flatnonzero(anchors.strand == strand)
+                    order = strand_idx[
+                        np.lexsort((anchors.ref_end[strand_idx], anchors.read_end[strand_idx]))
+                    ]
+                    for slot, src in enumerate(order):
+                        successors = order[slot + 1 : slot + 1 + cfg.anchor_gnn_max_neighbors]
+                        if successors.size == 0:
+                            continue
+                        read_gap = anchors.read_pos[successors] - anchors.read_end[src]
+                        ref_gap = anchors.ref_pos[successors] - anchors.ref_end[src]
+                        discrepancy = np.abs(read_gap - ref_gap)
+                        keep = (
+                            (read_gap >= 0)
+                            & (ref_gap >= 0)
+                            & (discrepancy <= cfg.anchor_gnn_gap_threshold)
+                        )
+                        for dst, dq, dr, gap in zip(
+                            successors[keep],
+                            read_gap[keep],
+                            ref_gap[keep],
+                            discrepancy[keep],
+                        ):
+                            denom = max(float(max(dq, dr)), 1.0)
+                            consistency = 1.0 - float(gap) / denom
+                            gap_score = np.exp(
+                                -0.01 * float(gap) - 0.5 * np.log(float(dq) + 1.0)
+                            )
+                            uniqueness_delta = abs(
+                                1.0 / max(int(anchors.length[src]), 1)
+                                - 1.0 / max(int(anchors.length[dst]), 1)
+                            )
+                            edge_rows.append((int(src), int(dst)))
+                            feature_rows.append(
+                                [
+                                    float(dq) / 1000.0,
+                                    float(dr) / 1000.0,
+                                    consistency,
+                                    float(gap_score),
+                                    1.0,
+                                    1.0,  # signal continuity unavailable without raw signal
+                                    0.0,  # repeat overlap is reserved for annotated references
+                                    uniqueness_delta,
+                                ]
+                            )
+
+            edges = np.asarray(edge_rows, dtype=np.int64).reshape(-1, 2)
+            feats = np.asarray(feature_rows, dtype=np.float32).reshape(
+                -1, cfg.anchor_edge_features
+            )
+            rows.append((edges, feats))
+            is_active = bool(valid_size and len(edges))
+            active.append(is_active)
+            max_edges = max(max_edges, len(edges))
+
+        width = max(max_edges, 1)
+        B = len(anchor_sets)
+        edge_index = torch.zeros((B, width, 2), dtype=torch.long)
+        edge_features = torch.zeros(
+            (B, width, cfg.anchor_edge_features), dtype=torch.float32
+        )
+        edge_mask = torch.zeros((B, width), dtype=torch.bool)
+        for row, (edges, feats) in enumerate(rows):
+            n = len(edges)
+            if n:
+                edge_index[row, :n] = torch.from_numpy(edges)
+                edge_features[row, :n] = torch.from_numpy(feats)
+                edge_mask[row, :n] = True
+        return (
+            edge_index.to(device),
+            edge_features.to(device),
+            edge_mask.to(device),
+            torch.as_tensor(active, dtype=torch.bool, device=device),
+        )
+
+    @staticmethod
+    def _anchor_key(anchors: AnchorSet, index: int) -> AnchorKey:
+        return (
+            int(anchors.read_pos[index]),
+            int(anchors.ref_pos[index]),
+            int(anchors.length[index]),
+            int(anchors.strand[index]),
+        )
+
     # -- 1. anchors ----------------------------------------------------------- #
     def score_anchors(
         self, outputs, anchor_sets: Sequence[AnchorSet]
     ) -> tuple[list[np.ndarray], dict]:
         """Score every read's anchors, writing back into ``AnchorSet.score``."""
         features, read_pos, node, mask = self._pad_anchor_batch(anchor_sets, self.device)
+        edge_index = edge_features = edge_mask = gnn_active = None
+        if self.model.cfg.seed_scoring.use_anchor_gnn:
+            edge_index, edge_features, edge_mask, gnn_active = self._pad_seed_graph(
+                anchor_sets, self.device
+            )
         with self._grad_context(), self._autocast():
             head = self.model.score_seeds(
                 outputs,
@@ -238,6 +351,10 @@ class NeuralScorer:
                 anchor_read_pos=read_pos,
                 anchor_node=node,
                 anchor_mask=mask,
+                edge_index=edge_index,
+                edge_features=edge_features,
+                edge_mask=edge_mask,
+                gnn_active=gnn_active,
             )
 
         scores = head["score"].float().detach().cpu().numpy()
@@ -247,6 +364,25 @@ class NeuralScorer:
             values = scores[row, :n].astype(np.float32)
             anchors.score[:] = values  # feeds AffineChainer's anchor weights
             per_read.append(values)
+
+        # Preserve learned forward-edge probabilities in coordinate-keyed maps.
+        # Coordinate keys survive pruning and the strand/ref sorting done by DP.
+        guidance: list[dict[TransitionKey, float]] = [
+            {} for _ in anchor_sets
+        ]
+        if "transition_score" in head and edge_index is not None and edge_mask is not None:
+            edge_prob = head["transition_score"].float().detach().cpu().numpy()
+            edge_np = edge_index.detach().cpu().numpy()
+            live_np = edge_mask.detach().cpu().numpy()
+            active_np = head["gnn_active"].detach().cpu().numpy()
+            for row, anchors in enumerate(anchor_sets):
+                if not active_np[row]:
+                    continue
+                for (src, dst), prob in zip(edge_np[row][live_np[row]], edge_prob[row][live_np[row]]):
+                    guidance[row][
+                        (self._anchor_key(anchors, int(src)), self._anchor_key(anchors, int(dst)))
+                    ] = float(prob)
+        head["transition_guidance"] = guidance
         return per_read, head
 
     def prune_anchors(self, anchors: AnchorSet) -> AnchorSet:

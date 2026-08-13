@@ -414,8 +414,12 @@ class GraphMambaModel(nn.Module):
         anchor_read_pos: torch.Tensor,
         anchor_node: torch.Tensor | None = None,
         anchor_mask: torch.Tensor | None = None,
+        edge_index: torch.Tensor | None = None,
+        edge_features: torch.Tensor | None = None,
+        edge_mask: torch.Tensor | None = None,
+        gnn_active: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        """Score anchors against a completed forward pass."""
+        """Score anchors and seed-graph transitions against a completed pass."""
         return self.seed_scorer(
             seed_features=seed_features,
             read_hidden=output.read_hidden,
@@ -423,6 +427,10 @@ class GraphMambaModel(nn.Module):
             graph_nodes=output.graph_nodes,
             anchor_node=anchor_node,
             anchor_mask=anchor_mask,
+            edge_index=edge_index,
+            edge_features=edge_features,
+            edge_mask=edge_mask,
+            gnn_active=gnn_active,
         )
 
     def score_chains(

@@ -4,7 +4,8 @@ One HPRC/GIAB individual on **chr21**:
 
 1. **Giraffe** (HPRC pangenome) vs **our GraphMambaFormer** alignments  
 2. **DeepVariant** → small variants  
-3. **Sniffles** → structural variants ([Sniffles repo](https://github.com/fritzsedlazeck/Sniffles))
+3. **Sniffles** → structural variants ([Sniffles repo](https://github.com/fritzsedlazeck/Sniffles))  
+4. **longcallD** → joint small+SV calling **and alignment polishing** ([longcallD repo](https://github.com/yangao07/longcallD))
 
 ## What this task means
 
@@ -155,6 +156,47 @@ MAPQ, PASS SNP/INDEL counts, and hap.py F1 when a GIAB truth set exists).
 8b. `eval_happy.sh ours` — hap.py scoring for our arm  
 8c. `compare.sh` — Giraffe vs ours table + charts (skip with `SKIP_COMPARE=1`)  
 9. `call_sniffles.sh` — HiFi/ONT → minimap2 → Sniffles2 SVs  
+10. `call_longcalld.sh` — longcallD: phased VCF + **refined (polished) BAM** (skip with `SKIP_LONGCALLD=1`)  
+
+## Alignment polishing with longcallD
+
+A mapper places indels greedily per read, so one true indel in a homopolymer or
+tandem repeat ends up at slightly different coordinates in every read that spans
+it. longcallD phases the reads, builds a haplotype-aware MSA consensus per locus,
+and re-aligns each phased read against it (`--refine-aln`), which pulls those
+scattered indels onto one breakpoint. Unphased reads pass through untouched.
+
+Refinement is on by default in `call_longcalld.sh`:
+
+```bash
+# polish + call from an existing long-read BAM
+HIFI_BAM=/path/to/sorted.bam ./scripts/chr21/call_longcalld.sh
+
+# calling only, no realignment
+REFINE_ALN=0 ./scripts/chr21/call_longcalld.sh
+
+# bundled 2 Mb chr11 test data (HiFi + ONT), no downloads
+LONGCALLD_SMOKE=1 ./scripts/chr21/call_longcalld.sh
+```
+
+`refine_report.py` diffs the original BAM against the refined one so the effect
+is measurable rather than assumed. On the bundled HG002 chr11 test data:
+
+| | HiFi | ONT |
+| --- | --- | --- |
+| phased reads with indel structure rewritten | 143 / 356 | 300 / 367 |
+| distinct indel breakpoints (all sizes) | 8724 → 8608 | 53988 → 53641 |
+| distinct **≥30 bp** indel breakpoints | **178 → 67** | **418 → 177** |
+| unphased control reads changed | 0 / 6 | 0 / 215 |
+
+Large indels are where mapper disagreement is worst, and that is where
+refinement consolidates most (−62% HiFi, −58% ONT distinct breakpoints). Edit
+distance (`NM`) can rise slightly on individual reads — refinement optimises
+haplotype consistency, not per-read edit distance — so the report prints `NM`
+neutrally instead of as a better/worse score.
+
+Because the refined BAM is a cleaner indel representation of the same reads, it
+is also usable as improved supervision for our aligner's indel heads.
 
 ## Outputs
 
@@ -164,6 +206,9 @@ MAPQ, PASS SNP/INDEL counts, and hap.py F1 when a GIAB truth set exists).
 - `bam/*.ours.sorted.bam` — our aligner  
 - `vcf/*.dv.vcf.gz` — DeepVariant  
 - `sv/*.sniffles.vcf.gz` — Sniffles  
+- `sv/*.longcalld.vcf` — longcallD phased small variants + SVs  
+- `sv/*.longcalld.refined.sorted.bam` — polished, HP/PS-tagged alignments  
+- `sv/*.longcalld.refine_report.json` — what refinement changed vs the input BAM  
 - `compare/compare.csv` + `compare/*.png` — Giraffe vs ours comparison  
 
 ## Key resources
@@ -173,5 +218,6 @@ MAPQ, PASS SNP/INDEL counts, and hap.py F1 when a GIAB truth set exists).
 | HPRC pangenome indexes | https://github.com/human-pangenomics/hpp_pangenome_resources |
 | chr21 prebuilt graph | https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/chr21.d9.vg |
 | Sniffles | https://github.com/fritzsedlazeck/Sniffles |
+| longcallD | https://github.com/yangao07/longcallD |
 | HG00438 Illumina CRAM | `s3://human-pangenomics/working/HPRC/HG00438/raw_data/Illumina/child/HG00438.final.cram` |
 | HG00438 HiFi BAM (example) | `s3://human-pangenomics/working/HPRC/HG00438/raw_data/PacBio_HiFi/m64043_200710_174426.ccs.bam` |

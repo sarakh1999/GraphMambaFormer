@@ -276,11 +276,17 @@ class ChainingContext:
             are still attached to the anchors. Required after pruning: pruning
             removes the low-score tail that defines ``μ_low``, so recomputing
             confidence on the survivors would spuriously reopen the gate.
+        learned_transitions: GNN probabilities keyed by source/destination
+            anchor coordinates. These become additive DP edge terms only when
+            ``trust_neural`` is true.
     """
 
     oracle: Optional[GraphDistanceOracle] = None
     backbone: Optional[np.ndarray] = None
     trust_neural: Optional[bool] = None
+    learned_transitions: Optional[
+        dict[tuple[tuple[int, int, int, int], tuple[int, int, int, int]], float]
+    ] = None
 
 
 class AffineChainer:
@@ -408,35 +414,71 @@ class AffineChainer:
     def _graph_bonus(
         self, anchors: AnchorSet, ctx: Optional[ChainingContext]
     ) -> Optional[np.ndarray]:
-        """``(n, max_lookback)`` bonus for chaining graph-adjacent anchors."""
-        if ctx is None or ctx.oracle is None or self.cfg.graph_bonus == 0.0:
-            return None
-        if not (anchors.node_id >= 0).any():
-            return None
-
-        hops, index = ctx.oracle.hop_matrix(anchors.node_id)
-        if hops.size == 0:
+        """Reference-topology and learned ``(n, lookback)`` transition terms."""
+        if ctx is None:
             return None
 
         n = len(anchors)
         lookback = max(1, self.cfg.max_lookback)
-        local = np.array(
-            [index.get(int(node), -1) for node in anchors.node_id], dtype=np.int64
-        )
-
-        # Column t holds the predecessor i - lookback + t.
         rows = np.arange(n)[:, None]
         cols = rows - lookback + np.arange(lookback)[None, :]
-        valid = (cols >= 0) & (local[rows] >= 0) & (local[np.clip(cols, 0, n - 1)] >= 0)
+        bonus = np.zeros((n, lookback), dtype=np.float64)
+        has_bonus = False
 
-        hop = np.full((n, lookback), -1, dtype=np.int16)
-        src = local[rows.repeat(lookback, axis=1)][valid]
-        dst = local[np.clip(cols, 0, n - 1)][valid]
-        hop[valid] = hops[src, dst]
+        if (
+            ctx.oracle is not None
+            and self.cfg.graph_bonus != 0.0
+            and (anchors.node_id >= 0).any()
+        ):
+            hops, index = ctx.oracle.hop_matrix(anchors.node_id)
+            if hops.size:
+                local = np.array(
+                    [index.get(int(node), -1) for node in anchors.node_id], dtype=np.int64
+                )
+                valid = (
+                    (cols >= 0)
+                    & (local[rows] >= 0)
+                    & (local[np.clip(cols, 0, n - 1)] >= 0)
+                )
+                hop = np.full((n, lookback), -1, dtype=np.int16)
+                src = local[rows.repeat(lookback, axis=1)][valid]
+                dst = local[np.clip(cols, 0, n - 1)][valid]
+                hop[valid] = hops[src, dst]
+                decay = 1.0 - np.clip(hop, 0, None) / max(self.cfg.graph_max_hops, 1)
+                bonus += np.where(hop >= 0, self.cfg.graph_bonus * decay, 0.0)
+                has_bonus = bool((hop >= 0).any())
 
-        # Full bonus for same-node pairs, decaying linearly to zero past max_hops.
-        decay = 1.0 - np.clip(hop, 0, None) / max(self.cfg.graph_max_hops, 1)
-        return np.where(hop >= 0, self.cfg.graph_bonus * decay, 0.0)
+        if (
+            ctx.trust_neural is True
+            and ctx.learned_transitions
+            and self.cfg.gnn_transition_bonus != 0.0
+        ):
+            keys = [
+                (
+                    int(anchors.read_pos[i]),
+                    int(anchors.ref_pos[i]),
+                    int(anchors.length[i]),
+                    int(anchors.strand[i]),
+                )
+                for i in range(n)
+            ]
+            for dst in range(n):
+                lo = max(0, dst - lookback)
+                offset = lookback - (dst - lo)
+                for slot, src in enumerate(range(lo, dst), start=offset):
+                    probability = ctx.learned_transitions.get((keys[src], keys[dst]))
+                    if probability is None:
+                        continue
+                    p = np.clip(float(probability), 1e-4, 1.0 - 1e-4)
+                    logit = np.clip(
+                        np.log(p / (1.0 - p)),
+                        -self.cfg.gnn_transition_logit_clip,
+                        self.cfg.gnn_transition_logit_clip,
+                    )
+                    bonus[dst, slot] += self.cfg.gnn_transition_bonus * logit
+                    has_bonus = True
+
+        return bonus if has_bonus else None
 
     # ---- DP + traceback ----------------------------------------------------- #
     def _run_dp(

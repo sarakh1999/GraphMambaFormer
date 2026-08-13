@@ -12,11 +12,14 @@ from graphmambaformer.alignment import (
     build_pipeline,
     PIPELINE_REGISTRY,
 )
+from graphmambaformer.alignment.types import AnchorSet
 from graphmambaformer.config import (
+    MODALITIES,
     CoreModelConfig,
     GraphMambaConfig,
     PipelineConfig,
 )
+from graphmambaformer.data.synthetic import ReadRecord
 from graphmambaformer.models import build_core_model
 from graphmambaformer.models.graph_mamba import GraphBatch
 
@@ -176,6 +179,179 @@ def test_neural_pruning_shrinks_dp_input():
     _, stats = pipe.align(reads, reference)
     assert stats.n_anchors > 0
     print(f"anchors seeded={stats.n_anchors} pruned_by_neural={stats.n_anchors_pruned}")
+
+
+def test_agnes_seed_graph_has_spatial_edges_and_features():
+    pipe, _ = build("hybrid")
+    anchors = AnchorSet.from_lists(
+        read_pos=[0, 20, 40, 60, 80, 100],
+        ref_pos=[100, 120, 141, 161, 181, 201],
+        length=[10] * 6,
+        strand=[1] * 6,
+        node_id=[0, 0, 1, 1, 2, 2],
+        read_len=120,
+        ref_len=1000,
+    )
+    edge_index, edge_features, edge_mask, active = pipe.scorer._pad_seed_graph(
+        [anchors], torch.device("cpu")
+    )
+    assert active.tolist() == [True]
+    assert edge_mask.sum() > 0
+    assert edge_index.shape[-1] == 2
+    assert edge_features.shape[-1] == pipe.model.cfg.seed_scoring.anchor_edge_features
+    assert torch.isfinite(edge_features).all()
+
+
+def test_agnes_fallback_keeps_all_seeds_and_requires_live_edges():
+    pipe, _ = build("hybrid")
+    anchors = AnchorSet.from_lists(
+        read_pos=[0, 20, 40, 60, 80, 100],
+        ref_pos=[100, 120, 140, 160, 180, 200],
+        length=[10] * 6,
+        strand=[1] * 6,
+        read_len=120,
+        ref_len=1000,
+    )
+    anchors.score[:] = np.array([0.98, 0.97, 0.96, 0.04, 0.03, 0.02])
+
+    kept, trusted = pipe._prepare_anchors_agnes(
+        [anchors], {"gnn_active": torch.tensor([False])}
+    )
+    assert trusted == [False]  # |E|=0 / inactive graph forces PureDP
+    assert kept[0] is anchors and len(kept[0]) == 6  # PureDP uses unchanged V
+
+    kept, trusted = pipe._prepare_anchors_agnes(
+        [anchors], {"gnn_active": torch.tensor([True])}
+    )
+    assert trusted == [True]
+    assert kept[0] is anchors and len(kept[0]) == 6
+
+
+def _records_for_modality(seqs, truth, modality: str) -> list[ReadRecord]:
+    """Stamp synthetic reads with a modality token and Phred qualities."""
+    out = []
+    for i, (seq, (start, strand)) in enumerate(zip(seqs, truth)):
+        out.append(
+            ReadRecord(
+                read_id=f"{modality}_{i}",
+                ref_id=0,
+                modality=modality,
+                seq=seq,
+                quals=[30] * len(seq),
+                ref_start=start,
+                ref_end=start + len(seq),
+                strand=strand,
+                cigar=[("=", len(seq))],
+                ref_positions=list(range(start, start + len(seq))),
+                mapq=40,
+            )
+        )
+    return out
+
+
+def test_agnes_gnn_modules_across_all_modalities():
+    """Seed-graph GNN + hybrid chaining must work for every modality token.
+
+    Covers the registered modality conditioning tokens (illumina through
+    linked_reads). For each modality we (1) force a live AGNES seed graph so
+    EdgeConv + transition heads actually run under that modality token, then
+    (2) align through the hybrid path end-to-end and check locus accuracy.
+    """
+    assert set(MODALITIES) == {
+        "illumina",
+        "pacbio_hifi",
+        "ont",
+        "rna_seq",
+        "bisulfite",
+        "single_cell",
+        "linked_reads",
+    }, sorted(MODALITIES)
+
+    # Per-modality smoke profiles: short/exact for Illumina-like, longer / noisier
+    # for ONT; everything else shares the HiFi-like profile.
+    profiles = {
+        "illumina": dict(n=6, read_len=150, rate=0.01, tol=20),
+        "pacbio_hifi": dict(n=6, read_len=200, rate=0.01, tol=30),
+        "ont": dict(n=6, read_len=250, rate=0.08, tol=40),
+        "rna_seq": dict(n=6, read_len=150, rate=0.02, tol=30),
+        "bisulfite": dict(n=6, read_len=150, rate=0.02, tol=30),
+        "single_cell": dict(n=6, read_len=150, rate=0.02, tol=30),
+        "linked_reads": dict(n=6, read_len=150, rate=0.02, tol=30),
+    }
+
+    pipe, gm = build("hybrid")
+    assert pipe.model.cfg.seed_scoring.use_anchor_gnn
+    assert pipe.model.seed_scorer.anchor_gnn is not None
+    # Keep seeding dense enough that real Stage-1 graphs often clear |V|>=5.
+    pipe.cfg.seeding.modes = ("minimizer", "smem", "fuzzy")
+
+    ref = make_reference(length=4000)
+    reference = reference_for(pipe, ref, gm)
+    summary = []
+
+    # Shared collinear seed graph used to force the GNN path under each modality
+    # token, independent of Stage-1 density.
+    forced = AnchorSet.from_lists(
+        read_pos=[0, 20, 40, 60, 80, 100, 120, 140],
+        ref_pos=[200, 220, 241, 261, 281, 301, 321, 341],
+        length=[12] * 8,
+        strand=[1] * 8,
+        node_id=[0, 0, 1, 1, 2, 2, 3, 3],
+        read_len=160,
+        ref_len=len(ref),
+    )
+
+    from graphmambaformer.alignment.scoring import encode_read_batch
+
+    for modality in sorted(MODALITIES):
+        params = profiles[modality]
+        seqs, truth = make_reads(
+            ref, n=params["n"], read_len=params["read_len"], rate=params["rate"]
+        )
+        records = _records_for_modality(seqs, truth, modality)
+
+        # Force a live seed graph so EdgeConv / transition heads run with this
+        # modality's conditioning token (not only PureDP fallback).
+        codes, mask, quals = encode_read_batch(
+            [records[0].seq], pipe.device, quals=[records[0].quals]
+        )
+        with torch.inference_mode():
+            outputs = pipe.model(
+                codes,
+                mask=mask,
+                graph=reference.graph,
+                qualities=quals,
+                modality=modality,
+            )
+            scores, head = pipe.scorer.score_anchors(outputs, [forced])
+
+        assert bool(head["gnn_active"][0]), modality
+        assert int(head["edge_mask"].sum()) > 0, modality
+        assert "transition_score" in head and head["transition_score"].ndim == 2
+        assert torch.isfinite(head["transition_score"]).all(), modality
+        assert np.isfinite(scores[0]).all() and scores[0].shape == (len(forced),)
+
+        prepared, trust_flags = pipe._prepare_anchors_agnes([forced], head)
+        assert prepared[0] is forced and len(prepared[0]) == len(forced)
+        assert isinstance(trust_flags[0], bool)
+
+        # Full hybrid path with modality-tagged ReadRecords.
+        results, stats = pipe.align(records, reference)
+        acc = accuracy(results, truth, tol=params["tol"])
+        assert len(results) == len(records), modality
+        assert stats.n_neural_batches >= 1, modality
+        assert acc >= 0.5, (modality, acc, stats.summary())
+        assert all(r.primary is not None for r in results), modality
+
+        summary.append(
+            f"{modality:13s} acc={acc:.0%} anchors={stats.n_anchors} "
+            f"chains={stats.n_chains} forced_edges={int(head['edge_mask'].sum())} "
+            f"forced_active={bool(head['gnn_active'][0])} trust={trust_flags[0]}"
+        )
+
+    for line in summary:
+        print(line)
+    print(f"AGNES seed-graph GNN + hybrid chaining OK on all {len(MODALITIES)} modalities")
 
 
 def test_encoder_baseline_degrades_gracefully():
@@ -349,6 +525,9 @@ if __name__ == "__main__":
     test_hybrid_end_to_end()
     test_all_modes_align()
     test_neural_pruning_shrinks_dp_input()
+    test_agnes_seed_graph_has_spatial_edges_and_features()
+    test_agnes_fallback_keeps_all_seeds_and_requires_live_edges()
+    test_agnes_gnn_modules_across_all_modalities()
     test_encoder_baseline_degrades_gracefully()
     test_no_model_runs_classical()
     test_two_pass_only_rescues_hard_reads()

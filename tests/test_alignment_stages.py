@@ -460,6 +460,45 @@ def test_graph_distance_oracle_and_bonus_decay():
     assert np.isclose(bonus[2, 3], 4.0)  # one hop
 
 
+def test_learned_transition_guidance_is_confidence_gated():
+    cfg = ChainingConfig(
+        max_lookback=4,
+        graph_bonus=0.0,
+        gnn_transition_bonus=2.0,
+    )
+    anchors = AnchorSet.from_lists(
+        read_pos=[0, 20, 40],
+        ref_pos=[0, 20, 40],
+        length=[10, 10, 10],
+        strand=[1, 1, 1],
+        read_len=60,
+        ref_len=60,
+    )
+
+    def key(i):
+        return (
+            int(anchors.read_pos[i]),
+            int(anchors.ref_pos[i]),
+            int(anchors.length[i]),
+            int(anchors.strand[i]),
+        )
+
+    transitions = {(key(0), key(1)): 0.9, (key(1), key(2)): 0.1}
+    chainer = AffineChainer(cfg)
+    guided = chainer._graph_bonus(
+        anchors,
+        ChainingContext(trust_neural=True, learned_transitions=transitions),
+    )
+    fallback = chainer._graph_bonus(
+        anchors,
+        ChainingContext(trust_neural=False, learned_transitions=transitions),
+    )
+    assert guided is not None
+    assert guided[1, 3] > 0.0
+    assert guided[2, 3] < 0.0
+    assert fallback is None
+
+
 def test_batched_chaining_matches_numpy_with_ragged_rows():
     cfg = ChainingConfig(max_lookback=4)
     read_end = torch.tensor([[10, 20, 30], [8, 18, 0]], dtype=torch.float32)

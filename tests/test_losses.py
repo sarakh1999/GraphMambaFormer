@@ -85,6 +85,43 @@ def test_alignment_terms_and_backward():
     print("   " + "  ".join(f"{k}={v:.3f}" for k, v in sorted(result.terms.items())))
 
 
+def test_seed_graph_transition_loss_and_backward():
+    cfg = GraphMambaConfig(d_model=64)
+    model = build_core_model(CoreModelConfig(arch="graphmamba", graphmamba=cfg)).model
+    base, graph = _batch(cfg, b=2)
+    out = model(base, graph=graph)
+    edge_index = torch.tensor(
+        [[[0, 1], [1, 2], [2, 3]], [[0, 1], [1, 2], [0, 0]]]
+    )
+    edge_mask = torch.tensor([[True, True, True], [True, True, False]])
+    seed_scores = model.score_seeds(
+        out,
+        seed_features=torch.randn(2, 4, cfg.seed_scoring.num_seed_features),
+        anchor_read_pos=torch.randint(0, base.shape[1], (2, 4)),
+        anchor_node=torch.randint(0, 6, (2, 4)),
+        anchor_mask=torch.ones(2, 4, dtype=torch.bool),
+        edge_index=edge_index,
+        edge_features=torch.randn(
+            2, 3, cfg.seed_scoring.anchor_edge_features
+        ),
+        edge_mask=edge_mask,
+        gnn_active=torch.tensor([True, True]),
+    )
+    targets = {
+        "seed_labels": torch.tensor([[1.0, 1.0, 0.0, 1.0], [1.0, 0.0, 1.0, 0.0]]),
+        "anchor_mask": torch.ones(2, 4, dtype=torch.bool),
+    }
+    result = GraphMambaLoss(LossConfig())(out, targets, seed_scores=seed_scores)
+    assert {"seed", "transition", "router"} <= set(result.terms)
+    assert torch.isfinite(result.total)
+    result.total.backward()
+    edge_grads = [
+        p.grad for p in model.seed_scorer.anchor_gnn.edge_out.parameters()
+        if p.grad is not None
+    ]
+    assert edge_grads and sum(float(g.abs().sum()) for g in edge_grads) > 0.0
+
+
 def test_partial_labels_skip_terms():
     cfg = GraphMambaConfig(d_model=64)
     model = build_core_model(CoreModelConfig(arch="graphmamba", graphmamba=cfg)).model

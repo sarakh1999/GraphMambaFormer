@@ -1,64 +1,329 @@
 # GraphMambaFormer
 
-A bidirectional **Graph-Mamba-2** universal alignment engine for mapping
-sequencing reads to pangenome graphs, built layer by layer from the proposed
-architecture in `figure1_architecture_v2.html`.
+Bidirectional **Graph-Mamba-2** universal alignment engine that maps sequencing
+reads to linear references and pangenome graphs. Focus: long reads (PacBio HiFi,
+ONT); Illumina and other modalities run end-to-end through the same pipeline.
 
-Current development focus: **long reads** — PacBio HiFi and ONT.
+| Knob | Default | Options |
+| --- | --- | --- |
+| Core architecture | `graphmamba` | `graphmamba`, `multitask_graphmamba`, `mambaformer`, `hybrid` |
+| Pipeline mode (`--mode`) | `hybrid` | `hybrid`, `fast`, `two_pass` |
+| Reference mode (`--ref-mode`) | — | `linear`, `pangenome`, `both` |
+| Modality (`--modality`) | `illumina` | `illumina`, `pacbio_hifi`, `ont`, `rna_seq`, `bisulfite`, `single_cell`, `linked_reads` |
 
-## Implemented so far
+**Contents:** [Setup](#1-setup) · [Concepts](#2-concepts) · [Commands](#3-commands-run-everything) · [UML](#4-uml) · [Architecture](#5-architecture) · [Code map](#6-code-map) · [Docker & GPU](#7-docker--gpu) · [Formats & data](#8-formats--data)
 
-| Figure 1 component | Module |
+---
+
+## 1. Setup
+
+```bash
+# from repo root — Python >= 3.10
+.venv/bin/pip install -r requirements.txt
+# NVIDIA GPU box also: .venv/bin/pip install -r requirements-gpu.txt
+
+# sanity checks
+PYTHONPATH=. .venv/bin/python scripts/smoke_test.py
+PYTHONPATH=. .venv/bin/python scripts/check_gpu.py
+```
+
+Apple Silicon selects MPS automatically via `graphmambaformer.get_device()`.
+No local Python? Use Docker (see [§7](#7-docker--gpu)).
+
+---
+
+## 2. Concepts
+
+Three knobs combine freely: **architecture** × **pipeline mode** × **reference mode**, all tagged by **modality**.
+
+**Pipeline modes** — `hybrid` (neural, accuracy; default) · `fast` (classical, throughput) · `two_pass` (fast first, hybrid rescue for hard reads).
+
+**Reference modes** — `linear` (FASTA only) · `pangenome` (FASTA + GFA) · `both` (each read on both; eval can emit an integrated concordance BAM).
+
+**Architectures** — `graphmamba` / `multitask_graphmamba` have alignment heads; `mambaformer` / `hybrid` are sequence-only ablation encoders (pipeline degrades to classical scoring).
+
+**Modality aliases** (resolved by `validate_modality`): `hifi/pacbio/ccs/revio → pacbio_hifi`, `nanopore/ont_r10 → ont`, `ngs/short_read/dnbseq → illumina`, `10x/chromium → linked_reads`, `wgbs → bisulfite`, `scrna → single_cell`.
+
+**Inputs / outputs**
+
+| Role | Formats |
 | --- | --- |
-| 1A · Modality-Aware Read Encoder | `graphmambaformer/encoders/read_encoder.py` |
-| 1A · Reference Graph Encoder | `graphmambaformer/encoders/graph_encoder.py` |
-| 1B · Bidirectional Mamba (Layer 1) | `graphmambaformer/layers/mamba1.py` (reference-port Mamba-1), `layers/mamba2.py` (Mamba-2), `layers/bimamba.py` |
-| 1B · Windowed multi-head self-attention (Layer 2) | `graphmambaformer/layers/attention.py` |
-| 1B · GATv2 graph attention (Layer 3) | `graphmambaformer/layers/gat.py` |
-| MambaFormer backbone | `graphmambaformer/blocks/mambaformer.py` |
-| 1B · Hybrid block (Mamba → attention → GATv2 → FFN, ×N) | `graphmambaformer/blocks/hybrid_block.py` |
-| Top-level assembly | `graphmambaformer/model.py` |
-| **Core model** · GraphMambaModel + multi-task variant | `graphmambaformer/models/graph_mamba.py` |
-| **Stage 1** · Seeding (minimizer / SMEM / DBG / fuzzy / GPU) | `graphmambaformer/alignment/seeding.py` |
-| **Stage 2** · Chaining (affine-gap DP + graph bonus) | `graphmambaformer/alignment/chaining.py` |
-| **Stage 3** · DP extension (banded affine SW + WFA) | `graphmambaformer/alignment/extension.py` |
-| **Stage 4** · Neural scoring bridge | `graphmambaformer/alignment/scoring.py` |
-| **Stage 5** · Post-processing / liftover / concordance | `graphmambaformer/alignment/postprocessing.py` |
-| **Stage 6** · Repeat, paralog, and HLA/MHC resolution | `graphmambaformer/alignment/specialized.py` |
-| **Stage 7** · Genotyping, phasing, ancestry, clinical, PGx | `graphmambaformer/alignment/predictions.py` |
-| Seven-stage orchestration | `graphmambaformer/alignment/end_to_end.py` |
-| Alignment pipeline (hybrid / fast / two-pass) | `graphmambaformer/alignment/pipeline.py` |
-| Losses (alignment + Kendall multi-task) | `graphmambaformer/losses/alignment_loss.py` |
-| Training / validation / behaviour probes / plots | `graphmambaformer/training/`, `scripts/train.py` |
-| GPU acceleration stack (NVIDIA · AMD · Intel · Apple · CPU) | `graphmambaformer/accel/` |
+| Reference | FASTA (`.fai` built on demand) |
+| Pangenome | GFA / `.gfa.gz` |
+| Reads | FASTQ(`.gz`), BAM, uBAM, SAM, CRAM |
+| Supervision (train) | truth BAM/SAM/CRAM (`--truth-bam`) |
+| Train out | `checkpoints/epoch_XX.pt`, `last.pt`, `checkpoint.pt`, `history.json`, `run_meta.json`, `plots/` |
+| Eval/map out | `pred.*.bam` (+`.bai`), `pred.*.sam`, optional CRAM, `metrics.json` |
 
-Design details:
+---
 
-- **Read encoder** — k-mer tokenization + base-quality embedding + on-the-fly
-  sinusoidal positional encoding + a prepended modality-conditioning token → `d_model` (default 512).
-- **Graph encoder** — pooled k-mer node features + Laplacian-eigenvector
-  positional encoding + 8 discrete edge-type embeddings (consumed by the GATv2 layer).
-- **Bidirectional Mamba** — two interchangeable mixers, each fused forward+reverse
-  by a learned gate `g·y_fwd + (1−g)·y_rev`:
-  - **Mamba-1** (`layers/mamba1.py`) — a faithful pure-PyTorch port of the
-    reference repo's `mamba_simple.Mamba` (`in_proj → depthwise causal conv →
-    x_proj → selective scan(Δ/B/C) → SiLU gate → out_proj`, S4D real init,
-    `d_state=16`, `expand=2`, `dt_rank="auto"`).
-  - **Mamba-2** (`layers/mamba2.py`) — a readable pure-PyTorch SSD reference scan
-    (`d_state=64`, `d_inner=1024`, `d_conv=4`, selective Δ/B/C).
-  Both run on CPU/Apple Silicon and automatically delegate to CUDA `mamba_ssm`
-  when a GPU + the package are available.
-- **Multi-head self-attention** — bidirectional (non-causal) by default and
-  padding-mask aware, via `scaled_dot_product_attention`. Supports an optional
-  symmetric sliding `window` (for the windowed-attention variant) and a `causal`
-  flag. The reference MambaFormer attention is causal; alignment uses both
-  directions, so the default differs.
+## 3. Commands: run everything
 
-## Core model: `GraphMambaModel`
+All commands run from the **repo root** with `PYTHONPATH=.` (or the Docker wrapper).
 
-The default core architecture. A read is encoded in **base space** (not k-mer
-tokens) so anchor read positions index the hidden states directly, which is what
-lets the Stage 4 heads look up "the model's view of this locus":
+### 3.0 Prepare HG002 chr21 inputs (once, needs Docker)
+
+```bash
+chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
+./scripts/prepare_real_hg002.sh
+# → data/chr21/HG002/ref/GRCh38.chr21.fa
+# → data/chr21/HG002/chr21.gfa
+# → data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
+
+# shared path vars used below
+REF=data/chr21/HG002/ref/GRCh38.chr21.fa
+GFA=data/chr21/HG002/chr21.gfa
+TRUTH=data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
+REGION=chr21:5000000-6000000
+```
+
+### 3.1 Train (needs `--truth-bam`)
+
+Swap `--modality {illumina|pacbio_hifi|ont|...}` and `--ref-mode {linear|pangenome|both}` freely (`--gfa` required for `pangenome`/`both`).
+
+```bash
+# Illumina · linear
+PYTHONPATH=. python scripts/train.py --data real \
+  --reference-fasta "$REF" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode linear --modality illumina \
+  --device cuda --require-gpu --workers 16 --prefetch 3 \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/illumina_linear
+
+# PacBio HiFi · pangenome
+PYTHONPATH=. python scripts/train.py --data real \
+  --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode pangenome --modality pacbio_hifi \
+  --device cuda --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/hifi_pangenome
+
+# ONT · both (each read trained linear + pangenome)
+PYTHONPATH=. python scripts/train.py --data real \
+  --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode both --modality ont \
+  --device cuda --devices auto --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/ont_both
+```
+
+### 3.2 Evaluate with truth (metrics + predicted BAM)
+
+Set `--mode {hybrid|fast|two_pass}` independently of modality. `fast` needs no checkpoint.
+
+```bash
+# Illumina · hybrid · linear
+PYTHONPATH=. python scripts/eval.py --data real \
+  --reference-fasta "$REF" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode linear --modality illumina --mode hybrid \
+  --checkpoint data/training_runs/illumina_linear/checkpoint.pt \
+  --device cuda --out data/eval_runs/illumina_linear_hybrid
+
+# HiFi · fast · pangenome (no checkpoint)
+PYTHONPATH=. python scripts/eval.py --data real \
+  --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode pangenome --modality pacbio_hifi --mode fast \
+  --out data/eval_runs/hifi_pangenome_fast
+
+# ONT · two_pass · both (+ integrated concordance BAM; add --write-cram for CRAM)
+PYTHONPATH=. python scripts/eval.py --data real \
+  --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode both --modality ont --mode two_pass \
+  --checkpoint data/training_runs/ont_both/checkpoint.pt \
+  --device cuda --out data/eval_runs/ont_both_twopass
+```
+
+### 3.3 Inference without truth (reads → BAM)
+
+```bash
+# Illumina paired FASTQ (auto-pairs R1/R2). Swap --mode as needed.
+R1=data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz
+R2=data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz
+PYTHONPATH=. python scripts/eval.py --data real \
+  --reference-fasta "$REF" --region "$REGION" --ref-mode linear \
+  --reads-file "$R1" --reads-file "$R2" \
+  --read-layout auto --modality illumina --mode hybrid \
+  --checkpoint data/training_runs/illumina_linear/checkpoint.pt \
+  --out data/eval_runs/illumina_infer
+
+# PacBio HiFi single-end FASTQ.gz
+PYTHONPATH=. python scripts/eval.py --data real \
+  --reference-fasta "$REF" --reads-file sample.hifi.fastq.gz \
+  --modality pacbio_hifi --read-layout auto --ref-mode linear --mode hybrid \
+  --checkpoint data/training_runs/hifi_pangenome/checkpoint.pt \
+  --out data/eval_runs/hifi_infer
+
+# ONT BAM/uBAM (pangenome + two_pass shown)
+PYTHONPATH=. python scripts/eval.py --data real \
+  --reference-fasta "$REF" --gfa "$GFA" --reads-file sample.ont.bam \
+  --modality ont --read-layout auto --ref-mode pangenome --mode two_pass \
+  --checkpoint data/training_runs/ont_both/checkpoint.pt \
+  --out data/eval_runs/ont_infer
+```
+
+### 3.4 HPRC multi-modality mapping (production wrapper)
+
+Reads under `data/hprc/reads/<SAMPLE>/{hifi,illumina,ont}/`. Full detail: [`data/hprc/README.md`](data/hprc/README.md).
+
+```bash
+export REF=data/chr21/HG002/ref/GRCh38.chr21.fa
+export OURS_INDEX_CACHE=data/hprc/index_cache
+
+# one modality
+SAMPLE=HG00438 MODALITIES=hifi ./scripts/hprc/map_sample.sh
+
+# all three → one BAM (distinct @RG / XM per modality)
+SAMPLE=HG00438 MODALITIES=illumina,hifi,ont BAM_MODE=combined ./scripts/hprc/map_sample.sh
+
+# all three → three BAMs
+SAMPLE=HG00673 BAM_MODE=separate ./scripts/hprc/map_sample.sh
+
+# override pipeline mode (wrapper default: fast) and cap reads for a smoke run
+OURS_MODE=hybrid SAMPLE=HG00438 MODALITIES=ont ./scripts/hprc/map_sample.sh
+OURS_MAX_READS=2000 SAMPLE=HG00438 MODALITIES=illumina,hifi,ont ./scripts/hprc/map_sample.sh
+
+# equivalent direct call
+PYTHONPATH=. .venv/bin/python scripts/chr21/align_ours.py \
+  --ref "$REF" --sample HG00438 --modalities illumina,hifi,ont \
+  --bam-mode combined --mode fast \
+  --out data/hprc/bam/HG00438.all.ours.sorted.bam \
+  --index-cache "$OURS_INDEX_CACHE" --workers 16
+```
+
+### 3.5 Synthetic CPU smoke
+
+```bash
+PYTHONPATH=. python scripts/train.py --preset tiny --ref-mode both --epochs 6 \
+  --out data/training_runs/synth_both
+
+PYTHONPATH=. python scripts/eval.py \
+  --checkpoint data/training_runs/synth_both/checkpoint.pt \
+  --ref-mode both --mode hybrid --emit-truth --out data/eval_runs/synth_hybrid
+# classical (no checkpoint): --mode fast ; hard-tail rescue: --mode two_pass
+```
+
+### 3.6 Tests & verification
+
+```bash
+PYTHONPATH=. .venv/bin/python tests/run_all.py                    # full suite
+PYTHONPATH=. .venv/bin/python tests/run_all.py pipeline           # filter by name
+PYTHONPATH=. .venv/bin/python tests/run_all.py alignment_stages
+PYTHONPATH=. .venv/bin/python tests/run_all.py formats
+PYTHONPATH=. .venv/bin/python tests/run_all.py accel
+
+PYTHONPATH=. .venv/bin/python scripts/verify_stages.py            # Figure-1 encoders/backbone
+PYTHONPATH=. .venv/bin/python scripts/verify_alignment_pipeline.py # stages 1-4 E2E
+PYTHONPATH=. .venv/bin/python scripts/audit_architecture.py       # conformance checklist
+```
+
+### 3.7 Minimal Python API
+
+```python
+from graphmambaformer import PipelineConfig, build_pipeline, build_core_model, get_device
+
+model = build_core_model().model.to(get_device())            # arch=graphmamba
+pipeline = build_pipeline(PipelineConfig(mode="hybrid"), model=model)
+reference = pipeline.build_reference(ref_seq, node_seqs=nodes, node_ref_start=starts)
+results, stats = pipeline.align(reads, reference)
+print(results[0].primary.cigar_string, results[0].primary.mapq, stats.summary())
+```
+
+---
+
+## 4. UML
+
+### 4.1 Package structure
+
+```mermaid
+flowchart TB
+  subgraph Entry["scripts/"]
+    train["train.py"]
+    eval["eval.py"]
+    align["chr21/align_ours.py · hprc/map_sample.sh"]
+  end
+  subgraph Core["graphmambaformer/"]
+    models["models/ (GraphMambaModel, MultiTask)"]
+    enc["encoders/"]
+    layers["layers/"]
+    heads["heads/"]
+    blocks["blocks/"]
+    alignpkg["alignment/ (stages 1-7 + pipeline)"]
+    data["data/"]
+    trainpkg["training/ + losses/"]
+    accel["accel/"]
+  end
+  train --> models & alignpkg & trainpkg
+  eval --> models & alignpkg
+  align --> alignpkg & data
+  models --> enc & layers & heads
+  alignpkg --> models & accel
+```
+
+### 4.2 Core model classes
+
+```mermaid
+classDiagram
+  direction TB
+  class CoreModelSpec { +arch +model +supports_alignment_heads +base_space_input }
+  class GraphMambaModel {
+    +seq_encoder +bimamba_tower +graph_encoder +gat_tower
+    +fusion +router +mapping_head +seed_head +chain_head
+    +forward(reads, graph) GraphMambaOutput
+  }
+  class MultiTaskGraphMamba { +task_heads: MultiTaskHeads }
+  class GraphMambaFormerEncoder { +read_encoder +backbone }
+  build_core_model --> CoreModelSpec
+  CoreModelSpec --> GraphMambaModel : graphmamba
+  CoreModelSpec --> MultiTaskGraphMamba : multitask_graphmamba
+  CoreModelSpec --> GraphMambaFormerEncoder : mambaformer|hybrid
+  MultiTaskGraphMamba --|> GraphMambaModel
+  GraphMambaModel *-- SequenceEncoder
+  GraphMambaModel *-- ReferenceGraphEncoder
+  GraphMambaModel *-- CrossAttentionFusion
+  GraphMambaModel *-- MappingHead
+  GraphMambaModel *-- SeedScoringHead
+  GraphMambaModel *-- ChainScoringHead
+```
+
+### 4.3 Alignment pipeline classes
+
+```mermaid
+classDiagram
+  direction TB
+  class AlignmentPipeline {
+    +seeder: SeedingEngine
+    +chainer: AffineChainer
+    +extender: ExtensionEngine
+    +scorer: NeuralScorer?
+    +build_reference()
+    +align(reads, reference)
+  }
+  build_pipeline --> HybridAlignmentPipeline : hybrid
+  build_pipeline --> FastAlignmentPipeline : fast
+  build_pipeline --> TwoPassAligner : two_pass
+  HybridAlignmentPipeline --|> AlignmentPipeline
+  FastAlignmentPipeline --|> AlignmentPipeline
+  TwoPassAligner --|> AlignmentPipeline
+  TwoPassAligner *-- FastAlignmentPipeline
+  TwoPassAligner *-- HybridAlignmentPipeline
+  SevenStagePipeline o-- AlignmentPipeline
+  DualReferenceAligner o-- AlignmentPipeline
+  HybridAlignmentPipeline *-- NeuralScorer
+```
+
+### 4.4 End-to-end data flow
+
+```mermaid
+flowchart LR
+  FASTA["FASTA"] --> S1
+  GFA["GFA"] -.-> S1
+  READS["reads"] --> S1
+  S1["1 Seed"] --> S2["2 Chain"] --> S3["3 Extend"] --> S4["4 Neural score"]
+  S4 --> S5["5 Post"] --> S6["6 Repeat/HLA"] --> S7["7 Predictions"]
+  S4 --> BAM["pred BAM/SAM/CRAM"]
+  S4 --> CKPT["checkpoints + history.json"]
+  S7 --> MET["metrics.json"]
+```
+
+### 4.5 Core forward pass (`graphmamba`)
 
 ```
 reads  → SequenceEncoder → BiMamba-2 tower ─┐
@@ -70,661 +335,125 @@ graph  → GraphEncoder    → GATv2 tower ─────┘        │
                                                      └→ ChainScoringHead
 ```
 
-`MultiTaskGraphMamba` adds ten predictive-genomics heads (variant calling, SV
-genotyping, haplotype, HLA, BQSR, methylation, ancestry, copy number, somatic,
-PGx) as branching MLPs over the *same* forward pass, so they cost one small MLP
-each rather than a second model. Heads are opt-in via `MultiTaskConfig` because
-each needs its own labels.
+---
 
-### Core architecture modes
+## 5. Architecture
 
-`build_core_model` selects the architecture; **`"graphmamba"` is the default**.
+**Encoders** — read/sequence encoders map k-mer or base tokens + quality + a
+modality token → `d_model` (default 512). The core model uses base space so
+Stage-4 heads index loci directly. The graph encoder builds pooled k-mer node
+features + Laplacian PE + 8 edge-type embeddings for GATv2.
 
-| `arch` | Model | Alignment heads |
+**BiMamba** — forward+reverse fused by a learned gate `g·y_fwd + (1−g)·y_rev`;
+Mamba-1 (reference port) or Mamba-2 (SSD); CUDA `mamba_ssm` when available, else
+pure PyTorch.
+
+### Seven alignment stages
+
+| Stage | Module | What it does |
 | --- | --- | --- |
-| `"graphmamba"` | `GraphMambaModel` | yes |
-| `"multitask_graphmamba"` | `+ the ten task heads` | yes |
-| `"mambaformer"` | `GraphMambaFormerEncoder`, MambaFormer backbone | no (ablation baseline) |
-| `"hybrid"` | `GraphMambaFormerEncoder`, hybrid block stack | no (ablation baseline) |
+| 1 Seeding | `alignment/seeding.py` | minimizer / SMEM / DBG / fuzzy / multiplex-DBG / GPU k-mer → anchors |
+| 2 Chaining | `alignment/chaining.py` | affine-gap DP + graph-hop bonus |
+| 3 Extension | `alignment/extension.py` | banded affine SW or WFA → CIGAR |
+| 4 Scoring | `alignment/scoring.py` | neural prune / re-rank / MAPQ / rescue |
+| 5 Post | `alignment/postprocessing.py` | correction, population MAPQ, liftover, concordance |
+| 6 Specialized | `alignment/specialized.py` | repeats, paralogs, HLA/MHC |
+| 7 Predictions | `alignment/predictions.py` | genotype, phase, ancestry, clinical, PGx |
+| Orchestration | `alignment/end_to_end.py`, `pipeline.py` | `SevenStagePipeline` + hybrid/fast/two_pass |
 
-The two encoder baselines are sequence-only. Selecting one is reported through
-`CoreModelSpec.supports_alignment_heads`, and the pipeline then runs its
-classical path instead of failing — so architecture and pipeline mode vary
-independently.
-
-## Alignment pipeline
-
-Seven stages, with the neural core woven into the classical ones rather than
-bolted on the end:
-
-| Stage | What it does | Key implementation notes |
-| --- | --- | --- |
-| **1 · Seeding** | reference → candidate anchors | minimizer sketch, FM-index SMEMs, De Bruijn, spaced/fuzzy seeds, multiplex-DBG, GPU k-mer table. Several modes can run together; anchors are merged and collapsed on shared diagonals. |
-| **2 · Chaining** | anchors → collinear chains | minimap2-style affine-gap DP, plus a graph-hop bonus and a reference-path bias from the pangenome graph. Batched DP on GPU. |
-| **3 · Extension** | chains → base-level CIGARs | banded affine Smith-Waterman (CUDA RawKernel, optional AVX2/SSE2 scoring, portable traceback) or WFA for low-divergence pairs (CUDA distance kernel with verified CPU traceback/fallback). |
-| **4 · Scoring** | neural refinement | anchor pruning **before** chaining, chain re-ranking **after** the DP, then MAPQ and a rescue locus for unplaced reads. |
-| **5 · Post** | evidence-preserving records | quality-gated read correction, Bayesian population MAPQ, exact block ALT liftover, multi-reference concordance. |
-| **6 · Repeat/HLA** | specialized loci | repeat-family likelihoods, diagnostic-site paralog resolution, allele-specific HLA alignment, diploid MHC likelihood typing. |
-| **7 · Predictions** | sample-level calls | genotype likelihoods + population imputation, read-backed phasing, Viterbi ancestry painting, clinical interval flags, definition-based PGx star alleles. |
-
-Stage ordering is deliberate: pruning before Stage 2 shrinks the DP input and
-biases anchor weights, re-ranking after Stage 2 lets the head see complete
-chains, and MAPQ comes last, once the primary/secondary margin exists. Stages
-5–7 require explicit versioned reference panels/catalogues; the strict
-`SevenStagePipeline` refuses to claim a complete run when those resources are
-missing.
-
-### Pipeline modes
-
-`build_pipeline` selects the mode; **`"hybrid"` is the default**.
-
-| `mode` | Class | Behaviour |
-| --- | --- | --- |
-| `"hybrid"` | `HybridAlignmentPipeline` | Full accuracy path with all four stages plus neural scoring. |
-| `"fast"` | `FastAlignmentPipeline` | Classical only, MAPQ from the score margin. The throughput baseline. |
-| `"two_pass"` | `TwoPassAligner` | Fast path first, hybrid re-alignment only for reads that are not confidently resolved. |
-
-A read is "easy" (and skips the neural pass in `two_pass`) when its best chain
-covers `easy_coverage` of the read and beats the runner-up by `easy_margin`.
+Default Stage-1 modes `("smem","minimizer","fuzzy")`, spaced pattern `111010010100110111`. Fuzzy-only:
 
 ```python
-from graphmambaformer import PipelineConfig, build_pipeline, build_core_model
-
-model = build_core_model().model              # "graphmamba" by default
-pipeline = build_pipeline(PipelineConfig(), model=model)   # "hybrid" by default
-
-reference = pipeline.build_reference(ref_seq, node_seqs=nodes, node_ref_start=starts)
-results, stats = pipeline.align(reads, reference)
-
-print(results[0].primary.cigar_string, results[0].primary.mapq)
-print(stats.summary())
+from graphmambaformer import PipelineConfig, build_pipeline
+cfg = PipelineConfig(mode="fast"); cfg.seeding.modes = ("fuzzy",)
+pipeline = build_pipeline(cfg, model=None)
 ```
 
-## Losses
+**Losses** — `GraphMambaLoss` = `AlignmentLoss` (+ optional `MultiTaskLoss`),
+balanced by Kendall uncertainty weighting ([arXiv:1705.07115](https://arxiv.org/abs/1705.07115));
+absent labels skip their term. **Metrics**: `locus_accuracy` (within 50 bp),
+`chain_accuracy` (≥2 candidates), `anchor_auc`/P/R, `mapq_mae`/calibration.
 
-`GraphMambaLoss` covers both halves of the model:
+---
 
-- **`AlignmentLoss`** — per-anchor BCE, *listwise* chain-ranking cross-entropy
-  (the ordering is what inference uses, not the absolute scores), node
-  classification, within-node position and MAPQ Huber terms, a one-sided router
-  compute budget, and an alignment-score margin.
-- **`MultiTaskLoss`** — one term per enabled head, with the objective derived
-  from the head's label space (per-read, per-node, or per-base) plus any
-  auxiliary regression channels.
+## 6. Code map
 
-Terms are balanced by Kendall uncertainty weighting
-([arXiv:1705.07115](https://arxiv.org/abs/1705.07115)): each task learns a
-log-variance `s` and contributes `exp(-s)·L + s`. A term whose labels are absent
-from the batch is **skipped**, not zeroed, so partially-labelled data trains the
-heads it has labels for without diluting the others.
+### Package (`graphmambaformer/`)
 
-## End-to-end: real data (stages 1–4)
-
-These are the production commands (linear / pangenome / both). They were
-smoke-tested end-to-end on real-format FASTA + GFA + truth BAM.
-
-### HPRC multi-modality mapping (HiFi / Illumina / ONT)
-
-Samples such as `HG00438`, `HG00621`, and `HG00673` live under
-`data/hprc/reads/<SAMPLE>/{hifi,illumina,ont}/` as:
-
-| Folder | Format | Modality |
-| --- | --- | --- |
-| `hifi/` | `.fastq.gz` | `pacbio_hifi` |
-| `illumina/` | `.cram` | `illumina` |
-| `ont/` | `.bam` | `ont` |
-
-Run **separately** or **combined** — see [`data/hprc/README.md`](data/hprc/README.md):
-
-```bash
-# all three modalities -> one BAM
-SAMPLE=HG00438 REF=data/chr21/HG002/ref/GRCh38.chr21.fa \
-  MODALITIES=illumina,hifi,ont BAM_MODE=combined \
-  ./scripts/hprc/map_sample.sh
-
-# one modality only
-SAMPLE=HG00621 MODALITIES=hifi ./scripts/hprc/map_sample.sh
-
-# same inputs, one BAM per modality
-SAMPLE=HG00673 BAM_MODE=separate ./scripts/hprc/map_sample.sh
-```
-
-### Stage 1 — prepare HG002 inputs (once, needs Docker)
-
-```bash
-chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
-./scripts/prepare_real_hg002.sh
-# writes:
-#   data/chr21/HG002/ref/GRCh38.chr21.fa
-#   data/chr21/HG002/chr21.gfa
-#   data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
-```
-
-### Stage 2 — train (linear | pangenome | both)
-
-```bash
-# LINEAR
-PYTHONPATH=. python scripts/train.py --data real \
-  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-  --region chr21:5000000-6000000 --ref-mode linear \
-  --device cuda --devices auto --epochs 20 --batch-size 8 --d-model 256 \
-  --out data/training_runs/hg002_linear
-
-# PANGENOME
-PYTHONPATH=. python scripts/train.py --data real \
-  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-  --gfa data/chr21/HG002/chr21.gfa \
-  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-  --region chr21:5000000-6000000 --ref-mode pangenome \
-  --device cuda --devices auto --epochs 20 --batch-size 8 --d-model 256 \
-  --out data/training_runs/hg002_pangenome
-
-# BOTH
-PYTHONPATH=. python scripts/train.py --data real \
-  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-  --gfa data/chr21/HG002/chr21.gfa \
-  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-  --region chr21:5000000-6000000 --ref-mode both \
-  --device cuda --devices auto --epochs 20 --batch-size 8 --d-model 256 \
-  --out data/training_runs/hg002_both
-```
-
-**Train outputs** under `--out`: `checkpoints/epoch_XX.pt`, `last.pt`,
-`checkpoint.pt` (best), `history.json` (every step), `run_meta.json`, `plots/`.
-
-### Stage 3 — eval
-
-```bash
-PYTHONPATH=. python scripts/eval.py --data real \
-  --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-  --gfa data/chr21/HG002/chr21.gfa \
-  --truth-bam data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-  --region chr21:5000000-6000000 --ref-mode both --mode hybrid \
-  --checkpoint data/training_runs/hg002_both/checkpoint.pt \
-  --device cuda --out data/eval_runs/hg002_both
-```
-
-**Eval outputs** under `--out/<linear|pangenome>/`: `metrics.json`,
-`pred.real.bam` (+`.bai`), `pred.real.sam`; top-level `metrics.json` +
-`run_meta.json`. Optional `--write-cram`.
-
-### Stage 4 — Docker / GPU (same flags, paths under `/work`)
-
-```bash
-# Build + publish (maintainers)
-docker/build.sh                                    # CPU → graphmambaformer:latest
-TARGET=gpu docker/build.sh                         # CUDA → graphmambaformer:gpu
-docker/publish.sh                                  # → ghcr.io/sarakh1999/graphmambaformer:latest
-TARGET=gpu docker/publish.sh                       # → ghcr.io/sarakh1999/graphmambaformer:gpu
-
-# Run train on all GPUs (local image or GHCR)
-IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
-  docker/run.sh gmf-python scripts/train.py --data real \
-  --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
-  --gfa /work/data/chr21/HG002/chr21.gfa \
-  --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-  --region chr21:5000000-6000000 --ref-mode both \
-  --device cuda --devices all --epochs 20 --batch-size 8 --d-model 256 \
-  --out /work/data/training_runs/hg002_both
-```
-
-## Training and evaluation
-
-`scripts/train.py` and `scripts/eval.py` run on **real** genomics files
-(`--data real` — auto-selected when you pass `--reference-fasta`) or on the
-synthetic dataset (`--data synthetic`, CPU smoke only). Use the same
-`--ref-mode {linear,pangenome,both}` curriculum for either source. Prepare
-HG002 FASTA + GFA + truth BAM once with `./scripts/prepare_real_hg002.sh`, then
-train/eval — that is the path you wrap in Docker and run on GPU.
-
-### Inputs (what each flag feeds in)
-
-| Flag | Applies to | What it is |
-| --- | --- | --- |
-| `--reference-fasta PATH` | real | linear reference **FASTA** (GRCh38 chr21, a windowed contig, …). The `.fai` is built on demand. |
-| `--gfa PATH` | real, pangenome | pangenome **GFA** graph (real HPRC window, or `vg convert -f graph.gbz > graph.gfa`). Attaches real nodes/edges to the graph towers. |
-| `--truth-bam PATH` | real | aligned **BAM/SAM/CRAM** truth. Supplies each read's `ref_start`/`ref_end`/`cigar`/`mapq` — the supervision. **Required to train.** |
-| `--reads-file PATH` | real (inference) | **FASTQ(.gz)/BAM** reads with no truth. For Illumina, pass R1 then R2; they are paired automatically. A single ONT/PacBio file remains single-end. |
-| `--read-layout` | real | `auto` (default), `paired`, or `single`. Auto pairs exactly two Illumina FASTQs and keeps long reads single. |
-| `--region chr:start-end` | real | window the reference (and truth reads) to a manageable span. **Strongly recommended** — the pipeline is a pure-Python reference impl, so indexing a whole chromosome is slow. |
-| `--contig NAME` | real | pick a contig when the FASTA has several (default: first). |
-| `--modality` | real | `illumina` (default) / `pacbio_hifi` / `ont` / … |
-| `--ref-mode` | both | `linear` (FASTA only), `pangenome` (attach GFA), `both` (train each read on each). |
-| `--preset {tiny,long,table1}` | synthetic | dataset scale (see the synthetic section). |
-| `--device cuda\|mps\|cpu` | both | compute device (default: auto-detect). |
-
-### Outputs (everything is saved under `--out`)
-
-Training writes, and **keeps every step**:
-
-| Path | Contents |
+| File | Role |
 | --- | --- |
-| `checkpoints/epoch_XX.pt` | a checkpoint **after every epoch** (model + optimizer + loss + config + epoch) — nothing is lost mid-run |
-| `last.pt` | rolling copy of the most recent epoch |
-| `checkpoint.pt` | the **best** epoch by the monitored metric (skip with `--no-checkpoint`) |
-| `history.json` | every training step (loss terms, grad norms, router split) + every validation, **flushed every step** |
-| `run_meta.json` | full provenance: data source, file paths, region, read counts, device, artifact map |
-| `plots/01..06_*.png` | loss + per-term breakdown, learned Kendall weights, validation quality, model behaviour, MAPQ calibration, label balance |
+| `__init__.py` | public API exports |
+| `config.py` | modalities, modes, all dataclasses |
+| `device.py` | `get_device`, multi-GPU helpers |
+| `tokenization.py` | `KmerTokenizer` |
+| `model.py` | `GraphMambaFormerEncoder` (ablation backbone) |
+| **`models/graph_mamba.py`** | **`GraphMambaModel`, `MultiTaskGraphMamba`, towers** |
+| `models/__init__.py` | `build_core_model`, `CoreModelSpec` |
+| `encoders/read_encoder.py` | modality-aware k-mer read encoder |
+| `encoders/sequence_encoder.py` | base-space encoder (core model) |
+| `encoders/graph_encoder.py` | node/edge encoder + Laplacian PE |
+| `layers/mamba1.py` · `mamba2.py` · `bimamba.py` | Mamba-1 / Mamba-2 / bidirectional wrappers |
+| `layers/attention.py` · `cross_attention.py` | windowed MHSA / read↔graph fusion |
+| `layers/gat.py` · `common.py` | GATv2 / shared norm+residual |
+| `blocks/mambaformer.py` · `hybrid_block.py` | MambaFormer chain / Figure-1B block ×N |
+| `heads/mapping_head.py` | node / offset / MAPQ |
+| `heads/scoring_heads.py` | seed + chain scoring |
+| `heads/router.py` · `multitask_heads.py` | compute router / ten genomics heads |
+| `alignment/types.py` | `AnchorSet`, `Chain`, `AlignmentRecord`, CIGAR utils |
+| `alignment/seeding.py` … `predictions.py` | stages 1–7 (see [§5](#seven-alignment-stages)) |
+| `alignment/pipeline.py` | hybrid / fast / two_pass + `build_pipeline` |
+| `alignment/end_to_end.py` | `SevenStagePipeline` |
+| `alignment/dual_reference.py` · `index_cache.py` | linear+pangenome concordance / on-disk index |
+| `data/formats.py` | FASTQ/BAM/CRAM/GFA I/O contract |
+| `data/export.py` · `synthetic.py` · `real_data.py` | export + readers / synthetic gen / real windows |
+| `data/dataset.py` · `reference_build.py` · `alignment_io.py` | dataset & collate / build `ReferenceIndex` / `write_alignments` |
+| `losses/alignment_loss.py` | `AlignmentLoss`, `MultiTaskLoss`, Kendall |
+| `training/trainer.py` · `targets.py` · `metrics.py` · `probes.py` · `plots.py` | loop / supervision / metrics / probes / figures |
+| `accel/backend.py` | `AccelContext`, vendor detection |
+| `accel/cuda_kernels.py` · `triton_ops.py` · `cuda_graphs.py` | CuPy RawKernel / Triton / CUDA Graphs |
+| `accel/transformer_engine.py` · `tensorrt_engine.py` · `simd_sw.py` · `parallel.py` | FP8 / TensorRT / SIMD SW / host threads |
 
-Evaluation writes, per `--ref-mode` label, under `--out/<linear|pangenome>/`:
-`metrics.json` (when a truth BAM is supplied), `pred.<split>.bam` (+`.bai`) /
-`pred.<split>.sam`, optional `pred.<split>.cram` (`--write-cram`), plus top-level
-`metrics.json` and `run_meta.json`.
+### Scripts (`scripts/`)
 
-### Prepare real HG002 inputs (once)
-
-```bash
-# Needs Docker on your machine (downloads GRCh38 chr21, GIAB truth, Illumina
-# FASTQ, HPRC GFA + Giraffe indexes, and maps Giraffe → truth BAM).
-chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
-./scripts/prepare_real_hg002.sh
-# → data/chr21/HG002/ref/GRCh38.chr21.fa
-# → data/chr21/HG002/chr21.gfa
-# → data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
-```
-
-### Real data — linear reference
-
-```bash
-# TRAIN on a chr21 window against a GIAB/Giraffe/BWA truth BAM (GPU)
-PYTHONPATH=. python scripts/train.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-    --region chr21:5000000-6000000 --ref-mode linear \
-    --device cuda --require-gpu --workers 16 --prefetch 3 \
-    --epochs 20 --batch-size 8 \
-    --out data/training_runs/chr21_linear
-
-# EVALUATE the trained checkpoint → metrics + predicted BAM/SAM
-PYTHONPATH=. python scripts/eval.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-    --region chr21:5000000-6000000 --ref-mode linear --mode hybrid \
-    --checkpoint data/training_runs/chr21_linear/checkpoint.pt \
-    --device cuda --require-gpu --cuda-graphs \
-    --out data/eval_runs/chr21_linear
-```
-
-With `--ref-mode both`, eval also writes an **integrated** concordance BAM under
-`<out>/integrated/` (linear + pangenome, one pass). Pass `--no-integrate` to
-skip it.
-
-### Real data — pangenome graph
-
-Same reads and truth, plus a real GFA so the GATv2 / graph-encoder towers see
-the pangenome. Get the GFA from the graph you already download in
-`scripts/chr21` (`vg convert -f hprc-*.gbz > chr21.gfa`).
-
-```bash
-PYTHONPATH=. python scripts/train.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --gfa             data/chr21/HG002/chr21.gfa \
-    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-    --region chr21:5000000-6000000 --ref-mode pangenome \
-    --device cuda --epochs 20 --batch-size 8 \
-    --out data/training_runs/chr21_pangenome
-
-PYTHONPATH=. python scripts/eval.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --gfa             data/chr21/HG002/chr21.gfa \
-    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-    --region chr21:5000000-6000000 --ref-mode pangenome --mode hybrid \
-    --checkpoint data/training_runs/chr21_pangenome/checkpoint.pt \
-    --out data/eval_runs/chr21_pangenome
-```
-
-Inference on paired Illumina FASTQ reads with **no** truth (writes paired
-BAM/SAM with R1/R2 flags, mate coordinates and TLEN):
-
-```bash
-PYTHONPATH=. python scripts/eval.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --region chr21:5000000-6000000 --ref-mode linear --mode fast \
-    --reads-file data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \
-    --reads-file data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz \
-    --read-layout auto --modality illumina \
-    --out data/eval_runs/chr21_infer
-```
-
-Single-end long reads use one file; no pairing flags are added:
-
-```bash
-PYTHONPATH=. python scripts/eval.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --reads-file sample.hifi.fastq.gz --modality pacbio_hifi \
-    --read-layout auto --ref-mode linear --mode hybrid \
-    --checkpoint data/training_runs/hg002_linear/checkpoint.pt \
-    --out data/eval_runs/hifi_single
-```
-
-### On GPU / in Docker
-
-The same commands run unchanged inside the image — just prefix with `docker/run.sh`
-and point `--device cuda` (see the [GPU images](#gpu-images) section):
-
-```bash
-IMAGE=graphmambaformer:gpu GPU=cuda docker/run.sh gmf-python scripts/train.py --data real \
-    --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --gfa /work/data/chr21/HG002/chr21.gfa \
-    --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-    --region chr21:5000000-6000000 --ref-mode both \
-    --device cuda --devices all --epochs 20 --batch-size 8 --d-model 256 \
-    --out /work/data/training_runs/chr21_both
-```
-
-### Synthetic data (CPU smoke)
-
-```bash
-# both linear + pangenome, tiny scale
-PYTHONPATH=. python scripts/train.py --preset tiny --ref-mode both --epochs 6 \
-    --out data/training_runs/both
-# evaluate → metrics + BAM/SAM (+ truth export)
-PYTHONPATH=. python scripts/eval.py \
-    --checkpoint data/training_runs/both/checkpoint.pt \
-    --ref-mode both --emit-truth --out data/eval_runs/both
-```
-
-Supervision is built from the data's **ground truth**, not invented: an anchor
-is positive when its implied diagonal really matches the read's true locus, and
-the chain label is the candidate that best overlaps the true span. Seeding and
-chaining run for real first, so the labels describe the anchors the model is
-actually asked to score.
-
-### Validation measures alignment, not just loss
-
-The objective is a weighted sum of seven terms whose balance shifts as the
-Kendall weights learn, so its absolute value is not comparable across epochs.
-`graphmambaformer/training/metrics.py` reports what the aligner is judged on:
-
-| Metric | Question it answers |
+| Script | Role |
 | --- | --- |
-| `locus_accuracy` | did the **whole pipeline** place the read within 50 bp? |
-| `chain_accuracy` | does the re-ranker pick the correct candidate chain? |
-| `anchor_auc` / precision / recall | can the seed head separate true anchors? |
-| `mapq_mae` | how far off is the predicted MAPQ? |
-| MAPQ **calibration** | does the claimed error rate match the observed one? |
+| `train.py` · `eval.py` | train / evaluate-infer |
+| `smoke_test.py` · `check_gpu.py` | forward+backward check / accel tier |
+| `generate_synthetic_data.py` · `convert_formats.py` | make synthetic data / convert formats |
+| `prepare_real_hg002.sh` | build chr21 HG002 bundle (Docker) |
+| `verify_stages.py` · `verify_alignment_pipeline.py` · `audit_architecture.py` | verification |
+| `chr21/align_ours.py` · `chr21/*.sh` | production mapper / chr21 benchmark |
+| `hprc/map_sample.sh` | HPRC sample wrapper |
+| `fig6/*` | Figure-6 BWA/Giraffe/hap.py benchmark |
+| `rebuild_and_publish_images.sh` | build + push GHCR images |
 
-Two deliberate refusals to flatter the model: `chain_accuracy` scores only reads
-with **≥2 candidates** (picking 1 of 1 is not a measurement, and reporting it as
-100% is misleading), and a monitored metric that is unmeasurable on the data
-reports `None` so early stopping falls back to validation loss instead of
-stopping at epoch 0 on a metric that can never move.
+### Tests (`tests/`)
 
-### Model behaviour at every step
+`run_all.py` (runner, name filters) · `test_alignment_stages.py` · `test_pipeline.py`
+· `test_downstream_stages.py` · `test_core_model.py` · `test_losses.py`
+· `test_training.py` · `test_formats.py` · `test_end_to_end_formats.py`
+· `test_accel.py` · `test_dual_reference.py`.
 
-A falling loss curve is equally consistent with a model that has collapsed, so
-`graphmambaformer/training/probes.py` records what actually happened each step:
-per-tower activation spread (a dead tower shows as `std=0`), gradient norms per
-parameter group plus the all-zero fraction, the router's split across compute
-paths, and each head's output spread (a constant head shows as `std≈0`).
+---
 
-```
-train e02 s0014  loss=4.4033  (chain=0.000 mapq=0.009 position=0.108 seed=0.603)
-                 |g|=0.581  route=fast:100%,medium:0%,full:0%
-epoch 02  train=4.4589  val loss=4.4063 locus=100.0% chain=n/a(<2 candidates)
-          anchorAUC=0.475 mapqMAE=3.1 mapped=100.0%
-```
-
-Six figures are written per run (`--out <dir>/plots`): total loss with the
-per-term breakdown, the learned Kendall weights, validation quality, model
-behaviour, MAPQ calibration, and the supervision actually available per batch.
-matplotlib is optional and imported lazily on the `Agg` backend, so a headless
-run works and a missing install skips the plots instead of failing the training.
-
-## GPU acceleration stack
-
-`AccelContext` detects what the host supports and hands each stage a backend, so
-the **same binary** runs on an A6000, A100, H100, H200, or a laptop CPU — no
-per-SKU rebuild:
-
-| Tier / feature | Module | Used for | Fallback |
-| --- | --- | --- | --- |
-| CuPy `RawKernel` | `accel/cuda_kernels.py` | k-mer lookup, chaining DP, banded SW | batched PyTorch |
-| Triton | `accel/triton_ops.py` | fused LayerNorm + Linear + GELU | eager PyTorch |
-| `mamba_ssm` | `layers/mamba2.py` | fused selective scan | pure-PyTorch SSD scan |
-| TF32 / Flash-SDP / cuDNN | `accel/backend.py` | matmul + attention | plain kernels |
-| AMP (`bf16`/`fp16`) | `AccelContext.autocast` | training + inference | full precision |
-| **CUDA Graphs** (default on) | `accel/cuda_graphs.py` | fixed-shape inference | eager |
-| **TransformerEngine FP8** | `accel/transformer_engine.py` | Ada/Hopper FP8 autocast | BF16 AMP on Ampere |
-| **TensorRT** (opt-in) | `accel/tensorrt_engine.py` | lazy `torch_tensorrt` compile | eager PyTorch |
-| Host multithreading | `accel/parallel.py` | seeding / chaining / index build / batch prefetch | serial |
-
-```python
-from graphmambaformer import AccelContext
-from graphmambaformer.accel import list_visible_gpus
-print(AccelContext().summary())
-print(list_visible_gpus())
-# tier=torch_cuda | vendor=nvidia | device=cuda:0 | name=NVIDIA RTX A6000 | …
-#   … | cuda_graphs=True | fp8=False | tensorrt=False
-```
-
-```bash
-# probe whatever this host exposes (NVIDIA / AMD / Intel / Apple / CPU)
-PYTHONPATH=. python scripts/check_gpu.py
-PYTHONPATH=. python scripts/check_gpu.py --device cuda:0
-```
-
-### Install CUDA extras (GPU box only)
-
-```bash
-# 1) CUDA torch wheel matching the box runtime (example: CUDA 12.1)
-pip install torch --index-url https://download.pytorch.org/whl/cu121
-# 2) base + NVIDIA-only stack (mamba-ssm, Triton, CuPy, TE, torch-tensorrt, DeepSpeed)
-pip install -r requirements.txt -r requirements-gpu.txt
-```
-
-Every optional package is probed at runtime: a missing install never crashes the
-pipeline — it just stays on the next-lower tier.
-
-### Multithreading + keeping the GPU fed
-
-Stages 1–2 and supervision building are host-side NumPy/Python. Left
-single-threaded they **starve the GPU** (classic `nvidia-smi` ≈ 0 %). The stack
-fans seeding / chaining / index construction across CPU cores and **prefetches**
-the next training batch on background threads while the current one runs on the
-device:
-
-```bash
-# --require-gpu hard-fails on a CPU-only torch wheel (no silent 0% util)
-# --workers 0 = all host cores; --prefetch N = look-ahead batches
-PYTHONPATH=. python scripts/train.py --data real ... \
-    --device cuda --require-gpu \
-    --workers 16 --prefetch 3 \
-    --d-model 256 --batch-size 32 \
-    --out data/training_runs/chr21_linear
-```
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--require-gpu` | off | exit if no CUDA/MPS/XPU (use in GPU jobs) |
-| `--workers N` | `0` (all cores) | host threads for stages + prefetch |
-| `--prefetch N` | `2` | batches built ahead on the host (`0` = off) |
-| `--compile` | off | `torch.compile` the model forward |
-| `--cuda-graphs` / `--no-cuda-graphs` | **on** | capture fixed-shape inference |
-| `--fp8` / `--no-fp8` | on | TE FP8 when HW supports it; **A6000 → BF16** |
-| `--tensorrt` | off | lazy TensorRT / `torch_tensorrt` inference |
-| `--devices` | `auto` | multi-GPU `DataParallel` list |
-
-The same flags work on `scripts/eval.py`.
-
-### Recommended A6000 / A100 command
-
-Ampere has no FP8 tensor cores — leave `--fp8` on (it auto-falls back to BF16):
-
-```bash
-PYTHONPATH=. python scripts/train.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-    --region chr21:5000000-6000000 --ref-mode linear \
-    --device cuda --require-gpu --devices auto \
-    --workers 16 --prefetch 3 --compile --cuda-graphs \
-    --d-model 256 --batch-size 32 --epochs 20 \
-    --out data/training_runs/chr21_linear
-
-# Inference with CUDA Graphs (+ optional TensorRT)
-PYTHONPATH=. python scripts/eval.py --data real \
-    --reference-fasta data/chr21/HG002/ref/GRCh38.chr21.fa \
-    --truth-bam       data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-    --region chr21:5000000-6000000 --ref-mode linear --mode hybrid \
-    --checkpoint data/training_runs/chr21_linear/checkpoint.pt \
-    --device cuda --require-gpu --cuda-graphs --tensorrt \
-    --out data/eval_runs/chr21_linear
-```
-
-### Supported NVIDIA datacentre GPUs
-
-One CUDA wheel covers every card below. Capability gates (TF32 / AMP dtype /
-Flash SDP / FP8) follow the live compute capability, so an A6000 and an H200 take
-different fast paths automatically:
-
-| GPU | Arch | sm | TF32 | bf16 AMP | fp8 |
-| --- | --- | --- | --- | --- | --- |
-| V100 | Volta | 70 | no | no | no |
-| T4 | Turing | 75 | no | no | no |
-| **A100** | Ampere | 80 | yes | yes | no |
-| **A6000** | Ampere | 86 | yes | yes | no |
-| L40 | Ada | 89 | yes | yes | yes |
-| **H100** | Hopper | 90 | yes | yes | yes |
-| **H200** | Hopper | 90 | yes | yes | yes |
-| B100 / B200 | Blackwell | 100+ | yes | yes | yes |
-
-Pick a device with `--device cuda` / `--device cuda:0` / `--device cuda:1`
-(honours `CUDA_VISIBLE_DEVICES`). Multi-GPU hosts use **every visible card by
-default** via `nn.DataParallel` (`--devices auto`). Override with
-`--devices all`, `--devices 0,1,2`, or `--devices none` for single-GPU.
-
-```bash
-# all visible GPUs (default when count > 1)
-PYTHONPATH=. python scripts/train.py --device cuda --devices auto ...
-
-# pin two cards
-PYTHONPATH=. python scripts/train.py --device cuda --devices 0,1 ...
-
-# force single-GPU even on a multi-GPU host
-PYTHONPATH=. python scripts/train.py --device cuda:0 --devices none ...
-
-# Docker: expose every host GPU into the container
-IMAGE=graphmambaformer:gpu GPU=cuda docker/run.sh gmf-python scripts/train.py --device cuda --devices all ...
-```
-
-### Every GPU vendor, not just NVIDIA
-
-PyTorch reports AMD GPUs through the same `torch.cuda` API as NVIDIA, so
-`has_cuda` alone cannot tell them apart. Detection keys on a `vendor` field
-instead, and each capability is gated on the hardware that really has it:
-
-| Vendor | Detected via | TF32 | fp16 AMP | bf16 | Raw kernels |
-| --- | --- | --- | --- | --- | --- |
-| NVIDIA | `torch.cuda`, no HIP | sm_80+ | sm_70+ | sm_80+ | CuPy/NVRTC |
-| AMD (ROCm) | `torch.version.hip` | no | yes | MI200+ | no — Triton instead |
-| Intel | `torch.xpu` | no | yes | yes | no |
-| Apple | `torch.backends.mps` | no | yes | no | no |
-| CPU | fallback | no | no | no | no |
-
-Consequences that matter in practice: a Pascal card (sm_61) is **not** given
-fp16 autocast, because it has no fp16 tensor cores and would run slower than
-fp32; FP8 is gated at sm_89 (Ada), not sm_90, since Ada supports it; and CuPy
-raw kernels are refused on AMD even when CuPy imports, because they are compiled
-with NVRTC. `tests/test_accel.py` pins this across A100 / A6000 / H100 / H200 /
-Blackwell (and AMD / Intel / Apple / CPU), so the gates are verified without
-needing each GPU.
-
-## MambaFormer backbone
-
-The sequence backbone is a faithful port of the MambaFormer topology from
-[krafton-ai/mambaformer-icl](https://github.com/krafton-ai/mambaformer-icl)
-(Park et al. 2024, [arXiv:2402.04248](https://arxiv.org/abs/2402.04248)),
-mirroring their `mixed_attn == "mambaformer"` path in `MixerModel` — including
-the flat layer list and layer indexing:
-
-```
-Inputs -> Mamba (leading) -> for i in range(n_layer): (attention if i%2==0 else Mamba)
-       -> LayerNorm -> Outputs
-```
-
-With `n_layer=12` this is a leading Mamba + 6 attention + 6 Mamba layers. The
-leading Mamba block stands in for positional embeddings (so
-`ReadEncoderConfig.use_positional_encoding` can be set `False` for a "pure"
-MambaFormer). Each sub-layer is a pre-norm residual (functionally the reference
-`Block`'s Add → Norm → Mixer). Adaptations vs. the autoregressive ICL original:
-our Mamba mixer is **bidirectional** and attention is **bidirectional**.
-
-The layer parity is set by `MambaFormerConfig.attention_first`:
-
-- `True` (default, reference): even indices are Attention → flat chain `M A M A … M`.
-- `False`: even indices are Mamba → flat chain `M M A M A … A`.
-
-The SSM mixer is chosen by `MambaFormerConfig.mamba_variant`:
-
-- `"mamba1"` (default) — the reference-port Mamba-1 mixer (`mamba1` config).
-- `"mamba2"` — the Mamba-2 / SSD mixer (`mamba` config).
-
-Select the backbone via `ModelConfig.backbone`:
-
-- `"mambaformer"` (default) — configured by `MambaFormerConfig` (`n_layer`,
-  `attention_first`, `mamba_variant`).
-- `"hybrid"` — the full Figure 1B block stack repeated ×N (`n_blocks`, default 12):
-  **Bidirectional Mamba → windowed multi-head attention → GATv2 → SwiGLU FFN**.
-
-## Hybrid block (Figure 1B, ×N)
-
-Each block runs three orthogonal inductive biases plus an FFN:
-
-- **Layer 1 — Bidirectional Mamba-2** — O(n) sequential state propagation over the
-  read (replaces seed chaining).
-- **Layer 2 — Windowed multi-head self-attention** — O(n·w) context-dependent
-  substitution/indel scoring (replaces Smith–Waterman); `window` set by `BlockConfig.window`.
-- **Layer 3 — GATv2 graph attention** (`layers/gat.py`) — O(|E|) edge-type-aware
-  message passing over the pangenome graph. It consumes the graph encoder's node
-  embeddings + edge-type embeddings (8 discrete types + a learned self-loop), and
-  **refines the graph node embeddings in place** with a pre-norm residual, so after
-  N blocks the graph has had N rounds of message passing. Read/graph fusion is left
-  to the cross-attention alignment decoder (Figure 1C, next stage).
-- **FFN** — SwiGLU feed-forward.
-
-Layers 1, 2 and the FFN are pre-norm residual sub-layers over the read tensor `x`;
-Layer 3 is a pre-norm residual over the graph nodes. `forward(x, mask, graph) -> x`
-keeps the interface stable. Enable Layers 2/3 with the `use_attention` / `use_gat`
-flags in `BlockConfig`; built-in factories supply the modules (or pass a custom
-`callable(BlockConfig) -> nn.Module`).
-
-Not yet implemented (future): the cross-attention alignment decoder, output heads
-(CIGAR/MAPQ/etc.), LoRA adapters, training.
-
-## Docker (nothing to install on the host except Docker)
-
-Published images (anonymous pull once the package is **Public**):
+## 7. Docker & GPU
 
 | Tag | Purpose |
 | --- | --- |
 | `ghcr.io/sarakh1999/graphmambaformer:latest` | full stack + CPU PyTorch |
-| `ghcr.io/sarakh1999/graphmambaformer:gpu` | same + CUDA PyTorch (`--gpus all`) |
-
-Package page: https://github.com/users/sarakh1999/packages/container/package/graphmambaformer  
-
-**Owner (one-time, UI only — GitHub has no API for this):** package settings → Danger Zone → **Change visibility → Public**.  
-Until then, collaborators log in with a PAT (`read:packages`) or are added under package **Manage access**. Collaborator **pvats13** has **write** on this repo.
-
-### Quick start (collaborators)
+| `ghcr.io/sarakh1999/graphmambaformer:gpu` | + CUDA PyTorch (`--gpus all`) |
 
 ```bash
-# 1) pull images (no login if the package is Public)
-docker pull ghcr.io/sarakh1999/graphmambaformer:latest
+# pull + doctor
 docker pull ghcr.io/sarakh1999/graphmambaformer:gpu
-
-# 2) clone + bind-mount via docker/run.sh
-git clone https://github.com/sarakh1999/GraphMambaFormer.git
-cd GraphMambaFormer
-
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-doctor
-IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-python scripts/smoke_test.py
 
-# 3) prepare real HG002 inputs on the host (Stage 1)
-chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
-./scripts/prepare_real_hg002.sh
+# build locally / publish
+docker/build.sh                     # → :latest
+TARGET=gpu docker/build.sh          # → :gpu
+./scripts/rebuild_and_publish_images.sh    # or docker/publish.sh
 
-# 4) train on all GPUs (Stage 2 / 4) — paths are /work/... inside the container
+# run any script (repo bind-mounted at /work; GPU=0 forces CPU)
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
   docker/run.sh gmf-python scripts/train.py --data real \
   --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
@@ -734,369 +463,55 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
   --device cuda --devices all --epochs 20 --batch-size 8 --d-model 256 \
   --out /work/data/training_runs/hg002_both
 
-# 5) eval (Stage 3)
-IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
-  docker/run.sh gmf-python scripts/eval.py --data real \
-  --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
-  --gfa /work/data/chr21/HG002/chr21.gfa \
-  --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-  --region chr21:5000000-6000000 --ref-mode both --mode hybrid \
-  --checkpoint /work/data/training_runs/hg002_both/checkpoint.pt \
-  --device cuda --out /work/data/eval_runs/hg002_both
+# GHCR 403 (private package):
+echo THEIR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin  # read:packages
 ```
 
-If pulls are still 403 (package private), log in once:
+**GPU flags** (same on `train.py` / `eval.py`):
 
-```bash
-echo THEIR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
-# PAT needs read:packages
-docker pull ghcr.io/sarakh1999/graphmambaformer:latest
-docker pull ghcr.io/sarakh1999/graphmambaformer:gpu
-```
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--device` | auto | `cuda` / `cuda:N` / `mps` / `xpu` / `cpu` |
+| `--devices` | `auto` | multi-GPU list (`auto`/`all`/`0,1`/`none`) |
+| `--require-gpu` | off | exit if no CUDA/MPS/XPU |
+| `--workers N` | `0` (all cores) | host threads for seed/chain + prefetch |
+| `--prefetch N` | `2` | look-ahead batches |
+| `--compile` | off | `torch.compile` the forward |
+| `--cuda-graphs` | on | capture fixed-shape inference |
+| `--fp8` | on | TE FP8 when supported (Ampere → BF16) |
+| `--tensorrt` | off | TensorRT inference |
 
-### Build from source (optional fallback)
+**Accel tiers** (auto fallback): CuPy RawKernel → PyTorch · Triton → eager ·
+`mamba_ssm` → pure-PyTorch SSD · CUDA Graphs → eager · TE FP8 → BF16 · TensorRT → eager.
+Vendors NVIDIA / AMD / Intel / Apple / CPU are capability-gated at runtime.
 
-```bash
-docker/build.sh                 # CPU  → graphmambaformer:latest
-TARGET=gpu docker/build.sh      # CUDA → graphmambaformer:gpu
-docker/run.sh gmf-doctor
-```
+---
 
-`TARGET=fig6` is benchmark-only; `TARGET=arm` is a smaller native arm64
-model-only image. See `scripts/fig6/README.md` for the hap.py exception.
-
-### Publish (maintainers)
-
-```bash
-# Local (recommended — full control, uses your GHCR credentials):
-./scripts/rebuild_and_publish_images.sh
-# or step-by-step:
-docker/build.sh && docker/publish.sh                 # → :latest
-TARGET=gpu docker/build.sh && TARGET=gpu docker/publish.sh   # → :gpu
-
-# Or GitHub Actions: Actions → Docker publish → Run workflow (target=full|gpu).
-# Needs repo secret GHCR_TOKEN (classic PAT with write:packages) when the
-# package is not linked to this repository.
-```
-
-### GPU images
-
-`TARGET=gpu` swaps the CPU torch wheel for a GPU build. **One image spans
-A100 / A6000 / L40 / H100 / H200** because vendor and capability detection
-happen at runtime:
-
-```bash
-TARGET=gpu docker/build.sh                              # NVIDIA cu124 (default)
-TORCH_CHANNEL=cu121 TARGET=gpu docker/build.sh           # NVIDIA, older drivers
-TORCH_CHANNEL=cu126 GPU_TORCH_VERSION=2.6.0 \
-  TARGET=gpu docker/build.sh                             # NVIDIA Blackwell (B100/B200)
-TORCH_CHANNEL=rocm6.0 TARGET=gpu docker/build.sh         # AMD
-INSTALL_CUPY=1 TARGET=gpu docker/build.sh                # + NVRTC raw-kernel tier
-
-IMAGE=graphmambaformer:gpu docker/run.sh gmf-doctor
-IMAGE=graphmambaformer:gpu docker/run.sh gmf-python scripts/check_gpu.py
-IMAGE=graphmambaformer:gpu docker/run.sh gmf-python scripts/train.py \
-    --data real --device cuda --reference-fasta … --truth-bam … --ref-mode linear
-# or the published tag:
-IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu docker/run.sh gmf-doctor
-```
-
-`run.sh` adds the device flags automatically (`--gpus all` for NVIDIA,
-`/dev/kfd` + `/dev/dri` for AMD) only when the host actually exposes the device,
-since `--gpus all` on a host without the NVIDIA runtime makes `docker run` fail
-outright. `GPU=0` forces CPU. `gmf-doctor` prints the live tier **and every
-visible GPU** (name + sm_XX + memory) and **fails** if an image built for GPU
-sees none, so a silent CPU fallback surfaces as an error rather than as an
-unexplained slowdown.
-
-The CPU image is x86-64, so it runs under Rosetta on Apple Silicon. Apple's GPU
-is not reachable from any container — use the native venv below for MPS/MLX.
-
-## Setup
-
-Prefer the project venv (Python ≥ 3.10). On Apple Silicon this installs PyTorch
-with Metal/MPS plus Apple's MLX stack:
-
-```bash
-# If needed: recreate with a 3.10+ interpreter (e.g. from conda)
-# /path/to/python3.12 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-# On an NVIDIA GPU box, also install the CUDA extras:
-# .venv/bin/pip install -r requirements-gpu.txt
-```
-
-### Apple Silicon GPU (MacBook Pro M-series)
-
-```bash
-source .venv/bin/activate
-python scripts/check_gpu.py          # must show mps_avail True + mlx OK
-PYTHONPATH=. python scripts/smoke_test.py
-```
-
-Scripts auto-select `mps` via `graphmambaformer.get_device()` when Metal is
-available. Force a backend with `get_device("cpu")` / `get_device("mps")`.
-
-There is no CUDA/`nvidia-smi` on Mac — that is expected.
-
-## Quick check
-
-```bash
-PYTHONPATH=. .venv/bin/python scripts/smoke_test.py
-```
-
-This exercises the implemented modules on synthetic long-read data and verifies
-output shapes and a backward pass (on MPS when available).
-
-## Test and verification commands
-
-All commands assume the repo root and the project venv. A substring filter
-matches module **or** test-function names (for example `fuzzy` runs only the
-fuzzy-seeding tests).
-
-### Full suite
-
-```bash
-PYTHONPATH=. .venv/bin/python tests/run_all.py
-```
-
-### Per-area unit / integration suites
-
-```bash
-# Stage 1–3 algorithms (SMEM, fuzzy spaced seeds, chaining, SW, WFA)
-PYTHONPATH=. .venv/bin/python tests/run_all.py alignment_stages
-
-# Fuzzy seeding only (spaced-pattern packing, recovery vs exact k-mers, pipeline)
-PYTHONPATH=. .venv/bin/python tests/run_all.py fuzzy
-
-# Stage 4 pipeline modes (hybrid / fast / two-pass)
-PYTHONPATH=. .venv/bin/python tests/run_all.py pipeline
-
-# Stages 5–7 + SevenStagePipeline orchestrator
-PYTHONPATH=. .venv/bin/python tests/run_all.py downstream
-
-# GPU / accel stack (CUDA RawKernel parity skips cleanly without CUDA+CuPy)
-PYTHONPATH=. .venv/bin/python tests/run_all.py accel
-
-# Formats, training, losses, core model (other modules under tests/)
-PYTHONPATH=. .venv/bin/python tests/run_all.py formats
-PYTHONPATH=. .venv/bin/python tests/run_all.py training
-PYTHONPATH=. .venv/bin/python tests/run_all.py losses
-PYTHONPATH=. .venv/bin/python tests/run_all.py core_model
-```
-
-### Stage verification scripts
-
-```bash
-# Figure-1 encoders / MambaFormer backbone
-PYTHONPATH=. .venv/bin/python scripts/verify_stages.py
-
-# Alignment stages 1–4 + core model + losses (end-to-end on synthetic data)
-PYTHONPATH=. .venv/bin/python scripts/verify_alignment_pipeline.py
-
-# Architecture conformance checklist (counts, modes, coverage table)
-PYTHONPATH=. .venv/bin/python scripts/audit_architecture.py
-```
-
-### Fuzzy seeding notes
-
-Default Stage-1 modes are `("smem", "minimizer", "fuzzy")` with spaced pattern
-`111010010100110111` (weight 11 / span 18). Fuzzy-only:
+## 8. Formats & data
 
 ```python
-from graphmambaformer import PipelineConfig, build_pipeline
-
-cfg = PipelineConfig(mode="fast")
-cfg.seeding.modes = ("fuzzy",)
-pipeline = build_pipeline(cfg, model=None)
-```
-
-## Minimal usage
-
-```python
-import torch
-from graphmambaformer import GraphMambaFormerEncoder, ModelConfig, get_device
-
-device = get_device()  # mps on Apple Silicon, else cuda/cpu
-model = GraphMambaFormerEncoder(ModelConfig(d_model=512, n_blocks=12)).to(device)
-reads = ["ACGT..." , "TTGC..."]
-hidden, mask = model.read_encoder.encode_reads(reads, modality="pacbio_hifi")
-```
-
-## Synthetic test dataset (`graphmambaformer/data`)
-
-A small, fully-labelled synthetic dataset for exercising the pipeline on CPU.
-Its statistics mirror the (non-public) AGNES benchmark
-([arXiv:2510.16013v3](https://arxiv.org/html/2510.16013v3), Table 1):
-
-| Characteristic | Target |
-| --- | --- |
-| Reference GC content | 40–50% |
-| Reference repeat content | 10–15% |
-| Read error rate | 15% (5% ins / 5% del / 5% sub), **2× in homopolymers** |
-| Seeds per read | 15–25 true (minimizers, `k=15, w=10`) + 20–30% false |
-| Split | 640 train / 160 val / 200 test (`table1` preset) |
-
-Every read is produced by a controlled edit process, so **all ground truth is
-exact by construction**: CIGAR, reference span, strand, per-base reference
-coordinates, minimizer seeds (true/false + 12-dim features), a pangenome graph
-(nodes/edges/8 edge types), MAPQ, and modality-specific labels (methylation,
-splice junctions, barcode/UMI, chimeric). Injected **edge cases** cover empty /
-sub-`k` / all-`N` / homopolymer-only / repeat-region / reverse-strand /
-chimeric reads.
-
-Presets (`graphmambaformer.data.preset`):
-
-- `tiny` (default) — ~1.5–2.5 kb reads (shortest length that still yields the
-  paper's 15–25 true seeds), a few samples; full model forward is fast on CPU.
-- `long` — paper-scale 8–10 kb reads on ~80 kb references (data / encoder checks).
-- `table1` — exact 640/160/200 split at 8–10 kb with every modality (GPU-scale).
-
-```python
-from graphmambaformer import generate_dataset, preset, build_datasets, collate_reads
-from graphmambaformer.tokenization import KmerTokenizer
-
-dataset = generate_dataset(preset("tiny"))
-datasets, _ = build_datasets(dataset=dataset)          # per-split AlignmentDataset
-tok = KmerTokenizer(k=3)
-batch = [datasets["train"][i] for i in range(4)]
-inputs, targets = collate_reads(batch, tok, max_read_len=256)  # model-ready tensors
-```
-
-Generate and save a dataset:
-
-```bash
-PYTHONPATH=. .venv/bin/python scripts/generate_synthetic_data.py --preset tiny
-# reload later with graphmambaformer.data.load_dataset("data/synthetic_tiny.pt")
-```
-
-### Standard genomics formats (FASTA / FASTQ / SAM·BAM / GFA / JSON)
-
-The `.pt` file is a convenience bundle for loading straight into PyTorch. For an
-aligner, the idiomatic output is a **truth BAM** (the ground-truth alignments
-your model learns to reproduce) plus companion files. Use `--emit-dir`:
-
-```bash
-PYTHONPATH=. .venv/bin/python scripts/generate_synthetic_data.py \
-    --preset tiny --all-modalities --emit-dir data/synthetic_tiny --to-bam
-```
-
-writes into `data/synthetic_tiny/`:
-
-| File | Contents |
-| --- | --- |
-| `reference.fasta` | reference sequences |
-| `reads.fastq` | reads + Phred qualities (as sequenced) |
-| `truth.sam` | ground-truth alignments (FLAG / POS / MAPQ / CIGAR, `=`/`X`/`I`/`D`/`S`) |
-| `graph.gfa` | pangenome graph (segments + typed links via `zt:Z:` tag) |
-| `labels.json` | seeds (true/false + 12-dim features) + methylation / splice / barcode |
-
-The truth SAM is self-consistent — every `=` column matches the reference and
-every `X` differs, on both strands; reverse reads are reoriented to the forward
-strand per the SAM spec. `--to-bam` converts to a sorted, indexed BAM when
-`samtools` is installed; otherwise the SAM is written and the samtools command
-is printed. (Seeds and per-head labels have no native BAM column, so they live
-in `graph.gfa` / `labels.json`.)
-
-## Input and output formats
-
-`graphmambaformer/data/formats.py` is the format contract for the pipeline.
-
-| Direction | Formats |
-| --- | --- |
-| **Input** | FASTQ (plain or `.gz`), BAM, **uBAM**, SAM, CRAM, GFA (`.gfa` / `.gfa.gz`) |
-| **Output** | BAM, **SAM**, CRAM, GFA, GBZ, Giraffe indexes (`.giraffe.gbz` / `.min` / `.dist`) |
-| **Checkpoints** | `checkpoint.pt` / `last.pt` / `checkpoints/epoch_XX.pt` from `scripts/train.py` |
-
-**Validation sample:** HG002 only (`scripts/fig6`, `scripts/chr21`).
-
-Reads and graphs each have one entry point that dispatches on the file itself,
-and pipeline results go back out through `write_alignments`:
-
-```python
-from graphmambaformer.data import (read_reads, read_gfa, write_alignments,
-                                   write_gfa_graph, write_gbz,
-                                   write_giraffe_indexes)
-
-reads = read_reads("sample.fastq.gz", modality="ont")   # or .bam / .ubam / .sam / .cram
-graph = read_gfa("pangenome.gfa")                       # or .gfa.gz
-
+from graphmambaformer.data import read_reads, read_gfa, write_alignments
+reads = read_reads("sample.fastq.gz", modality="ont")   # uBAM keeps MM/ML tags
+graph = read_gfa("pangenome.gfa")
 results, stats = pipeline.align(reads, reference)
-
 write_alignments(results, reads, "out.bam", references=refs)
-write_alignments(results, reads, "out.sam", references=refs)
-write_alignments(results, reads, "out.cram", references=refs,
-                 reference_fasta="ref.fasta")           # reference-compressed
-write_gfa_graph(graph, "out.gfa")
-write_gbz("out.gfa", "out.gbz")                         # needs the `vg` binary
-write_giraffe_indexes("out.gfa", "indexes/chr21")       # .gbz/.min/.dist via vg
 ```
-
-Or via CLI:
 
 ```bash
+# CLI conversions
 PYTHONPATH=. python scripts/convert_formats.py reads.fastq out.bam
-PYTHONPATH=. python scripts/convert_formats.py reads.fastq out.sam
 PYTHONPATH=. python scripts/convert_formats.py reads.fastq out.cram --reference ref.fa
-PYTHONPATH=. python scripts/convert_formats.py graph.gfa out.gfa
-PYTHONPATH=. python scripts/convert_formats.py graph.gfa out.gbz
-PYTHONPATH=. python scripts/convert_formats.py graph.gfa data/indexes/chr21
+PYTHONPATH=. python scripts/convert_formats.py graph.gfa out.gbz          # needs vg
+
+# synthetic dataset → FASTA/FASTQ/SAM(BAM)/GFA/labels
+PYTHONPATH=. .venv/bin/python scripts/generate_synthetic_data.py \
+  --preset tiny --all-modalities --emit-dir data/synthetic_tiny --to-bam
 ```
 
-Passing `ReadRecord` objects rather than bare strings matters: they carry the
-Phred qualities and modality from the source file, and the pipeline forwards
-both to the encoder (quality is 32 of its 256 input dims). Plain `str` reads
-still work — the encoder falls back to its defaults. `write_alignments` needs
-both the results and the source reads, because an `AlignmentRecord` carries no
-sequence of its own; unmapped reads are written as unmapped records rather than
-dropped, so the read count out matches the count in.
+Presets: `tiny` (CPU smoke), `long` (8–10 kb), `table1` (640/160/200 split).
 
-BAM/CRAM go through pysam's bundled htslib, so no external `samtools` is
-required. GBZ is vg's binary graph+haplotype index and has no pure-Python
-writer, so `write_gbz` shells out to `vg` and raises an error naming the exact
-command if it is not installed.
+---
 
-### Modalities
+## License
 
-Every modality loads from every input format. The canonical keys are
-`illumina`, `pacbio_hifi`, `ont`, `rna_seq`, `bisulfite`, `single_cell`, and
-`linked_reads`, covering short reads, long reads (ONT and PacBio HiFi), and the
-HPRC/GIAB material the benchmark scripts pull down.
-
-`validate_modality` resolves the spellings people actually type — `nanopore`,
-`ont_r10` → `ont`; `hifi`, `pacbio`, `ccs`, `revio` → `pacbio_hifi`; `dnbseq`,
-`ultima`, `short_read` → `illumina`; `10x`, `chromium` → `linked_reads` — and
-raises on anything else. A FASTQ header carrying `mod=<modality>` (as written by
-`write_fastq`) overrides the caller's default per read.
-
-### uBAM
-
-ONT and PacBio deliver **unaligned BAM** natively, because it preserves per-base
-tags such as MM/ML methylation that FASTQ cannot carry. A uBAM has no `@SQ`
-lines and every record is unmapped, so `read_reads` detects the unaligned case
-and includes unmapped records there; a mapped-only read of a uBAM would return
-an empty list. `is_unaligned_bam(path)` exposes the same check.
-
-Three of these paths were silently broken until [`tests/test_formats.py`](tests/test_formats.py)
-pinned them down, and each has a named regression test: gzipped FASTQ raised
-`UnicodeDecodeError` despite `.fastq.gz` being routed to the FASTQ reader, a
-uBAM read back as zero records, and an unrecognized modality string rode along
-on every record to fail much later in the encoder's modality embedding.
-
-### End-to-end coverage
-
-[`tests/test_end_to_end_formats.py`](tests/test_end_to_end_formats.py) runs the
-whole chain — file in, align, file out — because the seams between those steps
-were where the remaining gaps were. It asserts that all 7 modalities survive a
-round trip through the pipeline and back to BAM, that every input format aligns
-and writes, that all three pipeline modes accept `ReadRecord`s *and* plain
-strings, that sub-batching (two-pass rescue, `batch_size` chunking) keeps
-per-read metadata aligned with its rows, and that supplying qualities or a
-modality measurably changes the model's output rather than being accepted and
-ignored.
-
-The reverse direction is worth stating plainly: reading an *aligned* BAM skips
-unmapped records by default, matching samtools semantics. Pass
-`include_unmapped=True` to get them. This only applies to files with `@SQ`
-lines — for a uBAM the unmapped records are the content, and they are included
-automatically.
-
+See [LICENSE](LICENSE).

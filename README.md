@@ -447,7 +447,7 @@ Same codebase and genomics stack in both tags; only the PyTorch wheel differs.
 
 `docker/run.sh` bind-mounts the clone at `/work`, so `data/` is read/written on the host.
 
-### 7.1 Mentor / collaborator quickstart (copy-paste)
+### 7.1 Quickstart
 
 ```bash
 # clone
@@ -481,7 +481,7 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
   --device cuda --require-gpu --devices auto \
   --epochs 20 --batch-size 8 --d-model 256 \
   --workers 16 --prefetch 3 \
-  --out /work/data/training_runs/mentor_both
+  --out /work/data/training_runs/ _both
 ```
 
 Linear-only: drop `--gfa` and use `--ref-mode linear`. Swap `--modality` to
@@ -494,9 +494,9 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
   docker/run.sh gmf-python scripts/eval.py --data real \
   --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
   --region "$REGION" --ref-mode both --modality illumina --mode hybrid \
-  --checkpoint /work/data/training_runs/mentor_both/checkpoint.pt \
+  --checkpoint /work/data/training_runs/ _both/checkpoint.pt \
   --device cuda --require-gpu \
-  --out /work/data/eval_runs/mentor_both_hybrid
+  --out /work/data/eval_runs/ _both_hybrid
 ```
 
 Classical only (no checkpoint): `--mode fast`. Hard-tail rescue: `--mode two_pass`.

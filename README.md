@@ -438,36 +438,96 @@ absent labels skip their term. **Metrics**: `locus_accuracy` (within 50 bp),
 
 ## 7. Docker & GPU
 
+Same codebase and genomics stack in both tags; only the PyTorch wheel differs.
+
 | Tag | Purpose |
 | --- | --- |
-| `ghcr.io/sarakh1999/graphmambaformer:latest` | full stack + CPU PyTorch |
-| `ghcr.io/sarakh1999/graphmambaformer:gpu` | + CUDA PyTorch (`--gpus all`) |
+| `ghcr.io/sarakh1999/graphmambaformer:latest` | full stack + **CPU** PyTorch (laptops / CI / smoke) |
+| `ghcr.io/sarakh1999/graphmambaformer:gpu` | same + **CUDA** PyTorch — use this for NVIDIA train/eval |
+
+`docker/run.sh` bind-mounts the clone at `/work`, so `data/` is read/written on the host.
+
+### 7.1 Mentor / collaborator quickstart (copy-paste)
 
 ```bash
-# pull + doctor
+# clone
+git clone https://github.com/sarakh1999/GraphMambaFormer.git
+cd GraphMambaFormer
+
+# if GHCR package is private (403 on pull): PAT needs read:packages
+echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
+
+# pull GPU image + doctor
 docker pull ghcr.io/sarakh1999/graphmambaformer:gpu
-IMAGE=ghcr.io/sarakh1999/graphmambaformer:latest docker/run.sh gmf-doctor
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda docker/run.sh gmf-doctor
 
-# build locally / publish
-docker/build.sh                     # → :latest
-TARGET=gpu docker/build.sh          # → :gpu
-./scripts/rebuild_and_publish_images.sh    # or docker/publish.sh
+# prepare HG002 chr21 inputs (once)
+chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
+./scripts/prepare_real_hg002.sh
 
-# run any script (repo bind-mounted at /work; GPU=0 forces CPU)
-IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
-  docker/run.sh gmf-python scripts/train.py --data real \
-  --reference-fasta /work/data/chr21/HG002/ref/GRCh38.chr21.fa \
-  --gfa /work/data/chr21/HG002/chr21.gfa \
-  --truth-bam /work/data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
-  --region chr21:5000000-6000000 --ref-mode both \
-  --device cuda --devices all --epochs 20 --batch-size 8 --d-model 256 \
-  --out /work/data/training_runs/hg002_both
-
-# GHCR 403 (private package):
-echo THEIR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin  # read:packages
+REF=data/chr21/HG002/ref/GRCh38.chr21.fa
+GFA=data/chr21/HG002/chr21.gfa
+TRUTH=data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
+REGION=chr21:5000000-6000000
 ```
 
-**GPU flags** (same on `train.py` / `eval.py`):
+**Train (GPU, linear+pangenome):**
+
+```bash
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/train.py --data real \
+  --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode both --modality illumina \
+  --device cuda --require-gpu --devices auto \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --workers 16 --prefetch 3 \
+  --out /work/data/training_runs/mentor_both
+```
+
+Linear-only: drop `--gfa` and use `--ref-mode linear`. Swap `--modality` to
+`pacbio_hifi` / `ont` / etc. as needed.
+
+**Evaluate (metrics + predicted BAM):**
+
+```bash
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/eval.py --data real \
+  --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
+  --region "$REGION" --ref-mode both --modality illumina --mode hybrid \
+  --checkpoint /work/data/training_runs/mentor_both/checkpoint.pt \
+  --device cuda --require-gpu \
+  --out /work/data/eval_runs/mentor_both_hybrid
+```
+
+Classical only (no checkpoint): `--mode fast`. Hard-tail rescue: `--mode two_pass`.
+
+**Synthetic smoke (no real data):**
+
+```bash
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/train.py --preset tiny --ref-mode both \
+  --epochs 2 --batch-size 2 --d-model 64 \
+  --out /work/data/training_runs/synth_smoke
+
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/eval.py \
+  --checkpoint /work/data/training_runs/synth_smoke/checkpoint.pt \
+  --ref-mode both --mode hybrid --emit-truth \
+  --out /work/data/eval_runs/synth_smoke
+```
+
+CPU-only machine: use `:latest` and omit `GPU=cuda` / `--device cuda` / `--require-gpu`.
+
+### 7.2 Build / publish locally
+
+```bash
+docker/build.sh                          # → graphmambaformer:latest
+TARGET=gpu docker/build.sh               # → graphmambaformer:gpu
+./scripts/rebuild_and_publish_images.sh  # build + push both to GHCR
+# or: docker/publish.sh  /  TARGET=gpu docker/publish.sh
+```
+
+### 7.3 GPU flags & accel
 
 | Flag | Default | Meaning |
 | --- | --- | --- |

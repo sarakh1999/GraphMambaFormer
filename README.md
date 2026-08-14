@@ -11,7 +11,9 @@ ONT); Illumina and other modalities run end-to-end through the same pipeline.
 | Reference mode (`--ref-mode`) | — | `linear`, `pangenome`, `both` |
 | Modality (`--modality`) | `illumina` | `illumina`, `pacbio_hifi`, `ont`, `rna_seq`, `bisulfite`, `single_cell`, `linked_reads` |
 
-**Contents:** [Setup](#1-setup) · [Concepts](#2-concepts) · [Commands](#3-commands-run-everything) · [UML](#4-uml) · [Architecture](#5-architecture) · [Code map](#6-code-map) · [Docker & GPU](#7-docker--gpu) · [Formats & data](#8-formats--data)
+**Contents:** [Setup](#1-setup) · [Concepts](#2-concepts) · [Commands](#3-commands-run-everything) · [Architecture](#4-architecture) · [Code map](#5-code-map) · [Docker & GPU](#6-docker--gpu) · [Formats & data](#7-formats--data)
+
+**Quick path (real HG002 + truth BAM):** [§3.0 step-by-step](#30-step-by-step-hg002-chr21-with-a-real-truth-bam).
 
 ---
 
@@ -28,7 +30,7 @@ PYTHONPATH=. .venv/bin/python scripts/check_gpu.py
 ```
 
 Apple Silicon selects MPS automatically via `graphmambaformer.get_device()`.
-No local Python? Use Docker (see [§7](#7-docker--gpu)).
+No local Python? Use Docker (see [§6](#6-docker--gpu)).
 
 ---
 
@@ -61,23 +63,184 @@ Three knobs combine freely: **architecture** × **pipeline mode** × **reference
 
 All commands run from the **repo root** with `PYTHONPATH=.` (or the Docker wrapper).
 
-### 3.0 Prepare HG002 chr21 inputs (once, needs Docker)
+### 3.0 Step-by-step: HG002 chr21 with a real truth BAM
+
+Prefer an **external** truth BAM (Giraffe / GIAB-aligned) over self-made
+pseudo-labels for training and reported metrics. You do **not** manually
+download the Giraffe truth BAM — `prepare_real_hg002.sh` builds it.
+
+Run this from your own Terminal with **Docker Desktop running** (vg / samtools
+images). The Cursor agent shell cannot drive Docker for this path.
+
+#### Step 0 — Prerequisites
+
+```bash
+cd /path/to/GraphMambaFormer   # repo root
+
+# Python env (once)
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+# NVIDIA GPU box also:
+# .venv/bin/pip install -r requirements-gpu.txt
+
+# sanity
+PYTHONPATH=. .venv/bin/python scripts/smoke_test.py
+PYTHONPATH=. .venv/bin/python scripts/check_gpu.py   # optional
+```
+
+Needs: **Docker Desktop**, `curl`. `aws` CLI is optional for the default HG002
+GIAB HTTPS path (required only for some HPRC S3 CRAMs).
+
+#### Step 1 — Build inputs (downloads + creates truth BAM)
 
 ```bash
 chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
 ./scripts/prepare_real_hg002.sh
-# → data/chr21/HG002/ref/GRCh38.chr21.fa
-# → data/chr21/HG002/chr21.gfa
-# → data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
+```
 
-# shared path vars used below
+What the script does:
+
+| Step | Action | Output role |
+| --- | --- | --- |
+| 0 | Preflight (Docker / curl / python) | checks only |
+| 1 | Fetch GRCh38 → extract chr21 FASTA | linear `--reference-fasta` |
+| 2 | Fetch GIAB **VCF/BED** (variant benchmark) | hap.py later — **not** `--truth-bam` |
+| 3 | Stream GIAB Illumina BAM → chr21 R1/R2 FASTQ | inference / remap inputs |
+| 4 | HPRC chr21 graph → GFA + Giraffe indexes | `--gfa` for pangenome/both |
+| 5 | Map R1/R2 with **vg Giraffe** → sorted BAM | **`--truth-bam` labels** |
+
+This can take a long time (network + Giraffe index/map).
+
+#### Step 2 — Confirm files and set path vars
+
+```bash
+ls -lh \
+  data/chr21/HG002/ref/GRCh38.chr21.fa \
+  data/chr21/HG002/chr21.gfa \
+  data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam \
+  data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz \
+  data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz
+
 REF=data/chr21/HG002/ref/GRCh38.chr21.fa
 GFA=data/chr21/HG002/chr21.gfa
 TRUTH=data/chr21/HG002/bam/HG002.chr21.giraffe.sorted.bam
-REGION=chr21:5000000-6000000
+REGION=chr21:5000000-6000000   # start small; full chr21 is much slower
 ```
 
-### 3.1 Train (truth BAM *or* FASTQ with classical pseudo-labels)
+**What to do with the truth BAM:** pass it as `--truth-bam "$TRUTH"` to
+`train.py` / `eval.py`. Training reads locus / CIGAR / MAPQ / strand from it as
+supervision labels. Do not edit it; treat it as a frozen external baseline.
+
+| File | Role |
+| --- | --- |
+| `ref/GRCh38.chr21.fa` | Reference to align to |
+| `chr21.gfa` | Pangenome graph (`--gfa`) |
+| `bam/*.giraffe.sorted.bam` | **`--truth-bam`** — train/eval labels |
+| `reads/*.R{1,2}.fastq.gz` | Raw reads for inference |
+| `truth/` GIAB VCF/BED | Variant eval (hap.py); **not** `--truth-bam` |
+| `checkpoint.pt` (after train) | Model weights for hybrid eval/map |
+
+Optional public sources (if you build labels yourself instead of Giraffe):
+
+- GIAB NovoAlign BAM (HG002 Illumina):  
+  `https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/NIST_Illumina_2x250bps/novoalign_bams/HG002.GRCh38.2x250.bam`
+- GIAB release (VCF/BED):  
+  `https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/`
+- HPRC raw data browser:  
+  `https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=working/`
+
+#### Step 3 — Train (use the truth BAM)
+
+First real run (linear Illumina on a 1 Mb window):
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train.py --data real \
+  --reference-fasta "$REF" \
+  --truth-bam "$TRUTH" \
+  --region "$REGION" \
+  --ref-mode linear \
+  --modality illumina \
+  --device cuda --require-gpu \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/illumina_linear
+```
+
+Linear + pangenome (needs GFA):
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train.py --data real \
+  --reference-fasta "$REF" \
+  --gfa "$GFA" \
+  --truth-bam "$TRUTH" \
+  --region "$REGION" \
+  --ref-mode both \
+  --modality illumina \
+  --device cuda --devices auto \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/hg002_chr21_both
+```
+
+CPU: drop `--require-gpu` and use `--device cpu` (much slower).  
+Checkpoint: `data/training_runs/<out>/checkpoint.pt`.
+
+#### Step 4 — Evaluate against the same truth BAM
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/eval.py --data real \
+  --reference-fasta "$REF" \
+  --truth-bam "$TRUTH" \
+  --region "$REGION" \
+  --ref-mode linear \
+  --modality illumina \
+  --mode hybrid \
+  --checkpoint data/training_runs/illumina_linear/checkpoint.pt \
+  --device cuda \
+  --out data/eval_runs/illumina_linear_hybrid
+```
+
+Scores locus / MAPQ / etc. vs Giraffe labels and writes predicted BAM under `--out`.
+
+#### Step 5 — Optional: map FASTQ only (no truth needed at infer time)
+
+```bash
+R1=data/chr21/HG002/reads/HG002.chr21.R1.fastq.gz
+R2=data/chr21/HG002/reads/HG002.chr21.R2.fastq.gz
+
+PYTHONPATH=. .venv/bin/python scripts/eval.py --data real \
+  --reference-fasta "$REF" \
+  --region "$REGION" \
+  --ref-mode linear \
+  --reads-file "$R1" --reads-file "$R2" \
+  --read-layout auto \
+  --modality illumina \
+  --mode hybrid \
+  --checkpoint data/training_runs/illumina_linear/checkpoint.pt \
+  --out data/eval_runs/illumina_infer
+```
+
+#### FASTQ-only / mentor HG005 (no external truth yet)
+
+Prefer mapping once with Giraffe/BWA and freezing that BAM as `--truth-bam`.
+If you only have R1/R2, classical **pseudo-labels** work as a bootstrap
+(distillation — weaker for paper claims):
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train.py --data real \
+  --reference-fasta "$REF" \
+  --reads-file data/chr21/HG005/reads/HG005.chr21.R1.fastq.gz \
+  --reads-file data/chr21/HG005/reads/HG005.chr21.R2.fastq.gz \
+  --read-layout paired --modality illumina --ref-mode linear \
+  --region "$REGION" --device cuda --require-gpu \
+  --epochs 20 --batch-size 8 --d-model 256 \
+  --out data/training_runs/illumina_pseudo
+# → also writes data/training_runs/illumina_pseudo/pseudo_truth.bam
+```
+
+**Minimal path:** `./scripts/prepare_real_hg002.sh` → set `REF` / `TRUTH` /
+`REGION` → `train.py --truth-bam "$TRUTH"` → `eval.py --truth-bam "$TRUTH"
+--checkpoint ...`.
+
+### 3.1 Train variants (truth BAM *or* FASTQ with classical pseudo-labels)
 
 Swap `--modality {illumina|pacbio_hifi|ont|...}` and `--ref-mode {linear|pangenome|both}` freely (`--gfa` required for `pangenome`/`both`).
 
@@ -242,116 +405,7 @@ print(results[0].primary.cigar_string, results[0].primary.mapq, stats.summary())
 
 ---
 
-## 4. UML
-
-### 4.1 Package structure
-
-```mermaid
-flowchart TB
-  subgraph Entry["scripts/"]
-    train["train.py"]
-    eval["eval.py"]
-    align["chr21/align_ours.py · hprc/map_sample.sh"]
-  end
-  subgraph Core["graphmambaformer/"]
-    models["models/ (GraphMambaModel, MultiTask)"]
-    enc["encoders/"]
-    layers["layers/"]
-    heads["heads/"]
-    blocks["blocks/"]
-    alignpkg["alignment/ (stages 1-7 + pipeline)"]
-    data["data/"]
-    trainpkg["training/ + losses/"]
-    accel["accel/"]
-  end
-  train --> models & alignpkg & trainpkg
-  eval --> models & alignpkg
-  align --> alignpkg & data
-  models --> enc & layers & heads
-  alignpkg --> models & accel
-```
-
-### 4.2 Core model classes
-
-```mermaid
-classDiagram
-  direction TB
-  class CoreModelSpec { +arch +model +supports_alignment_heads +base_space_input }
-  class GraphMambaModel {
-    +seq_encoder +bimamba_tower +graph_encoder +gat_tower
-    +fusion +router +mapping_head +seed_head +chain_head
-    +forward(reads, graph) GraphMambaOutput
-  }
-  class MultiTaskGraphMamba { +task_heads: MultiTaskHeads }
-  class GraphMambaFormerEncoder { +read_encoder +backbone }
-  build_core_model --> CoreModelSpec
-  CoreModelSpec --> GraphMambaModel : graphmamba
-  CoreModelSpec --> MultiTaskGraphMamba : multitask_graphmamba
-  CoreModelSpec --> GraphMambaFormerEncoder : mambaformer|hybrid
-  MultiTaskGraphMamba --|> GraphMambaModel
-  GraphMambaModel *-- SequenceEncoder
-  GraphMambaModel *-- ReferenceGraphEncoder
-  GraphMambaModel *-- CrossAttentionFusion
-  GraphMambaModel *-- MappingHead
-  GraphMambaModel *-- SeedScoringHead
-  GraphMambaModel *-- ChainScoringHead
-```
-
-### 4.3 Alignment pipeline classes
-
-```mermaid
-classDiagram
-  direction TB
-  class AlignmentPipeline {
-    +seeder: SeedingEngine
-    +chainer: AffineChainer
-    +extender: ExtensionEngine
-    +scorer: NeuralScorer?
-    +build_reference()
-    +align(reads, reference)
-  }
-  build_pipeline --> HybridAlignmentPipeline : hybrid
-  build_pipeline --> FastAlignmentPipeline : fast
-  build_pipeline --> TwoPassAligner : two_pass
-  HybridAlignmentPipeline --|> AlignmentPipeline
-  FastAlignmentPipeline --|> AlignmentPipeline
-  TwoPassAligner --|> AlignmentPipeline
-  TwoPassAligner *-- FastAlignmentPipeline
-  TwoPassAligner *-- HybridAlignmentPipeline
-  SevenStagePipeline o-- AlignmentPipeline
-  DualReferenceAligner o-- AlignmentPipeline
-  HybridAlignmentPipeline *-- NeuralScorer
-```
-
-### 4.4 End-to-end data flow
-
-```mermaid
-flowchart LR
-  FASTA["FASTA"] --> S1
-  GFA["GFA"] -.-> S1
-  READS["reads"] --> S1
-  S1["1 Seed"] --> S2["2 Chain"] --> S3["3 Extend"] --> S4["4 Neural score"]
-  S4 --> S5["5 Post"] --> S6["6 Repeat/HLA"] --> S7["7 Predictions"]
-  S4 --> BAM["pred BAM/SAM/CRAM"]
-  S4 --> CKPT["checkpoints + history.json"]
-  S7 --> MET["metrics.json"]
-```
-
-### 4.5 Core forward pass (`graphmamba`)
-
-```
-reads  → SequenceEncoder → BiMamba-2 tower ─┐
-                                            ├→ CrossAttentionFusion → pooled
-graph  → GraphEncoder    → GATv2 tower ─────┘        │
-                                                     ├→ ComplexityRouter
-                                                     ├→ MappingHead (node / offset / MAPQ)
-                                                     ├→ SeedScoringHead
-                                                     └→ ChainScoringHead
-```
-
----
-
-## 5. Architecture
+## 4. Architecture
 
 **Encoders** — read/sequence encoders map k-mer or base tokens + quality + a
 modality token → `d_model` (default 512). The core model uses base space so
@@ -390,7 +444,7 @@ absent labels skip their term. **Metrics**: `locus_accuracy` (within 50 bp),
 
 ---
 
-## 6. Code map
+## 5. Code map
 
 ### Package (`graphmambaformer/`)
 
@@ -414,7 +468,7 @@ absent labels skip their term. **Metrics**: `locus_accuracy` (within 50 bp),
 | `heads/scoring_heads.py` | seed + chain scoring |
 | `heads/router.py` · `multitask_heads.py` | compute router / ten genomics heads |
 | `alignment/types.py` | `AnchorSet`, `Chain`, `AlignmentRecord`, CIGAR utils |
-| `alignment/seeding.py` … `predictions.py` | stages 1–7 (see [§5](#seven-alignment-stages)) |
+| `alignment/seeding.py` … `predictions.py` | stages 1–7 (see [§4](#seven-alignment-stages)) |
 | `alignment/pipeline.py` | hybrid / fast / two_pass + `build_pipeline` |
 | `alignment/end_to_end.py` | `SevenStagePipeline` |
 | `alignment/dual_reference.py` · `index_cache.py` | linear+pangenome concordance / on-disk index |
@@ -450,7 +504,8 @@ absent labels skip their term. **Metrics**: `locus_accuracy` (within 50 bp),
 
 ---
 
-## 7. Docker & GPU
+## 6. Docker & GPU
+
 
 Same codebase and genomics stack in both tags; only the PyTorch wheel differs.
 
@@ -461,7 +516,11 @@ Same codebase and genomics stack in both tags; only the PyTorch wheel differs.
 
 `docker/run.sh` bind-mounts the clone at `/work`, so `data/` is read/written on the host.
 
-### 7.1 Quickstart
+### 6.1 Quickstart
+
+Full host walkthrough (prereqs, prepare script internals, truth-BAM usage,
+train/eval/infer): see [§3.0](#30-step-by-step-hg002-chr21-with-a-real-truth-bam).
+Docker equivalents of the same train/eval commands:
 
 ```bash
 # clone
@@ -562,7 +621,8 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
 
 CPU-only machine: use `:latest` and omit `GPU=cuda` / `--device cuda` / `--require-gpu`.
 
-### 7.2 Build / publish locally
+### 6.2 Build / publish locally
+
 
 ```bash
 docker/build.sh                          # → graphmambaformer:latest
@@ -571,7 +631,8 @@ TARGET=gpu docker/build.sh               # → graphmambaformer:gpu
 # or: docker/publish.sh  /  TARGET=gpu docker/publish.sh
 ```
 
-### 7.3 GPU flags & accel
+### 6.3 GPU flags & accel
+
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
@@ -591,7 +652,8 @@ Vendors NVIDIA / AMD / Intel / Apple / CPU are capability-gated at runtime.
 
 ---
 
-## 8. Formats & data
+## 7. Formats & data
+
 
 ```python
 from graphmambaformer.data import read_reads, read_gfa, write_alignments

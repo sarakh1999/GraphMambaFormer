@@ -37,6 +37,7 @@ from .pipeline import (
     _encode,
     as_read_batch,
 )
+from ..progress import progress
 from .postprocessing import (
     ConcordanceResult,
     MultiReferenceIntegrator,
@@ -121,7 +122,8 @@ class DualReferenceAligner:
         share_encoding = self._can_share_encoding()
         batch_size = max(1, int(self.pipeline.cfg.batch_size))
 
-        for start in range(0, len(batch), batch_size):
+        steps = range(0, len(batch), batch_size)
+        for start in progress(steps, desc="dual-align", unit="batch", leave=False):
             chunk = batch.slice(start, start + batch_size)
             if not len(chunk):
                 continue

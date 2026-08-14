@@ -46,6 +46,7 @@ from typing import Iterable, Optional
 
 from .export import read_bam, read_gfa  # re-exported: BAM & GFA readers
 from .synthetic import PangenomeGraph, ReadRecord, Reference, reverse_complement
+from ..progress import progress
 
 # our CIGAR op chars -> BAM/pysam integer op codes
 _OP2CODE = {"M": 0, "I": 1, "D": 2, "N": 3, "S": 4, "H": 5, "P": 6, "=": 7, "X": 8}
@@ -126,6 +127,7 @@ def read_fastq(path: str, modality: str = "pacbio_hifi") -> list[ReadRecord]:
     """
     modality = validate_modality(modality)
     records: list[ReadRecord] = []
+    label = os.path.basename(path)
 
     def _flush(name: str, seq: str, qual: str) -> None:
         mod = modality
@@ -140,17 +142,22 @@ def read_fastq(path: str, modality: str = "pacbio_hifi") -> list[ReadRecord]:
             ref_positions=[-1] * len(seq), mapq=0,
         ))
 
-    with _open_text(path) as fh:
-        while True:
-            header = fh.readline()
-            if not header:
-                break
-            if not header.startswith("@"):
-                continue
-            seq = fh.readline().rstrip("\n")
-            fh.readline()  # '+'
-            qual = fh.readline().rstrip("\n")
-            _flush(header[1:].rstrip("\n"), seq, qual)
+    bar = progress(desc=f"read FASTQ {label}", unit="read", leave=False)
+    try:
+        with _open_text(path) as fh:
+            while True:
+                header = fh.readline()
+                if not header:
+                    break
+                if not header.startswith("@"):
+                    continue
+                seq = fh.readline().rstrip("\n")
+                fh.readline()  # '+'
+                qual = fh.readline().rstrip("\n")
+                _flush(header[1:].rstrip("\n"), seq, qual)
+                bar.update(1)
+    finally:
+        bar.close()
     return records
 
 
@@ -183,7 +190,13 @@ def read_paired_fastq(
             f"R2 has {len(r2)} reads"
         )
     out: list[ReadRecord] = []
-    for i, (left, right) in enumerate(zip(r1, r2)):
+    for i, (left, right) in progress(
+        enumerate(zip(r1, r2)),
+        total=len(r1),
+        desc="pair FASTQ mates",
+        unit="pair",
+        leave=False,
+    ):
         left_name, right_name = _pair_name(left.read_id), _pair_name(right.read_id)
         if left_name != right_name:
             raise ValueError(

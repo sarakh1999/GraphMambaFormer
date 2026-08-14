@@ -72,6 +72,7 @@ from graphmambaformer.data import (
     write_alignments,
 )
 from graphmambaformer.models import build_core_model
+from graphmambaformer.progress import progress
 from graphmambaformer.training import Trainer, TrainConfig
 
 
@@ -112,7 +113,9 @@ def _write_pred_bam(mode_dir, split_tag, batches, pipeline, refs_meta,
                     *, write_cram: bool = False, reference_fasta: str | None = None):
     """Align every batch and write BAM (+ SAM, optional CRAM) with real @SQ."""
     all_reads, all_results = [], []
-    for reads, reference in batches:
+    for reads, reference in progress(
+        batches, desc=f"eval align[{split_tag}]", unit="batch", leave=False
+    ):
         results, stats = pipeline.align(reads, reference)
         all_reads.extend(reads)
         all_results.extend(results)

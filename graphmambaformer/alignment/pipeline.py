@@ -30,6 +30,7 @@ import torch
 
 from ..accel import AccelContext, default_worker_count, parallel_map
 from ..config import PIPELINE_MODES, PipelineConfig
+from ..progress import progress
 from .chaining import AffineChainer, ChainingContext, GraphDistanceOracle
 from .extension import ExtensionEngine
 from .scoring import NeuralScorer
@@ -307,6 +308,7 @@ class AlignmentPipeline:
             lambda read: self.seeder.seed_read(read, reference.bundle),
             reads,
             workers=self._stage_workers,
+            pbar="seed" if len(reads) >= 32 else None,
         )
 
     def chain(
@@ -357,6 +359,7 @@ class AlignmentPipeline:
             ),
             work,
             workers=workers,
+            pbar="extend" if len(work) >= 32 else None,
         )
 
     # ---- record assembly ---------------------------------------------------- #
@@ -447,7 +450,13 @@ class AlignmentPipeline:
         batch = as_read_batch(reads, read_ids)
         results: list[ReadAlignments] = []
         stats = PipelineStats()
-        for start in range(0, len(batch), self.cfg.batch_size):
+        steps = range(0, len(batch), self.cfg.batch_size)
+        for start in progress(
+            steps,
+            desc=f"align[{self.mode}]",
+            unit="batch",
+            leave=False,
+        ):
             chunk = batch.slice(start, start + self.cfg.batch_size)
             batch_results, batch_stats = self.align_batch(chunk, reference, chunk.ids)
             results.extend(batch_results)

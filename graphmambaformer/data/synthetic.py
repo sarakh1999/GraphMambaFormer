@@ -32,6 +32,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..progress import progress
+
 # --------------------------------------------------------------------------- #
 # Alphabet / small helpers
 # --------------------------------------------------------------------------- #
@@ -951,7 +953,13 @@ def generate_dataset(cfg: Optional[SyntheticConfig] = None) -> SyntheticDataset:
 
     def make_reads(n: int, split: str) -> list[ReadRecord]:
         recs: list[ReadRecord] = []
-        for i in range(n):
+        for i in progress(
+            range(n),
+            desc=f"synth {split}",
+            unit="read",
+            leave=False,
+            disable=n < 64,
+        ):
             ref = ref_list[i % len(ref_list)]
             modality = cfg.modalities[i % len(cfg.modalities)]
             rec = _simulate_read(rng, cfg, ref, f"{split}_{i}", modality)

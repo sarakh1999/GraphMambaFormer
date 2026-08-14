@@ -34,6 +34,7 @@ from ..accel import (
 from ..config import AccelConfig, LossConfig
 from ..device import resolve_device_ids, unwrap_model, wrap_data_parallel
 from ..losses import GraphMambaLoss
+from ..progress import progress
 from .metrics import (
     ValidationMetrics,
     anchor_metrics,
@@ -249,7 +250,15 @@ class Trainer:
         losses: list[float] = []
         started = time.time()
 
-        for sup, reference in self._feed(batches):
+        batch_bar = progress(
+            self._feed(batches),
+            total=len(batches),
+            desc=f"train epoch {epoch:02d}",
+            unit="batch",
+            disable=not self.verbose,
+            leave=False,
+        )
+        for sup, reference in batch_bar:
             lr = self._lr_at(self._step, total_steps)
             for group in self.optimizer.param_groups:
                 group["lr"] = lr
@@ -287,6 +296,8 @@ class Trainer:
 
             self.history.steps.append(report)
             losses.append(report.total)
+            if hasattr(batch_bar, "set_postfix"):
+                batch_bar.set_postfix(loss=f"{report.total:.4f}", refresh=False)
             if self.verbose and self._step % self.cfg.log_every == 0:
                 print("  " + report.one_line())
             # Flush the step log frequently so a crash never loses recent work.
@@ -314,7 +325,14 @@ class Trainer:
         all_mapq, all_correct = [], []
         n_chain_scored = 0
 
-        for sup, reference in self._feed(batches):
+        for sup, reference in progress(
+            self._feed(batches),
+            total=len(batches),
+            desc="validate",
+            unit="batch",
+            disable=not self.verbose,
+            leave=False,
+        ):
             with self.accel.precision():
                 outputs, seed_scores, chain_scores = self._forward(sup, reference)
                 loss = self.criterion(
@@ -429,7 +447,13 @@ class Trainer:
                   f"parameters on {n_train} reads ({n_val} held out) "
                   f"for up to {self.cfg.epochs} epochs\n")
 
-        for epoch in range(self.cfg.epochs):
+        epoch_bar = progress(
+            range(self.cfg.epochs),
+            desc="epochs",
+            unit="epoch",
+            disable=not self.verbose,
+        )
+        for epoch in epoch_bar:
             summary = self.train_epoch(train_batches, epoch, total_steps)
             metrics = self.validate(val_batches)
 
@@ -445,6 +469,12 @@ class Trainer:
             if self.verbose:
                 print(f"epoch {epoch:02d}  train={summary['train_loss']:.4f}  "
                       f"{metrics.one_line()}  ({summary['seconds']:.1f}s)")
+                if hasattr(epoch_bar, "set_postfix"):
+                    epoch_bar.set_postfix(
+                        train=f"{summary['train_loss']:.4f}",
+                        monitor=f"{score:.4f}",
+                        refresh=False,
+                    )
 
             improved = score > best
             if improved:

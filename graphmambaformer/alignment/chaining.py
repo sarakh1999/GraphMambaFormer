@@ -662,6 +662,7 @@ class AffineChainer:
                 lambda pair: self.chain(pair[0], pair[1], device=dev),
                 list(zip(anchor_sets, contexts)),
                 workers=self._workers,
+                pbar="chain" if len(anchor_sets) >= 32 else None,
             )
 
         results: list[list[Chain]] = [[] for _ in anchor_sets]

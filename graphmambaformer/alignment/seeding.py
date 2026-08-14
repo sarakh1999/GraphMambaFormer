@@ -38,6 +38,7 @@ import torch
 
 from ..accel.parallel import parallel_map
 from ..config import SeedingConfig
+from ..progress import progress, progress_disabled
 from .types import AnchorSet, source_id
 
 # Base alphabet. 0 is reserved as the FM-index sentinel, which must sort below
@@ -348,6 +349,10 @@ class FMIndex:
         self.sa_sample = max(1, sa_sample)
         self.occ_sample = max(1, occ_sample)
 
+        # Suffix-array construction dominates index build time on long contigs.
+        if not progress_disabled() and self.n >= 100_000:
+            print(f"  FM-index: building suffix array over {self.n:,} symbols ...",
+                  flush=True)
         sa = suffix_array(self.text)
         self.bwt = self.text[sa - 1]  # sa == 0 wraps to the sentinel, as intended
 
@@ -359,7 +364,13 @@ class FMIndex:
         # Rank checkpoints: occ[j, c] = count of c in bwt[: j * occ_sample].
         n_checkpoints = self.n // self.occ_sample + 1
         self.occ = np.zeros((n_checkpoints + 1, ALPHABET_SIZE), dtype=np.int64)
-        for c in range(ALPHABET_SIZE):
+        for c in progress(
+            range(ALPHABET_SIZE),
+            desc="  FM-index occ",
+            unit="sym",
+            leave=False,
+            disable=self.n < 100_000,
+        ):
             cumulative = np.concatenate([[0], np.cumsum(self.bwt == c)])
             idx = np.minimum(
                 np.arange(n_checkpoints + 1) * self.occ_sample, self.n
@@ -1007,7 +1018,9 @@ class SeedingEngine:
         # threads; each constructor is NumPy-heavy and releases the GIL. The
         # ``gpu_kmer`` index touches CUDA, which is thread-safe here.
         _modes = list(cfg.modes)
-        _built = parallel_map(build_mode, _modes, workers=self._workers)
+        _built = parallel_map(
+            build_mode, _modes, workers=self._workers, pbar="build indexes"
+        )
         indices = {m: idx for m, idx in zip(_modes, _built)}
 
         node_starts = (

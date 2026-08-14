@@ -28,6 +28,7 @@ import shutil
 import subprocess
 from typing import Optional
 
+from ..progress import progress
 from .synthetic import ReadRecord, Reference, SyntheticDataset, reverse_complement
 
 # SAM FLAG bits we use
@@ -419,7 +420,8 @@ def read_bam(
     with pysam.AlignmentFile(bam_path, open_mode, **open_kwargs) as af:
         ref_id_of = {name: i for i, name in enumerate(af.references)}
         itr = af.fetch(region=region) if region is not None else af.fetch(until_eof=True)
-        for aln in itr:
+        label = os.path.basename(bam_path)
+        for aln in progress(itr, desc=f"read BAM {label}", unit="aln", leave=False):
             if aln.is_secondary or aln.is_supplementary:
                 continue
             if aln.is_unmapped and not include_unmapped and not as_sequences:

@@ -94,7 +94,7 @@ RUN python3 -m venv /opt/gmf \
         --index-url "https://download.pytorch.org/whl/${TORCH_CHANNEL}" \
         "torch==${TORCH_VERSION}" \
     && /opt/gmf/bin/pip install --no-cache-dir \
-        "einops>=0.7" "numpy<2" "pysam>=0.22" "matplotlib>=3.7" \
+        "einops>=0.7" "numpy<2" "pysam>=0.22" "matplotlib>=3.7" "tqdm>=4.66" \
     && if [ "$INSTALL_TRITON" = "1" ]; then \
          /opt/gmf/bin/pip install --no-cache-dir "pytorch-triton-xpu" || \
          echo "pytorch-triton-xpu unavailable; the torch fallback is used"; \

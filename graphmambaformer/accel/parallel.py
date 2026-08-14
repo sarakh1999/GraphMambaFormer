@@ -63,23 +63,44 @@ def parallel_map(
     *,
     workers: int | None = None,
     min_items: int = 2,
+    pbar: str | None = None,
 ) -> list[R]:
     """Apply ``fn`` to every item, in parallel across a thread pool, in order.
 
     Falls back to a plain list comprehension when there is only one worker or
     fewer than ``min_items`` items, so the fast path carries no pool overhead.
     Results preserve input order regardless of completion order.
+
+    When ``pbar`` is set, a tqdm bar with that description tracks completion
+    (useful for long seed/extend passes over many reads).
     """
+    from ..progress import progress
+
     items = list(items)
     n = len(items)
     w = default_worker_count(workers)
+    show = pbar is not None and n > 0
     if w <= 1 or n < max(2, min_items):
-        return [fn(x) for x in items]
+        return [
+            fn(x)
+            for x in progress(
+                items, desc=pbar, unit="read", disable=not show, leave=False
+            )
+        ]
     w = min(w, n)
     # A fresh pool per call keeps this reentrant (the trainer nests a prefetch
     # pool around these stage pools); pool creation is cheap next to the work.
     with ThreadPoolExecutor(max_workers=w, thread_name_prefix="gmf-stage") as ex:
-        return list(ex.map(fn, items))
+        return list(
+            progress(
+                ex.map(fn, items),
+                total=n,
+                desc=pbar,
+                unit="read",
+                disable=not show,
+                leave=False,
+            )
+        )
 
 
 _THREADS_LOCK = threading.Lock()

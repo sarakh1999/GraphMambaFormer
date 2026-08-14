@@ -20,6 +20,9 @@ pysam>=0.22
 # plots are simply skipped with a message.
 matplotlib>=3.7
 
+# Progress bars for training, alignment, and large I/O (disable with GMF_DISABLE_TQDM=1).
+tqdm>=4.66
+
 # Apple Silicon native stack (Metal + M5 Neural Accelerators when available).
 # Markers keep `pip install -r requirements.txt` working on Linux/x86-64, where
 # no mlx wheel exists (e.g. inside the Docker image).

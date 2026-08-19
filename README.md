@@ -506,35 +506,46 @@ absent labels skip their term. **Metrics**: `locus_accuracy` (within 50 bp),
 
 ## 6. Docker & GPU
 
-
 Same codebase and genomics stack in both tags; only the PyTorch wheel differs.
+`:latest` / `:gpu` track **`main`** on GHCR (rebuilt after each publish).
 
 | Tag | Purpose |
 | --- | --- |
 | `ghcr.io/sarakh1999/graphmambaformer:latest` | full stack + **CPU** PyTorch (laptops / CI / smoke) |
 | `ghcr.io/sarakh1999/graphmambaformer:gpu` | same + **CUDA** PyTorch — use this for NVIDIA train/eval |
 
-`docker/run.sh` bind-mounts the clone at `/work`, so `data/` is read/written on the host.
+`docker/run.sh` bind-mounts the clone at `/work` (`PYTHONPATH=/work:/opt/graphmambaformer`).
+Host `data/` is read/written in place. The image supplies vg/samtools/Python/torch;
+**git-pull the repo** so `/work` has the matching scripts, then pull the image for
+the matching env.
 
-### 6.1 Quickstart
-
-Full host walkthrough (prereqs, prepare script internals, truth-BAM usage,
-train/eval/infer): see [§3.0](#30-step-by-step-hg002-chr21-with-a-real-truth-bam).
-Docker equivalents of the same train/eval commands:
+### 6.1 Pull and use the published image
 
 ```bash
-# clone
+# 1) clone (or git pull if you already have it)
 git clone https://github.com/sarakh1999/GraphMambaFormer.git
 cd GraphMambaFormer
+git pull origin main
 
-# if GHCR package is private (403 on pull): PAT needs read:packages
+# 2) if GHCR package is private (403): PAT with read:packages
 echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
 
-# pull GPU image + doctor
+# 3) pull (NVIDIA train/eval → :gpu; CPU-only → :latest)
 docker pull ghcr.io/sarakh1999/graphmambaformer:gpu
+# docker pull ghcr.io/sarakh1999/graphmambaformer:latest
+
+# 4) doctor (needs NVIDIA Container Toolkit on the host for GPU=cuda)
 IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda docker/run.sh gmf-doctor
 
-# prepare HG002 chr21 inputs (once)
+# 5) any Python entrypoint (repo at /work)
+IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
+  docker/run.sh gmf-python scripts/smoke_test.py
+```
+
+Full host walkthrough (prepare script, truth BAM, train/eval): see [§3.0](#30-step-by-step-hg002-chr21-with-a-real-truth-bam).
+
+```bash
+# prepare HG002 chr21 inputs (once; Docker Desktop on the host)
 chmod +x scripts/prepare_real_hg002.sh scripts/chr21/*.sh
 ./scripts/prepare_real_hg002.sh
 
@@ -554,7 +565,7 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
   --device cuda --require-gpu --devices auto \
   --epochs 20 --batch-size 8 --d-model 256 \
   --workers 16 --prefetch 3 \
-  --out /work/data/training_runs/ _both
+  --out /work/data/training_runs/hg002_both
 ```
 
 Linear-only: drop `--gfa` and use `--ref-mode linear`. Swap `--modality` to
@@ -597,9 +608,9 @@ IMAGE=ghcr.io/sarakh1999/graphmambaformer:gpu GPU=cuda \
   docker/run.sh gmf-python scripts/eval.py --data real \
   --reference-fasta "$REF" --gfa "$GFA" --truth-bam "$TRUTH" \
   --region "$REGION" --ref-mode both --modality illumina --mode hybrid \
-  --checkpoint /work/data/training_runs/ _both/checkpoint.pt \
+  --checkpoint /work/data/training_runs/hg002_both/checkpoint.pt \
   --device cuda --require-gpu \
-  --out /work/data/eval_runs/ _both_hybrid
+  --out /work/data/eval_runs/hg002_both_hybrid
 ```
 
 Classical only (no checkpoint): `--mode fast`. Hard-tail rescue: `--mode two_pass`.
@@ -640,7 +651,7 @@ TARGET=gpu docker/build.sh               # → graphmambaformer:gpu
 | `--devices` | `auto` | multi-GPU list (`auto`/`all`/`0,1`/`none`) |
 | `--require-gpu` | off | exit if no CUDA/MPS/XPU |
 | `--workers N` | `0` (all cores) | host threads for seed/chain + prefetch |
-| `--prefetch N` | `2` | look-ahead batches |
+| `--prefetch N` | `3` | look-ahead batches |
 | `--compile` | off | `torch.compile` the forward |
 | `--cuda-graphs` | on | capture fixed-shape inference |
 | `--fp8` | on | TE FP8 when supported (Ampere → BF16) |

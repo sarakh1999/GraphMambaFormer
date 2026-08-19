@@ -341,7 +341,7 @@ def main() -> int:
     p.add_argument("--workers", type=int, default=0,
                    help="host worker threads for seeding/chaining + the batch "
                         "prefetch that keeps the GPU fed (0 = all CPU cores)")
-    p.add_argument("--prefetch", type=int, default=2,
+    p.add_argument("--prefetch", type=int, default=3,
                    help="batches to build ahead on background threads so the GPU "
                         "is not starved by host-side seeding (0 disables)")
     p.add_argument("--compile", dest="compile", action="store_true",

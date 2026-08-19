@@ -60,12 +60,29 @@ class Supervision:
     n_reads: int = 0
 
     def to(self, device: torch.device | str) -> "Supervision":
-        move = lambda t: None if t is None else t.to(device)  # noqa: E731
+        dev = torch.device(device)
+        # Page-lock the CPU source and copy asynchronously so the H2D transfer
+        # overlaps with the previous step's compute instead of blocking on it.
+        # ``non_blocking`` only helps from pinned memory, hence the pin; both
+        # degrade to a plain blocking copy off CUDA or if pinning is unavailable.
+        use_async = dev.type == "cuda"
+
+        def move(t):
+            if t is None:
+                return None
+            if use_async and not t.is_cuda:
+                try:
+                    t = t.pin_memory()
+                except (RuntimeError, NotImplementedError):
+                    pass
+                return t.to(dev, non_blocking=True)
+            return t.to(dev)
+
         self.base_codes = move(self.base_codes)
         self.mask = move(self.mask)
         self.qualities = move(self.qualities)
         for key, value in list(self.targets.items()):
-            self.targets[key] = value.to(device)
+            self.targets[key] = move(value)
         for name in (
             "seed_features", "anchor_read_pos", "anchor_node", "anchor_mask",
             "seed_edge_index", "seed_edge_features", "seed_edge_mask",

@@ -129,7 +129,13 @@ def _plot_validation(plt, history, out_dir: str, written: list[str]) -> None:
 
 
 def _plot_behavior(plt, history, out_dir: str, written: list[str]) -> None:
-    steps = history.steps
+    # The behaviour probe is sampled every ``probe_every`` steps, so plot only
+    # the steps that actually carry probe data. This keeps the curves dense
+    # rather than drawing zero/NaN gaps for the un-sampled steps in between.
+    steps = [
+        s for s in history.steps
+        if s.activations or s.grad_norms or s.router_distribution or s.head_spread
+    ] or history.steps
     if not steps:
         return
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 8))

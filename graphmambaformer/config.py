@@ -575,7 +575,10 @@ class AccelConfig:
     stage_parallel: bool = True
     #: How many training batches to build ahead on background threads so the GPU
     #: is not starved by host-side seeding/chaining. 0 disables prefetch.
-    prefetch: int = 2
+    #: 3 keeps a couple of built batches queued so a slow seeding/chaining step
+    #: does not immediately stall the device; raise it if the host still cannot
+    #: keep the GPU fed (costs one built batch of host memory per extra level).
+    prefetch: int = 3
     #: Size torch's intra-op / BLAS thread pools to the host core count.
     set_threads: bool = True
 

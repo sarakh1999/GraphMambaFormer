@@ -29,17 +29,20 @@ __all__ = ["StepReport", "BehaviorProbe"]
 
 
 def _stats(t: torch.Tensor) -> dict[str, float]:
-    """Mean/std/min/max plus the dead fraction, guarded for empty tensors."""
+    """Mean/std/min/max plus the dead fraction, guarded for empty tensors.
+
+    The five reductions are stacked and pulled to the host in a single transfer.
+    Reading them out one ``float(...)`` at a time would sync the GPU five times
+    per tower, per step -- pure accelerator stall with nothing to overlap it.
+    """
     if t is None or t.numel() == 0:
         return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "zero_frac": 1.0}
     f = t.detach().float()
-    return {
-        "mean": float(f.mean()),
-        "std": float(f.std()) if f.numel() > 1 else 0.0,
-        "min": float(f.min()),
-        "max": float(f.max()),
-        "zero_frac": float((f == 0).float().mean()),
-    }
+    std = f.std() if f.numel() > 1 else torch.zeros((), device=f.device, dtype=f.dtype)
+    packed = torch.stack([f.mean(), std, f.min(), f.max(), (f == 0).float().mean()])
+    mean, std_v, min_v, max_v, zero_frac = packed.to("cpu").tolist()
+    return {"mean": mean, "std": std_v, "min": min_v, "max": max_v,
+            "zero_frac": zero_frac}
 
 
 def _first_tensor(obj: Any) -> Optional[torch.Tensor]:
@@ -114,6 +117,10 @@ class BehaviorProbe:
     def __init__(self, model: torch.nn.Module, track_activations: bool = True):
         self.model = model
         self.track_activations = track_activations
+        #: When False the forward hooks return immediately, so a step that is
+        #: not being sampled pays none of the activation-stat sync cost. The
+        #: trainer flips this per step to sample the probe every N steps.
+        self.active = True
         self._acts: dict[str, dict[str, float]] = {}
         self._handles: list[Any] = []
         if track_activations:
@@ -147,6 +154,8 @@ class BehaviorProbe:
 
     def _make_hook(self, label: str):
         def hook(_module, _inputs, output):
+            if not self.active:
+                return
             with torch.no_grad():
                 tensor = _first_tensor(output)
                 if tensor is not None:
@@ -164,20 +173,43 @@ class BehaviorProbe:
 
         Grouping is by top-level module so a silent head shows up as its own
         zero entry instead of being averaged away in a single global number.
+
+        Every per-parameter norm is computed *on the device* and pulled to the
+        host in a **single** transfer. The obvious loop -- ``float(p.grad.norm())``
+        per parameter -- instead forces one GPU→CPU synchronisation per tensor,
+        and a model with a few hundred parameters then spends most of each step
+        stalling the accelerator on those syncs. That is a primary cause of low
+        GPU utilisation here, so the norms are batched with ``_foreach_norm``.
         """
-        groups: dict[str, list[float]] = defaultdict(list)
-        total_sq, n_params, n_zero = 0.0, 0, 0
+        names: list[str] = []
+        grads: list[torch.Tensor] = []
+        n_params, n_zero = 0, 0
         for name, param in self.model.named_parameters():
+            n_params += 1
             if param.grad is None:
-                n_params += 1
                 n_zero += 1
                 continue
-            norm = float(param.grad.detach().norm())
+            names.append(name)
+            grads.append(param.grad.detach())
+
+        if not grads:
+            return {}, 0.0, n_zero / max(n_params, 1)
+
+        # One fused multi-tensor norm, then one host transfer for all of them.
+        try:
+            norm_tensors = torch._foreach_norm(grads)
+            host_norms = torch.stack(norm_tensors).to("cpu", torch.float32).tolist()
+        except Exception:  # pragma: no cover - older/edge torch builds
+            host_norms = torch.stack([g.norm() for g in grads]).cpu().float().tolist()
+
+        groups: dict[str, list[float]] = defaultdict(list)
+        total_sq = 0.0
+        for name, norm in zip(names, host_norms):
             groups[name.split(".")[0]].append(norm)
-            total_sq += norm ** 2
-            n_params += 1
+            total_sq += norm * norm
             n_zero += int(norm == 0.0)
-        per_group = {k: float(torch.tensor(v).norm()) for k, v in groups.items()}
+        per_group = {k: sum(v[i] * v[i] for i in range(len(v))) ** 0.5
+                     for k, v in groups.items()}
         return per_group, total_sq ** 0.5, n_zero / max(n_params, 1)
 
     @staticmethod
@@ -195,32 +227,61 @@ class BehaviorProbe:
             n_routes = logits.shape[-1]
             names = list(route_names) if route_names else [f"r{i}" for i in range(n_routes)]
             counts = torch.bincount(choice.flatten(), minlength=n_routes).float()
-            counts = counts / max(float(counts.sum()), 1.0)
-        return {names[i] if i < len(names) else f"r{i}": float(counts[i])
+            total = counts.sum().clamp_min(1.0)
+            # Normalise on-device and pull the whole distribution back at once,
+            # rather than indexing ``counts[i]`` (one sync per route) in a loop.
+            fractions = (counts / total).to("cpu").tolist()
+        return {names[i] if i < len(names) else f"r{i}": fractions[i]
                 for i in range(n_routes)}
 
     @staticmethod
     def head_report(outputs, seed_scores=None, chain_scores=None) -> dict[str, float]:
         """Spread of each head's outputs; a near-zero std means a constant head."""
-        out: dict[str, float] = {}
+        keys: list[str] = []
+        stds: list[torch.Tensor] = []
         with torch.no_grad():
             mapping = getattr(outputs, "mapping", None)
             if isinstance(mapping, dict):
                 for key in ("mapq", "position_fraction", "node_logits"):
                     value = mapping.get(key)
                     if isinstance(value, torch.Tensor) and value.numel() > 1:
-                        out[f"mapping.{key}.std"] = float(value.detach().float().std())
+                        keys.append(f"mapping.{key}.std")
+                        stds.append(value.detach().float().std())
             for label, scores in (("seed", seed_scores), ("chain", chain_scores)):
                 if isinstance(scores, dict):
                     logits = scores.get("logits")
                     if isinstance(logits, torch.Tensor) and logits.numel() > 1:
-                        out[f"{label}.logits.std"] = float(logits.detach().float().std())
-        return out
+                        keys.append(f"{label}.logits.std")
+                        stds.append(logits.detach().float().std())
+        if not stds:
+            return {}
+        # Every std lands in one host transfer instead of one sync per head.
+        values = torch.stack(stds).to("cpu").tolist()
+        return dict(zip(keys, values))
 
     def activations(self) -> dict[str, dict[str, float]]:
         return dict(self._acts)
 
     # ---- assembly ---------------------------------------------------------- #
+    def light_report(self, step: int, epoch: int, loss_output, *,
+                     split: str = "train", lr: float = 0.0) -> StepReport:
+        """A cheap report for steps that are not sampled by the full probe.
+
+        Records only the loss, its (already-scalar) terms, and the LR, so the
+        loss curve stays dense at one host sync per step. Grad norms, activation
+        stats and router/head spread are left empty: those are the expensive,
+        sync-heavy diagnostics that :meth:`report` samples periodically instead.
+        """
+        return StepReport(
+            step=step,
+            epoch=epoch,
+            split=split,
+            total=float(loss_output),
+            terms=dict(getattr(loss_output, "terms", {})),
+            weights=dict(getattr(loss_output, "weights", {})),
+            lr=lr,
+        )
+
     def report(self, step: int, epoch: int, loss_output, outputs, *, split: str = "train",
                seed_scores=None, chain_scores=None, lr: float = 0.0,
                label_balance: Optional[dict[str, float]] = None,

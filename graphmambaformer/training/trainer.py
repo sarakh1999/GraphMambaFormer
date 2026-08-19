@@ -65,6 +65,20 @@ class TrainConfig:
     #: the data at hand (see ValidationMetrics.monitored).
     monitor: str = "locus_accuracy"
     log_every: int = 1
+    #: How often (in steps) to flush ``history.json`` to disk during an epoch.
+    #: The whole (growing) step log is re-serialised each flush, so doing it
+    #: every step is O(steps^2) disk work on the same thread that drives the
+    #: GPU -- it stalls the accelerator for progressively longer as a run goes
+    #: on. Flushing periodically (plus always at every epoch boundary) keeps the
+    #: crash-safe log without starving the device. Set to 1 for the old cadence.
+    flush_every: int = 50
+    #: Run the full behaviour probe (per-parameter grad norms, activation stats,
+    #: router/head spread, label balance) every N steps. Each of those forces
+    #: GPU->CPU synchronisations that stall the accelerator; sampling them keeps
+    #: the diagnostic curves informative at a fraction of the cost. The loss and
+    #: its terms are still recorded every step. Set to 1 for the old per-step
+    #: instrumentation.
+    probe_every: int = 10
     seed: int = 0
     out_dir: str = "data/training_runs/latest"
     #: If set, write ``checkpoint.pt`` (best weights) under ``out_dir``.
@@ -263,6 +277,12 @@ class Trainer:
             for group in self.optimizer.param_groups:
                 group["lr"] = lr
 
+            # Sample the sync-heavy behaviour probe every ``probe_every`` steps.
+            # The flag is read by the forward hooks, so it must be set before the
+            # forward pass runs.
+            do_probe = self._step % max(1, self.cfg.probe_every) == 0
+            self.probe.active = do_probe
+
             self.optimizer.zero_grad(set_to_none=True)
             with self.accel.precision():
                 outputs, seed_scores, chain_scores = self._forward(sup, reference)
@@ -278,12 +298,19 @@ class Trainer:
                 loss.total.backward()
 
             # Report gradients after unscaling but before clipping, so the norms
-            # describe what the model produced rather than what was allowed.
-            report = self.probe.report(
-                self._step, epoch, loss, outputs, split="train",
-                seed_scores=seed_scores, chain_scores=chain_scores, lr=lr,
-                label_balance=TargetBuilder.label_balance(sup),
-            )
+            # describe what the model produced rather than what was allowed. On
+            # non-sampled steps a cheap report avoids the probe's GPU->CPU syncs
+            # (and the label-balance reduction) entirely.
+            if do_probe:
+                report = self.probe.report(
+                    self._step, epoch, loss, outputs, split="train",
+                    seed_scores=seed_scores, chain_scores=chain_scores, lr=lr,
+                    label_balance=TargetBuilder.label_balance(sup),
+                )
+            else:
+                report = self.probe.light_report(
+                    self._step, epoch, loss, split="train", lr=lr
+                )
             if self.cfg.grad_clip:
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.cfg.grad_clip
@@ -300,9 +327,13 @@ class Trainer:
                 batch_bar.set_postfix(loss=f"{report.total:.4f}", refresh=False)
             if self.verbose and self._step % self.cfg.log_every == 0:
                 print("  " + report.one_line())
-            # Flush the step log frequently so a crash never loses recent work.
+            # Flush the step log periodically so a crash never loses much work,
+            # without paying the O(steps^2) re-serialisation cost every step
+            # (which stalls the GPU). ``_persist_epoch`` also flushes at every
+            # epoch boundary, so the on-disk log is never more than one flush
+            # interval behind.
             if self.cfg.checkpoint_history and (
-                self._step % max(1, self.cfg.log_every) == 0
+                self._step % max(1, self.cfg.flush_every) == 0
             ):
                 self.history.to_json(os.path.join(self.cfg.out_dir, "history.json"))
             self._step += 1

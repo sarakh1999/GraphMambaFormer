@@ -102,30 +102,22 @@ def main() -> int:
 
     steps = sorted(merged)
     total = [merged[s]["total"] for s in steps]
-    terms = {k: [merged[s]["terms"][k] for s in steps] for k in TERM_KEYS}
 
     title = args.title or (
         f"Loss curve  (step {steps[0]} -> {steps[-1]}, {len(steps)} points)\n"
         f"{args.run_dir}"
     )
 
-    fig, ax = plt.subplots(1, 2, figsize=(13, 5))
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
     fig.suptitle(title, fontsize=11, fontweight="bold")
 
-    ax[0].plot(steps, total, color="#1f77b4", lw=1.6)
-    ax[0].set_title("Total training loss")
-    ax[0].set_xlabel("optimizer step")
-    ax[0].set_ylabel("loss")
-    ax[0].grid(alpha=0.3)
+    ax.plot(steps, total, color="#1f77b4", lw=1.6)
+    ax.set_title("Total training loss")
+    ax.set_xlabel("optimizer step")
+    ax.set_ylabel("loss")
+    ax.grid(alpha=0.3)
 
-    for k in TERM_KEYS:
-        ax[1].plot(steps, terms[k], lw=1.1, label=k)
-    ax[1].set_title("Per-term loss (unweighted)")
-    ax[1].set_xlabel("optimizer step")
-    ax[1].legend(fontsize=8, ncol=2)
-    ax[1].grid(alpha=0.3)
-
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     fig.savefig(args.out, dpi=120)
     print(f"wrote {args.out}")

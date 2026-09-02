@@ -1,0 +1,25 @@
+{
+  "reference_fasta": "data/chr21/HG002/ref/chr21.fa",
+  "gfa": "data/chr21/HG002/chr21.gfa",
+  "region": "chr21",
+  "ref_mode": "both",
+  "entries": [
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.giab.sorted.bam",
+      "read_layout": "auto",
+      "max_reads": 10000
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.truth.sorted.bam"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.truth.sorted.bam"
+    }
+  ]
+}

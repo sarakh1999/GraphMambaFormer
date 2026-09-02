@@ -1,0 +1,2851 @@
+{
+  "reference_fasta": "data/chr21/HG002/ref/chr21.fa",
+  "ref_mode": "pangenome",
+  "entries": [
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_039938973_040005242.gfa",
+      "region": "chr21:39938974-40005242",
+      "read_layout": "auto",
+      "max_reads": 80
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_039938973_040005242.gfa",
+      "region": "chr21:39938974-40005242"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_039938973_040005242.gfa",
+      "region": "chr21:39938974-40005242"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_039989429_040046786.gfa",
+      "region": "chr21:39989430-40046786",
+      "read_layout": "auto",
+      "max_reads": 69
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_039989429_040046786.gfa",
+      "region": "chr21:39989430-40046786"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_039989429_040046786.gfa",
+      "region": "chr21:39989430-40046786"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040036181_040114634.gfa",
+      "region": "chr21:40036182-40114634",
+      "read_layout": "auto",
+      "max_reads": 95
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040036181_040114634.gfa",
+      "region": "chr21:40036182-40114634"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040036181_040114634.gfa",
+      "region": "chr21:40036182-40114634"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040098537_040180482.gfa",
+      "region": "chr21:40098538-40180482",
+      "read_layout": "auto",
+      "max_reads": 99
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040098537_040180482.gfa",
+      "region": "chr21:40098538-40180482"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040098537_040180482.gfa",
+      "region": "chr21:40098538-40180482"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040164124_040216284.gfa",
+      "region": "chr21:40164125-40216284",
+      "read_layout": "auto",
+      "max_reads": 63
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040164124_040216284.gfa",
+      "region": "chr21:40164125-40216284"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040164124_040216284.gfa",
+      "region": "chr21:40164125-40216284"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040204911_040269685.gfa",
+      "region": "chr21:40204912-40269685",
+      "read_layout": "auto",
+      "max_reads": 78
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040204911_040269685.gfa",
+      "region": "chr21:40204912-40269685"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040204911_040269685.gfa",
+      "region": "chr21:40204912-40269685"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040259284_040313936.gfa",
+      "region": "chr21:40259285-40313936",
+      "read_layout": "auto",
+      "max_reads": 66
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040259284_040313936.gfa",
+      "region": "chr21:40259285-40313936"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040259284_040313936.gfa",
+      "region": "chr21:40259285-40313936"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040300535_040391666.gfa",
+      "region": "chr21:40300536-40391666",
+      "read_layout": "auto",
+      "max_reads": 110
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040300535_040391666.gfa",
+      "region": "chr21:40300536-40391666"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040300535_040391666.gfa",
+      "region": "chr21:40300536-40391666"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040374134_040466928.gfa",
+      "region": "chr21:40374135-40466928",
+      "read_layout": "auto",
+      "max_reads": 112
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040374134_040466928.gfa",
+      "region": "chr21:40374135-40466928"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040374134_040466928.gfa",
+      "region": "chr21:40374135-40466928"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040451295_040518197.gfa",
+      "region": "chr21:40451296-40518197",
+      "read_layout": "auto",
+      "max_reads": 81
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040451295_040518197.gfa",
+      "region": "chr21:40451296-40518197"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040451295_040518197.gfa",
+      "region": "chr21:40451296-40518197"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040507868_040558642.gfa",
+      "region": "chr21:40507869-40558642",
+      "read_layout": "auto",
+      "max_reads": 61
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040507868_040558642.gfa",
+      "region": "chr21:40507869-40558642"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040507868_040558642.gfa",
+      "region": "chr21:40507869-40558642"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040545617_040620195.gfa",
+      "region": "chr21:40545618-40620195",
+      "read_layout": "auto",
+      "max_reads": 90
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040545617_040620195.gfa",
+      "region": "chr21:40545618-40620195"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040545617_040620195.gfa",
+      "region": "chr21:40545618-40620195"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040606583_040666804.gfa",
+      "region": "chr21:40606584-40666804",
+      "read_layout": "auto",
+      "max_reads": 73
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040606583_040666804.gfa",
+      "region": "chr21:40606584-40666804"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040606583_040666804.gfa",
+      "region": "chr21:40606584-40666804"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040652140_040725042.gfa",
+      "region": "chr21:40652141-40725042",
+      "read_layout": "auto",
+      "max_reads": 88
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040652140_040725042.gfa",
+      "region": "chr21:40652141-40725042"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040652140_040725042.gfa",
+      "region": "chr21:40652141-40725042"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040704612_040801115.gfa",
+      "region": "chr21:40704613-40801115",
+      "read_layout": "auto",
+      "max_reads": 116
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040704612_040801115.gfa",
+      "region": "chr21:40704613-40801115"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040704612_040801115.gfa",
+      "region": "chr21:40704613-40801115"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040782657_040869073.gfa",
+      "region": "chr21:40782658-40869073",
+      "read_layout": "auto",
+      "max_reads": 104
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040782657_040869073.gfa",
+      "region": "chr21:40782658-40869073"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040782657_040869073.gfa",
+      "region": "chr21:40782658-40869073"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040853041_040931330.gfa",
+      "region": "chr21:40853042-40931330",
+      "read_layout": "auto",
+      "max_reads": 94
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040853041_040931330.gfa",
+      "region": "chr21:40853042-40931330"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040853041_040931330.gfa",
+      "region": "chr21:40853042-40931330"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040917703_040996836.gfa",
+      "region": "chr21:40917704-40996836",
+      "read_layout": "auto",
+      "max_reads": 95
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040917703_040996836.gfa",
+      "region": "chr21:40917704-40996836"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040917703_040996836.gfa",
+      "region": "chr21:40917704-40996836"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040975979_041062906.gfa",
+      "region": "chr21:40975980-41062906",
+      "read_layout": "auto",
+      "max_reads": 105
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040975979_041062906.gfa",
+      "region": "chr21:40975980-41062906"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_040975979_041062906.gfa",
+      "region": "chr21:40975980-41062906"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041046155_041112593.gfa",
+      "region": "chr21:41046156-41112593",
+      "read_layout": "auto",
+      "max_reads": 80
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041046155_041112593.gfa",
+      "region": "chr21:41046156-41112593"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041046155_041112593.gfa",
+      "region": "chr21:41046156-41112593"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041099275_041178877.gfa",
+      "region": "chr21:41099276-41178877",
+      "read_layout": "auto",
+      "max_reads": 96
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041099275_041178877.gfa",
+      "region": "chr21:41099276-41178877"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041099275_041178877.gfa",
+      "region": "chr21:41099276-41178877"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041159832_041254473.gfa",
+      "region": "chr21:41159833-41254473",
+      "read_layout": "auto",
+      "max_reads": 114
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041159832_041254473.gfa",
+      "region": "chr21:41159833-41254473"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041159832_041254473.gfa",
+      "region": "chr21:41159833-41254473"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041237846_041335704.gfa",
+      "region": "chr21:41237847-41335704",
+      "read_layout": "auto",
+      "max_reads": 118
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041237846_041335704.gfa",
+      "region": "chr21:41237847-41335704"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041237846_041335704.gfa",
+      "region": "chr21:41237847-41335704"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041313623_041396369.gfa",
+      "region": "chr21:41313624-41396369",
+      "read_layout": "auto",
+      "max_reads": 100
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041313623_041396369.gfa",
+      "region": "chr21:41313624-41396369"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041313623_041396369.gfa",
+      "region": "chr21:41313624-41396369"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041384050_041463574.gfa",
+      "region": "chr21:41384051-41463574",
+      "read_layout": "auto",
+      "max_reads": 96
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041384050_041463574.gfa",
+      "region": "chr21:41384051-41463574"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041384050_041463574.gfa",
+      "region": "chr21:41384051-41463574"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041449721_041490347.gfa",
+      "region": "chr21:41449722-41490347",
+      "read_layout": "auto",
+      "max_reads": 49
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041449721_041490347.gfa",
+      "region": "chr21:41449722-41490347"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041449721_041490347.gfa",
+      "region": "chr21:41449722-41490347"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041475587_041554168.gfa",
+      "region": "chr21:41475588-41554168",
+      "read_layout": "auto",
+      "max_reads": 95
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041475587_041554168.gfa",
+      "region": "chr21:41475588-41554168"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041475587_041554168.gfa",
+      "region": "chr21:41475588-41554168"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041540767_041612563.gfa",
+      "region": "chr21:41540768-41612563",
+      "read_layout": "auto",
+      "max_reads": 87
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041540767_041612563.gfa",
+      "region": "chr21:41540768-41612563"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041540767_041612563.gfa",
+      "region": "chr21:41540768-41612563"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041597324_041672884.gfa",
+      "region": "chr21:41597325-41672884",
+      "read_layout": "auto",
+      "max_reads": 91
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041597324_041672884.gfa",
+      "region": "chr21:41597325-41672884"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041597324_041672884.gfa",
+      "region": "chr21:41597325-41672884"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041661061_041724987.gfa",
+      "region": "chr21:41661062-41724987",
+      "read_layout": "auto",
+      "max_reads": 77
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041661061_041724987.gfa",
+      "region": "chr21:41661062-41724987"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041661061_041724987.gfa",
+      "region": "chr21:41661062-41724987"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041711593_041782217.gfa",
+      "region": "chr21:41711594-41782217",
+      "read_layout": "auto",
+      "max_reads": 85
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041711593_041782217.gfa",
+      "region": "chr21:41711594-41782217"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041711593_041782217.gfa",
+      "region": "chr21:41711594-41782217"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041770068_041816855.gfa",
+      "region": "chr21:41770069-41816855",
+      "read_layout": "auto",
+      "max_reads": 57
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041770068_041816855.gfa",
+      "region": "chr21:41770069-41816855"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041770068_041816855.gfa",
+      "region": "chr21:41770069-41816855"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041808718_041862918.gfa",
+      "region": "chr21:41808719-41862918",
+      "read_layout": "auto",
+      "max_reads": 66
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041808718_041862918.gfa",
+      "region": "chr21:41808719-41862918"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041808718_041862918.gfa",
+      "region": "chr21:41808719-41862918"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041850287_041919195.gfa",
+      "region": "chr21:41850288-41919195",
+      "read_layout": "auto",
+      "max_reads": 83
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041850287_041919195.gfa",
+      "region": "chr21:41850288-41919195"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041850287_041919195.gfa",
+      "region": "chr21:41850288-41919195"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041905864_041982609.gfa",
+      "region": "chr21:41905865-41982609",
+      "read_layout": "auto",
+      "max_reads": 93
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041905864_041982609.gfa",
+      "region": "chr21:41905865-41982609"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041905864_041982609.gfa",
+      "region": "chr21:41905865-41982609"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041967948_042046026.gfa",
+      "region": "chr21:41967949-42046026",
+      "read_layout": "auto",
+      "max_reads": 94
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041967948_042046026.gfa",
+      "region": "chr21:41967949-42046026"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_041967948_042046026.gfa",
+      "region": "chr21:41967949-42046026"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042034378_042098612.gfa",
+      "region": "chr21:42034379-42098612",
+      "read_layout": "auto",
+      "max_reads": 78
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042034378_042098612.gfa",
+      "region": "chr21:42034379-42098612"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042034378_042098612.gfa",
+      "region": "chr21:42034379-42098612"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042082683_042146680.gfa",
+      "region": "chr21:42082684-42146680",
+      "read_layout": "auto",
+      "max_reads": 77
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042082683_042146680.gfa",
+      "region": "chr21:42082684-42146680"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042082683_042146680.gfa",
+      "region": "chr21:42082684-42146680"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042136120_042208525.gfa",
+      "region": "chr21:42136121-42208525",
+      "read_layout": "auto",
+      "max_reads": 87
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042136120_042208525.gfa",
+      "region": "chr21:42136121-42208525"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042136120_042208525.gfa",
+      "region": "chr21:42136121-42208525"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042196239_042274870.gfa",
+      "region": "chr21:42196240-42274870",
+      "read_layout": "auto",
+      "max_reads": 95
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042196239_042274870.gfa",
+      "region": "chr21:42196240-42274870"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042196239_042274870.gfa",
+      "region": "chr21:42196240-42274870"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042260222_042327661.gfa",
+      "region": "chr21:42260223-42327661",
+      "read_layout": "auto",
+      "max_reads": 81
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042260222_042327661.gfa",
+      "region": "chr21:42260223-42327661"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042260222_042327661.gfa",
+      "region": "chr21:42260223-42327661"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042312797_042382687.gfa",
+      "region": "chr21:42312798-42382687",
+      "read_layout": "auto",
+      "max_reads": 84
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042312797_042382687.gfa",
+      "region": "chr21:42312798-42382687"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042312797_042382687.gfa",
+      "region": "chr21:42312798-42382687"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042366928_042441217.gfa",
+      "region": "chr21:42366929-42441217",
+      "read_layout": "auto",
+      "max_reads": 90
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042366928_042441217.gfa",
+      "region": "chr21:42366929-42441217"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042366928_042441217.gfa",
+      "region": "chr21:42366929-42441217"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042426235_042508276.gfa",
+      "region": "chr21:42426236-42508276",
+      "read_layout": "auto",
+      "max_reads": 99
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042426235_042508276.gfa",
+      "region": "chr21:42426236-42508276"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042426235_042508276.gfa",
+      "region": "chr21:42426236-42508276"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042486287_042572678.gfa",
+      "region": "chr21:42486288-42572678",
+      "read_layout": "auto",
+      "max_reads": 104
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042486287_042572678.gfa",
+      "region": "chr21:42486288-42572678"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042486287_042572678.gfa",
+      "region": "chr21:42486288-42572678"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042564519_042617839.gfa",
+      "region": "chr21:42564520-42617839",
+      "read_layout": "auto",
+      "max_reads": 64
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042564519_042617839.gfa",
+      "region": "chr21:42564520-42617839"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042564519_042617839.gfa",
+      "region": "chr21:42564520-42617839"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042605126_042670483.gfa",
+      "region": "chr21:42605127-42670483",
+      "read_layout": "auto",
+      "max_reads": 79
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042605126_042670483.gfa",
+      "region": "chr21:42605127-42670483"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042605126_042670483.gfa",
+      "region": "chr21:42605127-42670483"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042660241_042735563.gfa",
+      "region": "chr21:42660242-42735563",
+      "read_layout": "auto",
+      "max_reads": 91
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042660241_042735563.gfa",
+      "region": "chr21:42660242-42735563"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042660241_042735563.gfa",
+      "region": "chr21:42660242-42735563"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042720521_042797384.gfa",
+      "region": "chr21:42720522-42797384",
+      "read_layout": "auto",
+      "max_reads": 93
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042720521_042797384.gfa",
+      "region": "chr21:42720522-42797384"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042720521_042797384.gfa",
+      "region": "chr21:42720522-42797384"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042780532_042849245.gfa",
+      "region": "chr21:42780533-42849245",
+      "read_layout": "auto",
+      "max_reads": 83
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042780532_042849245.gfa",
+      "region": "chr21:42780533-42849245"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042780532_042849245.gfa",
+      "region": "chr21:42780533-42849245"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042840314_042900867.gfa",
+      "region": "chr21:42840315-42900867",
+      "read_layout": "auto",
+      "max_reads": 73
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042840314_042900867.gfa",
+      "region": "chr21:42840315-42900867"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042840314_042900867.gfa",
+      "region": "chr21:42840315-42900867"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042892276_042962150.gfa",
+      "region": "chr21:42892277-42962150",
+      "read_layout": "auto",
+      "max_reads": 84
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042892276_042962150.gfa",
+      "region": "chr21:42892277-42962150"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042892276_042962150.gfa",
+      "region": "chr21:42892277-42962150"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042949703_043019762.gfa",
+      "region": "chr21:42949704-43019762",
+      "read_layout": "auto",
+      "max_reads": 85
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042949703_043019762.gfa",
+      "region": "chr21:42949704-43019762"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_042949703_043019762.gfa",
+      "region": "chr21:42949704-43019762"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043001719_043075948.gfa",
+      "region": "chr21:43001720-43075948",
+      "read_layout": "auto",
+      "max_reads": 90
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043001719_043075948.gfa",
+      "region": "chr21:43001720-43075948"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043001719_043075948.gfa",
+      "region": "chr21:43001720-43075948"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043058550_043145579.gfa",
+      "region": "chr21:43058551-43145579",
+      "read_layout": "auto",
+      "max_reads": 105
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043058550_043145579.gfa",
+      "region": "chr21:43058551-43145579"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043058550_043145579.gfa",
+      "region": "chr21:43058551-43145579"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043127745_043207701.gfa",
+      "region": "chr21:43127746-43207701",
+      "read_layout": "auto",
+      "max_reads": 96
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043127745_043207701.gfa",
+      "region": "chr21:43127746-43207701"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043127745_043207701.gfa",
+      "region": "chr21:43127746-43207701"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043189703_043287207.gfa",
+      "region": "chr21:43189704-43287207",
+      "read_layout": "auto",
+      "max_reads": 118
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043189703_043287207.gfa",
+      "region": "chr21:43189704-43287207"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043189703_043287207.gfa",
+      "region": "chr21:43189704-43287207"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043280496_043336537.gfa",
+      "region": "chr21:43280497-43336537",
+      "read_layout": "auto",
+      "max_reads": 68
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043280496_043336537.gfa",
+      "region": "chr21:43280497-43336537"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043280496_043336537.gfa",
+      "region": "chr21:43280497-43336537"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043329865_043381616.gfa",
+      "region": "chr21:43329866-43381616",
+      "read_layout": "auto",
+      "max_reads": 63
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043329865_043381616.gfa",
+      "region": "chr21:43329866-43381616"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043329865_043381616.gfa",
+      "region": "chr21:43329866-43381616"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043369104_043430536.gfa",
+      "region": "chr21:43369105-43430536",
+      "read_layout": "auto",
+      "max_reads": 74
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043369104_043430536.gfa",
+      "region": "chr21:43369105-43430536"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043369104_043430536.gfa",
+      "region": "chr21:43369105-43430536"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043414499_043497302.gfa",
+      "region": "chr21:43414500-43497302",
+      "read_layout": "auto",
+      "max_reads": 100
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043414499_043497302.gfa",
+      "region": "chr21:43414500-43497302"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043414499_043497302.gfa",
+      "region": "chr21:43414500-43497302"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043473898_043577741.gfa",
+      "region": "chr21:43473899-43577741",
+      "read_layout": "auto",
+      "max_reads": 125
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043473898_043577741.gfa",
+      "region": "chr21:43473899-43577741"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043473898_043577741.gfa",
+      "region": "chr21:43473899-43577741"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043557573_043660799.gfa",
+      "region": "chr21:43557574-43660799",
+      "read_layout": "auto",
+      "max_reads": 124
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043557573_043660799.gfa",
+      "region": "chr21:43557574-43660799"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043557573_043660799.gfa",
+      "region": "chr21:43557574-43660799"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043639959_043728630.gfa",
+      "region": "chr21:43639960-43728630",
+      "read_layout": "auto",
+      "max_reads": 107
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043639959_043728630.gfa",
+      "region": "chr21:43639960-43728630"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043639959_043728630.gfa",
+      "region": "chr21:43639960-43728630"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043712212_043772173.gfa",
+      "region": "chr21:43712213-43772173",
+      "read_layout": "auto",
+      "max_reads": 72
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043712212_043772173.gfa",
+      "region": "chr21:43712213-43772173"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043712212_043772173.gfa",
+      "region": "chr21:43712213-43772173"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043760261_043818265.gfa",
+      "region": "chr21:43760262-43818265",
+      "read_layout": "auto",
+      "max_reads": 70
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043760261_043818265.gfa",
+      "region": "chr21:43760262-43818265"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043760261_043818265.gfa",
+      "region": "chr21:43760262-43818265"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043808998_043865829.gfa",
+      "region": "chr21:43808999-43865829",
+      "read_layout": "auto",
+      "max_reads": 69
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043808998_043865829.gfa",
+      "region": "chr21:43808999-43865829"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043808998_043865829.gfa",
+      "region": "chr21:43808999-43865829"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043850650_043947100.gfa",
+      "region": "chr21:43850651-43947100",
+      "read_layout": "auto",
+      "max_reads": 116
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043850650_043947100.gfa",
+      "region": "chr21:43850651-43947100"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043850650_043947100.gfa",
+      "region": "chr21:43850651-43947100"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043929543_044013311.gfa",
+      "region": "chr21:43929544-44013311",
+      "read_layout": "auto",
+      "max_reads": 101
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043929543_044013311.gfa",
+      "region": "chr21:43929544-44013311"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043929543_044013311.gfa",
+      "region": "chr21:43929544-44013311"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043994572_044100095.gfa",
+      "region": "chr21:43994573-44100095",
+      "read_layout": "auto",
+      "max_reads": 127
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043994572_044100095.gfa",
+      "region": "chr21:43994573-44100095"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_043994572_044100095.gfa",
+      "region": "chr21:43994573-44100095"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044083516_044176416.gfa",
+      "region": "chr21:44083517-44176416",
+      "read_layout": "auto",
+      "max_reads": 112
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044083516_044176416.gfa",
+      "region": "chr21:44083517-44176416"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044083516_044176416.gfa",
+      "region": "chr21:44083517-44176416"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044161492_044225187.gfa",
+      "region": "chr21:44161493-44225187",
+      "read_layout": "auto",
+      "max_reads": 77
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044161492_044225187.gfa",
+      "region": "chr21:44161493-44225187"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044161492_044225187.gfa",
+      "region": "chr21:44161493-44225187"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044215571_044280294.gfa",
+      "region": "chr21:44215572-44280294",
+      "read_layout": "auto",
+      "max_reads": 78
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044215571_044280294.gfa",
+      "region": "chr21:44215572-44280294"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044215571_044280294.gfa",
+      "region": "chr21:44215572-44280294"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044267388_044332633.gfa",
+      "region": "chr21:44267389-44332633",
+      "read_layout": "auto",
+      "max_reads": 79
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044267388_044332633.gfa",
+      "region": "chr21:44267389-44332633"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044267388_044332633.gfa",
+      "region": "chr21:44267389-44332633"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044317633_044391914.gfa",
+      "region": "chr21:44317634-44391914",
+      "read_layout": "auto",
+      "max_reads": 90
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044317633_044391914.gfa",
+      "region": "chr21:44317634-44391914"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044317633_044391914.gfa",
+      "region": "chr21:44317634-44391914"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044373425_044407345.gfa",
+      "region": "chr21:44373426-44407345",
+      "read_layout": "auto",
+      "max_reads": 41
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044373425_044407345.gfa",
+      "region": "chr21:44373426-44407345"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044373425_044407345.gfa",
+      "region": "chr21:44373426-44407345"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044405973_044433187.gfa",
+      "region": "chr21:44405974-44433187",
+      "read_layout": "auto",
+      "max_reads": 33
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044405973_044433187.gfa",
+      "region": "chr21:44405974-44433187"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044405973_044433187.gfa",
+      "region": "chr21:44405974-44433187"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044416077_044491057.gfa",
+      "region": "chr21:44416078-44491057",
+      "read_layout": "auto",
+      "max_reads": 90
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044416077_044491057.gfa",
+      "region": "chr21:44416078-44491057"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044416077_044491057.gfa",
+      "region": "chr21:44416078-44491057"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044476897_044548338.gfa",
+      "region": "chr21:44476898-44548338",
+      "read_layout": "auto",
+      "max_reads": 86
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044476897_044548338.gfa",
+      "region": "chr21:44476898-44548338"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044476897_044548338.gfa",
+      "region": "chr21:44476898-44548338"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044532858_044590876.gfa",
+      "region": "chr21:44532859-44590876",
+      "read_layout": "auto",
+      "max_reads": 70
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044532858_044590876.gfa",
+      "region": "chr21:44532859-44590876"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044532858_044590876.gfa",
+      "region": "chr21:44532859-44590876"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044582664_044634248.gfa",
+      "region": "chr21:44582665-44634248",
+      "read_layout": "auto",
+      "max_reads": 62
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044582664_044634248.gfa",
+      "region": "chr21:44582665-44634248"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044582664_044634248.gfa",
+      "region": "chr21:44582665-44634248"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044622296_044680844.gfa",
+      "region": "chr21:44622297-44680844",
+      "read_layout": "auto",
+      "max_reads": 71
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044622296_044680844.gfa",
+      "region": "chr21:44622297-44680844"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044622296_044680844.gfa",
+      "region": "chr21:44622297-44680844"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044672189_044734118.gfa",
+      "region": "chr21:44672190-44734118",
+      "read_layout": "auto",
+      "max_reads": 75
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044672189_044734118.gfa",
+      "region": "chr21:44672190-44734118"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044672189_044734118.gfa",
+      "region": "chr21:44672190-44734118"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044721439_044792520.gfa",
+      "region": "chr21:44721440-44792520",
+      "read_layout": "auto",
+      "max_reads": 86
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044721439_044792520.gfa",
+      "region": "chr21:44721440-44792520"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044721439_044792520.gfa",
+      "region": "chr21:44721440-44792520"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044772968_044842614.gfa",
+      "region": "chr21:44772969-44842614",
+      "read_layout": "auto",
+      "max_reads": 84
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044772968_044842614.gfa",
+      "region": "chr21:44772969-44842614"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044772968_044842614.gfa",
+      "region": "chr21:44772969-44842614"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044835681_044892553.gfa",
+      "region": "chr21:44835682-44892553",
+      "read_layout": "auto",
+      "max_reads": 69
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044835681_044892553.gfa",
+      "region": "chr21:44835682-44892553"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044835681_044892553.gfa",
+      "region": "chr21:44835682-44892553"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044879587_044942776.gfa",
+      "region": "chr21:44879588-44942776",
+      "read_layout": "auto",
+      "max_reads": 76
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044879587_044942776.gfa",
+      "region": "chr21:44879588-44942776"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044879587_044942776.gfa",
+      "region": "chr21:44879588-44942776"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044929579_044982059.gfa",
+      "region": "chr21:44929580-44982059",
+      "read_layout": "auto",
+      "max_reads": 63
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044929579_044982059.gfa",
+      "region": "chr21:44929580-44982059"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044929579_044982059.gfa",
+      "region": "chr21:44929580-44982059"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044978497_045021779.gfa",
+      "region": "chr21:44978498-45021779",
+      "read_layout": "auto",
+      "max_reads": 52
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044978497_045021779.gfa",
+      "region": "chr21:44978498-45021779"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_044978497_045021779.gfa",
+      "region": "chr21:44978498-45021779"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045007483_045076207.gfa",
+      "region": "chr21:45007484-45076207",
+      "read_layout": "auto",
+      "max_reads": 83
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045007483_045076207.gfa",
+      "region": "chr21:45007484-45076207"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045007483_045076207.gfa",
+      "region": "chr21:45007484-45076207"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045058595_045155794.gfa",
+      "region": "chr21:45058596-45155794",
+      "read_layout": "auto",
+      "max_reads": 117
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045058595_045155794.gfa",
+      "region": "chr21:45058596-45155794"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045058595_045155794.gfa",
+      "region": "chr21:45058596-45155794"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045134766_045235722.gfa",
+      "region": "chr21:45134767-45235722",
+      "read_layout": "auto",
+      "max_reads": 122
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045134766_045235722.gfa",
+      "region": "chr21:45134767-45235722"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045134766_045235722.gfa",
+      "region": "chr21:45134767-45235722"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045221777_045283101.gfa",
+      "region": "chr21:45221778-45283101",
+      "read_layout": "auto",
+      "max_reads": 74
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045221777_045283101.gfa",
+      "region": "chr21:45221778-45283101"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045221777_045283101.gfa",
+      "region": "chr21:45221778-45283101"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045268403_045330018.gfa",
+      "region": "chr21:45268404-45330018",
+      "read_layout": "auto",
+      "max_reads": 74
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045268403_045330018.gfa",
+      "region": "chr21:45268404-45330018"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045268403_045330018.gfa",
+      "region": "chr21:45268404-45330018"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045324565_045372456.gfa",
+      "region": "chr21:45324566-45372456",
+      "read_layout": "auto",
+      "max_reads": 58
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045324565_045372456.gfa",
+      "region": "chr21:45324566-45372456"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045324565_045372456.gfa",
+      "region": "chr21:45324566-45372456"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045360748_045425602.gfa",
+      "region": "chr21:45360749-45425602",
+      "read_layout": "auto",
+      "max_reads": 78
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045360748_045425602.gfa",
+      "region": "chr21:45360749-45425602"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045360748_045425602.gfa",
+      "region": "chr21:45360749-45425602"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045411777_045458441.gfa",
+      "region": "chr21:45411778-45458441",
+      "read_layout": "auto",
+      "max_reads": 56
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045411777_045458441.gfa",
+      "region": "chr21:45411778-45458441"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045411777_045458441.gfa",
+      "region": "chr21:45411778-45458441"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045447687_045494184.gfa",
+      "region": "chr21:45447688-45494184",
+      "read_layout": "auto",
+      "max_reads": 56
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045447687_045494184.gfa",
+      "region": "chr21:45447688-45494184"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045447687_045494184.gfa",
+      "region": "chr21:45447688-45494184"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045486574_045524093.gfa",
+      "region": "chr21:45486575-45524093",
+      "read_layout": "auto",
+      "max_reads": 46
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045486574_045524093.gfa",
+      "region": "chr21:45486575-45524093"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045486574_045524093.gfa",
+      "region": "chr21:45486575-45524093"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045509704_045555220.gfa",
+      "region": "chr21:45509705-45555220",
+      "read_layout": "auto",
+      "max_reads": 55
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045509704_045555220.gfa",
+      "region": "chr21:45509705-45555220"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045509704_045555220.gfa",
+      "region": "chr21:45509705-45555220"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045554096_045631922.gfa",
+      "region": "chr21:45554097-45631922",
+      "read_layout": "auto",
+      "max_reads": 94
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045554096_045631922.gfa",
+      "region": "chr21:45554097-45631922"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045554096_045631922.gfa",
+      "region": "chr21:45554097-45631922"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045610378_045721270.gfa",
+      "region": "chr21:45610379-45721270",
+      "read_layout": "auto",
+      "max_reads": 134
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045610378_045721270.gfa",
+      "region": "chr21:45610379-45721270"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045610378_045721270.gfa",
+      "region": "chr21:45610379-45721270"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045689940_045806014.gfa",
+      "region": "chr21:45689941-45806014",
+      "read_layout": "auto",
+      "max_reads": 140
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045689940_045806014.gfa",
+      "region": "chr21:45689941-45806014"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045689940_045806014.gfa",
+      "region": "chr21:45689941-45806014"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045785305_045871146.gfa",
+      "region": "chr21:45785306-45871146",
+      "read_layout": "auto",
+      "max_reads": 104
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045785305_045871146.gfa",
+      "region": "chr21:45785306-45871146"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045785305_045871146.gfa",
+      "region": "chr21:45785306-45871146"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045852485_045915335.gfa",
+      "region": "chr21:45852486-45915335",
+      "read_layout": "auto",
+      "max_reads": 76
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045852485_045915335.gfa",
+      "region": "chr21:45852486-45915335"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045852485_045915335.gfa",
+      "region": "chr21:45852486-45915335"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045908468_045955836.gfa",
+      "region": "chr21:45908469-45955836",
+      "read_layout": "auto",
+      "max_reads": 57
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045908468_045955836.gfa",
+      "region": "chr21:45908469-45955836"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045908468_045955836.gfa",
+      "region": "chr21:45908469-45955836"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045944000_045978099.gfa",
+      "region": "chr21:45944001-45978099",
+      "read_layout": "auto",
+      "max_reads": 41
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045944000_045978099.gfa",
+      "region": "chr21:45944001-45978099"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045944000_045978099.gfa",
+      "region": "chr21:45944001-45978099"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045976696_045985673.gfa",
+      "region": "chr21:45976697-45985673",
+      "read_layout": "auto",
+      "max_reads": 11
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045976696_045985673.gfa",
+      "region": "chr21:45976697-45985673"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045982689_046006116.gfa",
+      "region": "chr21:45982690-46006116",
+      "read_layout": "auto",
+      "max_reads": 29
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045982689_046006116.gfa",
+      "region": "chr21:45982690-46006116"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045982689_046006116.gfa",
+      "region": "chr21:45982690-46006116"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045997744_046054186.gfa",
+      "region": "chr21:45997745-46054186",
+      "read_layout": "auto",
+      "max_reads": 68
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045997744_046054186.gfa",
+      "region": "chr21:45997745-46054186"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_045997744_046054186.gfa",
+      "region": "chr21:45997745-46054186"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046041898_046090930.gfa",
+      "region": "chr21:46041899-46090930",
+      "read_layout": "auto",
+      "max_reads": 59
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046041898_046090930.gfa",
+      "region": "chr21:46041899-46090930"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046041898_046090930.gfa",
+      "region": "chr21:46041899-46090930"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046080729_046134514.gfa",
+      "region": "chr21:46080730-46134514",
+      "read_layout": "auto",
+      "max_reads": 65
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046080729_046134514.gfa",
+      "region": "chr21:46080730-46134514"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046080729_046134514.gfa",
+      "region": "chr21:46080730-46134514"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046128016_046151294.gfa",
+      "region": "chr21:46128017-46151294",
+      "read_layout": "auto",
+      "max_reads": 28
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046128016_046151294.gfa",
+      "region": "chr21:46128017-46151294"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046128016_046151294.gfa",
+      "region": "chr21:46128017-46151294"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046146887_046169133.gfa",
+      "region": "chr21:46146888-46169133",
+      "read_layout": "auto",
+      "max_reads": 27
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046146887_046169133.gfa",
+      "region": "chr21:46146888-46169133"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046146887_046169133.gfa",
+      "region": "chr21:46146888-46169133"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046161024_046217853.gfa",
+      "region": "chr21:46161025-46217853",
+      "read_layout": "auto",
+      "max_reads": 69
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046161024_046217853.gfa",
+      "region": "chr21:46161025-46217853"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046161024_046217853.gfa",
+      "region": "chr21:46161025-46217853"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046199386_046291111.gfa",
+      "region": "chr21:46199387-46291111",
+      "read_layout": "auto",
+      "max_reads": 111
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046199386_046291111.gfa",
+      "region": "chr21:46199387-46291111"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046199386_046291111.gfa",
+      "region": "chr21:46199387-46291111"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046275534_046316297.gfa",
+      "region": "chr21:46275535-46316297",
+      "read_layout": "auto",
+      "max_reads": 49
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046275534_046316297.gfa",
+      "region": "chr21:46275535-46316297"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046275534_046316297.gfa",
+      "region": "chr21:46275535-46316297"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046299566_046386170.gfa",
+      "region": "chr21:46299567-46386170",
+      "read_layout": "auto",
+      "max_reads": 104
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046299566_046386170.gfa",
+      "region": "chr21:46299567-46386170"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046299566_046386170.gfa",
+      "region": "chr21:46299567-46386170"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046373020_046437515.gfa",
+      "region": "chr21:46373021-46437515",
+      "read_layout": "auto",
+      "max_reads": 78
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046373020_046437515.gfa",
+      "region": "chr21:46373021-46437515"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046373020_046437515.gfa",
+      "region": "chr21:46373021-46437515"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046424317_046514314.gfa",
+      "region": "chr21:46424318-46514314",
+      "read_layout": "auto",
+      "max_reads": 108
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046424317_046514314.gfa",
+      "region": "chr21:46424318-46514314"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046424317_046514314.gfa",
+      "region": "chr21:46424318-46514314"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046495607_046584692.gfa",
+      "region": "chr21:46495608-46584692",
+      "read_layout": "auto",
+      "max_reads": 107
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046495607_046584692.gfa",
+      "region": "chr21:46495608-46584692"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046495607_046584692.gfa",
+      "region": "chr21:46495608-46584692"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046569738_046656800.gfa",
+      "region": "chr21:46569739-46656800",
+      "read_layout": "auto",
+      "max_reads": 105
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046569738_046656800.gfa",
+      "region": "chr21:46569739-46656800"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046569738_046656800.gfa",
+      "region": "chr21:46569739-46656800"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046636241_046696250.gfa",
+      "region": "chr21:46636242-46696250",
+      "read_layout": "auto",
+      "max_reads": 73
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046636241_046696250.gfa",
+      "region": "chr21:46636242-46696250"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046636241_046696250.gfa",
+      "region": "chr21:46636242-46696250"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046692460_046699983.gfa",
+      "region": "chr21:46692461-46699983",
+      "read_layout": "auto",
+      "max_reads": 10
+    },
+    {
+      "sample": "HG002",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046692460_046699983.gfa",
+      "region": "chr21:46692461-46699983"
+    },
+    {
+      "sample": "HG002",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "gfa": "data/chr21/HG002/pangenome_windows/chr21_046692460_046699983.gfa",
+      "region": "chr21:46692461-46699983"
+    }
+  ]
+}

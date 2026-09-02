@@ -1,0 +1,63 @@
+HPRC map: sample=HG002 modalities=illumina bam-mode=separate
+  ref=data/chr21/HG002/ref/chr21.fa
+  reads-root=data/hprc/reads
+  out=data/hprc/bam/HG002.neural.illumina.bam
+[ours] reference contig=chr21 len=46,709,983  (0.1s)
+read FASTQ HG002.chr21.R1.fastq.gz: 0read [00:00, ?read/s]read FASTQ HG002.chr21.R1.fastq.gz: 5607read [00:00, 54919.37read/s]read FASTQ HG002.chr21.R1.fastq.gz: 11099read [00:00, 37380.25read/s]read FASTQ HG002.chr21.R1.fastq.gz: 16507read [00:00, 43422.59read/s]                                                                     read FASTQ HG002.chr21.R2.fastq.gz: 0read [00:00, ?read/s]read FASTQ HG002.chr21.R2.fastq.gz: 2048read [00:00, 12869.64read/s]read FASTQ HG002.chr21.R2.fastq.gz: 7506read [00:00, 32599.55read/s]read FASTQ HG002.chr21.R2.fastq.gz: 12941read [00:00, 41349.55read/s]read FASTQ HG002.chr21.R2.fastq.gz: 17452read [00:00, 28310.05read/s]                                                                     pair FASTQ mates:   0%|          | 0/19354 [00:00<?, ?pair/s]                                                             dedupe read IDs:   0%|          | 0/32 [00:00<?, ?read/s]                                                         [ours] illumina: 32 reads  modality=illumina  files=2
+         - data/hprc/reads/HG002/illumina/HG002.chr21.R1.fastq.gz
+         - data/hprc/reads/HG002/illumina/HG002.chr21.R2.fastq.gz
+[ours] total reads=32 modalities=['illumina'] mode=hybrid bam-mode=separate
+[ours] loaded checkpoint: data/training_runs/chr21_both_hprc/checkpoint.pt (d_model=256)
+[ours] workers=12 batch_size=64 threads=12 d_model=256
+[ours] loaded reference index from cache (data/chr21/HG002/index_cache)
+[ours] reference index ready  (0.7s)
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s]
+seed:   0%|          | 0/32 [00:00<?, ?read/s][A
+seed:   3%|▎         | 1/32 [00:05<02:54,  5.64s/read][A
+seed:   9%|▉         | 3/32 [00:05<00:43,  1.51s/read][A
+seed:  41%|████      | 13/32 [00:08<00:08,  2.22read/s][A
+seed:  47%|████▋     | 15/32 [00:08<00:06,  2.59read/s][A
+seed:  56%|█████▋    | 18/32 [00:09<00:04,  2.86read/s][A
+seed:  62%|██████▎   | 20/32 [00:10<00:05,  2.24read/s][A
+seed:  81%|████████▏ | 26/32 [00:11<00:01,  4.00read/s][A
+seed:  88%|████████▊ | 28/32 [00:12<00:01,  3.47read/s][A
+                                                       [A
+extend:   0%|          | 0/32 [00:00<?, ?read/s][A
+extend:   3%|▎         | 1/32 [00:00<00:09,  3.33read/s][A
+extend:   6%|▋         | 2/32 [00:00<00:08,  3.34read/s][A
+extend:   9%|▉         | 3/32 [00:00<00:08,  3.41read/s][A
+extend:  12%|█▎        | 4/32 [00:01<00:08,  3.44read/s][A
+extend:  16%|█▌        | 5/32 [00:01<00:07,  3.44read/s][A
+extend:  19%|█▉        | 6/32 [00:01<00:07,  3.43read/s][A
+extend:  22%|██▏       | 7/32 [00:02<00:07,  3.45read/s][A
+extend:  25%|██▌       | 8/32 [00:02<00:06,  3.47read/s][A
+extend:  28%|██▊       | 9/32 [00:02<00:06,  3.48read/s][A
+extend:  31%|███▏      | 10/32 [00:02<00:06,  3.46read/s][A
+extend:  34%|███▍      | 11/32 [00:03<00:06,  3.44read/s][A
+extend:  38%|███▊      | 12/32 [00:03<00:05,  3.43read/s][A
+extend:  41%|████      | 13/32 [00:03<00:05,  3.45read/s][A
+extend:  44%|████▍     | 14/32 [00:04<00:05,  3.44read/s][A
+extend:  47%|████▋     | 15/32 [00:04<00:04,  3.46read/s][A
+extend:  50%|█████     | 16/32 [00:04<00:04,  3.44read/s][A
+extend:  53%|█████▎    | 17/32 [00:04<00:04,  3.46read/s][A
+extend:  56%|█████▋    | 18/32 [00:05<00:04,  3.45read/s][A
+extend:  59%|█████▉    | 19/32 [00:05<00:03,  3.46read/s][A
+extend:  62%|██████▎   | 20/32 [00:05<00:03,  3.45read/s][A
+extend:  66%|██████▌   | 21/32 [00:06<00:03,  3.46read/s][A
+extend:  69%|██████▉   | 22/32 [00:06<00:02,  3.45read/s][A
+extend:  72%|███████▏  | 23/32 [00:06<00:02,  3.47read/s][A
+extend:  75%|███████▌  | 24/32 [00:06<00:02,  3.48read/s][A
+extend:  78%|███████▊  | 25/32 [00:07<00:02,  3.49read/s][A
+extend:  81%|████████▏ | 26/32 [00:07<00:01,  3.46read/s][A
+extend:  84%|████████▍ | 27/32 [00:07<00:01,  3.48read/s][A
+extend:  88%|████████▊ | 28/32 [00:08<00:01,  3.49read/s][A
+extend:  91%|█████████ | 29/32 [00:08<00:00,  3.47read/s][A
+extend:  94%|█████████▍| 30/32 [00:08<00:00,  3.48read/s][A
+extend:  97%|█████████▋| 31/32 [00:08<00:00,  3.49read/s][A
+extend: 100%|██████████| 32/32 [00:09<00:00,  3.47read/s][A
+                                                         [Aalign[hybrid]: 100%|██████████| 1/1 [00:27<00:00, 27.06s/batch]                                                               [ours] aligned  (27.1s, 1.2 reads/s)
+[ours] stats: reads=32 mapped=32 anchors=160000 (pruned 0) chains=33 extended=33 neural_batches=1 rescued=0 | passes: hybrid=32
+alignments to records:   0%|          | 0/32 [00:00<?, ?read/s]                                                               write BAM:   0%|          | 0/32 [00:00<?, ?read/s]                                                   [ours] wrote data/hprc/bam/HG002.neural.illumina.bam
+[ours] done  total 29.6s
+Done: data/hprc/bam/HG002.neural.illumina.bam
+note: per-modality BAMs use stem data/hprc/bam/HG002.neural.illumina.<modality>.bam

@@ -1,0 +1,125 @@
+# syntax=docker/dockerfile:1.7
+# ---------------------------------------------------------------------------
+# GraphMambaFormer — native linux/arm64 (Apple Silicon) model image.
+#
+#   TARGET=arm docker/build.sh     -> graphmambaformer:latest  (arm64, CPU)
+#
+# Why a separate file: the main docker/Dockerfile is rooted at
+# google/deepvariant:1.6.1, which Google publishes for linux/amd64 ONLY (no
+# arm64 manifest — it relies on AVX). So the DeepVariant + vg Fig 6a
+# variant-calling baseline cannot run natively on ARM. This image therefore
+# intentionally drops DeepVariant and vg and ships:
+#   - the model stack: PyTorch (CPU, native arm64 wheel) + graphmambaformer
+#   - BAM/VCF tooling: samtools / bcftools / htslib 1.19 (compiled) + BWA
+# pysam still bundles its own htslib, so BAM I/O in the model code is native.
+#
+# For the full genomics baseline, build the amd64 image under Rosetta instead:
+#   docker/build.sh            # graphmambaformer:latest (linux/amd64)
+# ---------------------------------------------------------------------------
+ARG BUILD_IMAGE=debian:bookworm
+ARG RUNTIME_IMAGE=debian:bookworm-slim
+
+# --- stage 1: htslib / samtools / bcftools 1.19 ----------------------------
+# Compiled from source (portable C), so these match the 1.19 pin the pipeline
+# expects and build cleanly on arm64.
+FROM ${BUILD_IMAGE} AS htsbuild
+
+ARG HTSLIB_VERSION=1.19
+ARG SAMTOOLS_VERSION=1.19
+ARG BCFTOOLS_VERSION=1.19
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        autoconf automake build-essential bzip2 ca-certificates curl \
+        libbz2-dev libcurl4-openssl-dev liblzma-dev libncurses5-dev \
+        libssl-dev make perl zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/build
+
+RUN curl -fsSL -O "https://github.com/samtools/htslib/releases/download/${HTSLIB_VERSION}/htslib-${HTSLIB_VERSION}.tar.bz2" \
+    && tar -xjf "htslib-${HTSLIB_VERSION}.tar.bz2" \
+    && cd "htslib-${HTSLIB_VERSION}" \
+    && ./configure --prefix=/usr/local --enable-libcurl \
+    && make -j"$(nproc)" && make install
+
+RUN curl -fsSL -O "https://github.com/samtools/samtools/releases/download/${SAMTOOLS_VERSION}/samtools-${SAMTOOLS_VERSION}.tar.bz2" \
+    && tar -xjf "samtools-${SAMTOOLS_VERSION}.tar.bz2" \
+    && cd "samtools-${SAMTOOLS_VERSION}" \
+    && ./configure --prefix=/usr/local --with-htslib=system \
+    && make -j"$(nproc)" && make install
+
+RUN curl -fsSL -O "https://github.com/samtools/bcftools/releases/download/${BCFTOOLS_VERSION}/bcftools-${BCFTOOLS_VERSION}.tar.bz2" \
+    && tar -xjf "bcftools-${BCFTOOLS_VERSION}.tar.bz2" \
+    && cd "bcftools-${BCFTOOLS_VERSION}" \
+    && ./configure --prefix=/usr/local --with-htslib=system \
+    && make -j"$(nproc)" && make install
+
+# --- stage 2: model + tooling runtime --------------------------------------
+FROM ${RUNTIME_IMAGE} AS full
+
+# 2.4.1 ships a native linux_aarch64 CPU wheel on PyPI and keeps the accel
+# stack's SDP / bf16 paths available.
+ARG TORCH_VERSION=2.4.1
+
+LABEL org.opencontainers.image.source="https://github.com/sarakh1999/GraphMambaFormer" \
+      org.opencontainers.image.title="graphmambaformer" \
+      org.opencontainers.image.description="GraphMambaFormer + PyTorch (CPU) — native linux/arm64 model image (no DeepVariant/vg)"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bwa bzip2 ca-certificates curl gawk git jq less nano parallel procps \
+        libcurl4 libssl3 zlib1g \
+        python3 python3-venv python3-pip vim-tiny \
+    && ln -sf /usr/bin/vim.tiny /usr/bin/vim \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=htsbuild /usr/local/bin/ /usr/local/bin/
+COPY --from=htsbuild /usr/local/lib/ /usr/local/lib/
+COPY --from=htsbuild /usr/local/include/ /usr/local/include/
+RUN ldconfig
+
+# Dedicated venv keeps the model stack isolated from the system Python.
+# torch comes from the default PyPI index, which serves the CPU-only aarch64
+# wheel (there is no separate +cpu build for arm64).
+RUN python3 -m venv /opt/gmf \
+    && /opt/gmf/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/gmf/bin/pip install --no-cache-dir "torch==${TORCH_VERSION}" \
+    && /opt/gmf/bin/pip install --no-cache-dir \
+        "einops>=0.7" "numpy<2" "pysam>=0.22" "matplotlib>=3.7" "tqdm>=4.66"
+
+# Baked so the image is self-contained; a bind-mounted /work takes precedence
+# via PYTHONPATH, so live edits on the host still win.
+COPY graphmambaformer/ /opt/graphmambaformer/graphmambaformer/
+COPY scripts/ /opt/graphmambaformer/scripts/
+COPY README.md requirements.txt /opt/graphmambaformer/
+COPY docker/gmf-doctor /usr/local/bin/gmf-doctor
+
+RUN chmod +x /usr/local/bin/gmf-doctor \
+    && ln -sf /opt/gmf/bin/python /usr/local/bin/gmf-python \
+    && printf '%s\n' \
+         '#!/bin/sh' \
+         'if [ "$#" -lt 1 ]; then' \
+         '  echo "usage: gmf-script <script.py> [args...]" >&2' \
+         '  exit 2' \
+         'fi' \
+         'script=$1; shift' \
+         'exec gmf-python "/opt/graphmambaformer/scripts/$script" "$@"' \
+       > /usr/local/bin/gmf-script \
+    && chmod +x /usr/local/bin/gmf-script
+
+# GMF_SKIP_GENOMICS tells gmf-doctor this is the model-only profile, so the
+# absent DeepVariant/vg tools are reported as n/a rather than failures.
+# PLOT_PY points at the model venv (it carries matplotlib) since there is no
+# separate /opt/plotenv here.
+ENV PATH=/usr/local/bin:/opt/graphmambaformer/scripts:${PATH} \
+    PYTHONPATH=/work:/opt/graphmambaformer \
+    GMF_HOME=/opt/graphmambaformer \
+    GMF_SKIP_GENOMICS=1 \
+    PLOT_PY=/opt/gmf/bin/python \
+    MPLBACKEND=Agg
+
+WORKDIR /work
+CMD ["bash"]

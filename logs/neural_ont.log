@@ -1,0 +1,18 @@
+HPRC map: sample=HG002 modalities=ont bam-mode=separate
+  ref=data/chr21/HG002/ref/chr21.fa
+  reads-root=data/hprc/reads
+  out=data/hprc/bam/HG002.neural.ont.bam
+[ours] reference contig=chr21 len=46,709,983  (0.1s)
+read FASTQ HG002.chr21.ont.fastq.gz: 0read [00:00, ?read/s]read FASTQ HG002.chr21.ont.fastq.gz: 159read [00:00, 1584.59read/s]                                                                   dedupe read IDs:   0%|          | 0/3 [00:00<?, ?read/s]                                                        [ours] ont: 3 reads  modality=ont  files=1
+         - data/hprc/reads/HG002/ont/HG002.chr21.ont.fastq.gz
+[ours] total reads=3 modalities=['ont'] mode=hybrid bam-mode=separate
+[ours] loaded checkpoint: data/training_runs/chr21_both_hprc/checkpoint.pt (d_model=256)
+[ours] workers=12 batch_size=64 threads=12 d_model=256
+[ours] loaded reference index from cache (data/chr21/HG002/index_cache)
+[ours] reference index ready  (0.7s)
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s]align[hybrid]: 100%|██████████| 1/1 [01:31<00:00, 91.96s/batch]                                                               [ours] aligned  (92.0s, 0.0 reads/s)
+[ours] stats: reads=3 mapped=3 anchors=15000 (pruned 0) chains=3 extended=3 neural_batches=1 rescued=0 | passes: hybrid=3
+alignments to records:   0%|          | 0/3 [00:00<?, ?read/s]                                                              write BAM:   0%|          | 0/3 [00:00<?, ?read/s]                                                  [ours] wrote data/hprc/bam/HG002.neural.ont.bam
+[ours] done  total 93.7s
+Done: data/hprc/bam/HG002.neural.ont.bam
+note: per-modality BAMs use stem data/hprc/bam/HG002.neural.ont.<modality>.bam

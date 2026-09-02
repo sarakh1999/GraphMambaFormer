@@ -1,0 +1,17 @@
+HPRC map: sample=HG002 modalities=hifi bam-mode=separate
+  ref=data/chr21/HG002/ref/chr21.fa
+  reads-root=data/hprc/reads
+  out=data/hprc/bam/HG002.smoke.hifi.bam
+[ours] reference contig=chr21 len=46,709,983  (0.1s)
+read FASTQ HG002.chr21.pacbio_hifi.fastq.gz: 0read [00:00, ?read/s]read FASTQ HG002.chr21.pacbio_hifi.fastq.gz: 195read [00:00, 1943.17read/s]                                                                           dedupe read IDs:   0%|          | 0/25 [00:00<?, ?read/s]                                                         [ours] hifi: 25 reads  modality=pacbio_hifi  files=1
+         - data/hprc/reads/HG002/hifi/HG002.chr21.pacbio_hifi.fastq.gz
+[ours] total reads=25 modalities=['pacbio_hifi'] mode=fast bam-mode=separate
+[ours] workers=12 batch_size=64 threads=12 d_model=256
+[ours] loaded reference index from cache (data/chr21/HG002/index_cache)
+[ours] reference index ready  (0.7s)
+align[fast]:   0%|          | 0/1 [00:00<?, ?batch/s]align[fast]: 100%|██████████| 1/1 [12:09<00:00, 729.29s/batch]                                                              [ours] aligned  (729.3s, 0.0 reads/s)
+[ours] stats: reads=25 mapped=25 anchors=125000 (pruned 0) chains=25 extended=25 neural_batches=0 rescued=0 | passes: fast=25
+alignments to records:   0%|          | 0/25 [00:00<?, ?read/s]                                                               write BAM:   0%|          | 0/25 [00:00<?, ?read/s]                                                   [ours] wrote data/hprc/bam/HG002.smoke.hifi.bam
+[ours] done  total 730.8s
+Done: data/hprc/bam/HG002.smoke.hifi.bam
+note: per-modality BAMs use stem data/hprc/bam/HG002.smoke.hifi.<modality>.bam

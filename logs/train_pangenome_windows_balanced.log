@@ -1,0 +1,1144 @@
+==========================================================================
+Building dataset and model
+==========================================================================
+device: tier=cuda_rawkernel | vendor=nvidia | device=cuda:0 | name=NVIDIA A100-PCIE-40GB | arch=Ampere/A100 (sm_80) | gpus=1 | cupy=True | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+  gpu[0]: NVIDIA A100-PCIE-40GB, sm_80, 39.5 GiB
+manifest: data/hprc/manifests/chr21_HG002_pangenome_windows.bal.json  entries=1428  ref-mode=pangenome
+dataset cache: loading prebuilt dataset -> /fs/ess/PCS0289/gmf_dataset_cache/chr21_HG002_pangenome_windows.bal.d0abec46fb3a354b.pt
+dataset cache: loaded 21841 train / 5895 val batches in 330.3s (skipped build)
+ref-mode: pangenome
+reads: 170137 train / 41851 val   batches: 21841 train / 5895 val
+
+==========================================================================
+Training
+==========================================================================
+host threads: torch=128 (cores=128)
+device: tier=cuda_rawkernel | vendor=nvidia | device=cuda:0 | name=NVIDIA A100-PCIE-40GB | arch=Ampere/A100 (sm_80) | gpus=1 | cupy=True | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+training 15,130,857 parameters on 170137 reads (41851 held out) for up to 60 epochs
+
+epochs:   0%|          | 0/60 [00:00<?, ?epoch/s]
+train epoch 00:   0%|          | 0/21841 [00:00<?, ?batch/s][A
+train epoch 00:   0%|          | 1/21841 [01:04<392:12:36, 64.65s/batch, loss=5.9809][A
+train epoch 00:   0%|          | 2/21841 [01:23<229:57:56, 37.91s/batch, loss=6.1274][A
+train epoch 00:   0%|          | 3/21841 [01:51<202:07:49, 33.32s/batch, loss=5.9663][A
+train epoch 00:   0%|          | 4/21841 [02:01<145:57:26, 24.06s/batch, loss=5.9828][A
+train epoch 00:   0%|          | 5/21841 [02:28<153:18:11, 25.27s/batch, loss=5.7255][A
+train epoch 00:   0%|          | 6/21841 [02:42<128:20:07, 21.16s/batch, loss=5.7438][A
+train epoch 00:   0%|          | 7/21841 [03:01<124:09:25, 20.47s/batch, loss=5.7281][A
+train epoch 00:   0%|          | 8/21841 [03:16<114:56:48, 18.95s/batch, loss=5.9044][A
+train epoch 00:   0%|          | 9/21841 [03:19<84:19:21, 13.90s/batch, loss=6.2720] [A
+train epoch 00:   0%|          | 10/21841 [03:28<74:32:26, 12.29s/batch, loss=5.8606][A
+train epoch 00:   0%|          | 11/21841 [03:57<105:04:42, 17.33s/batch, loss=5.9130][A
+train epoch 00:   0%|          | 12/21841 [04:11<98:54:14, 16.31s/batch, loss=5.8531] [A
+train epoch 00:   0%|          | 13/21841 [04:21<87:41:24, 14.46s/batch, loss=5.9869][A
+train epoch 00:   0%|          | 14/21841 [04:30<77:11:17, 12.73s/batch, loss=6.1274][A
+train epoch 00:   0%|          | 15/21841 [04:46<83:20:28, 13.75s/batch, loss=5.7351][A
+train epoch 00:   0%|          | 16/21841 [04:55<74:44:18, 12.33s/batch, loss=5.9896][A
+train epoch 00:   0%|          | 17/21841 [05:10<79:16:59, 13.08s/batch, loss=5.9097][A
+train epoch 00:   0%|          | 18/21841 [05:31<94:44:35, 15.63s/batch, loss=6.0854][A
+train epoch 00:   0%|          | 19/21841 [05:40<82:16:33, 13.57s/batch, loss=5.7560][A
+train epoch 00:   0%|          | 20/21841 [05:54<83:12:18, 13.73s/batch, loss=5.9765][A
+train epoch 00:   0%|          | 21/21841 [06:03<74:04:25, 12.22s/batch, loss=5.8689][A
+train epoch 00:   0%|          | 22/21841 [06:10<65:51:27, 10.87s/batch, loss=5.7984][A
+train epoch 00:   0%|          | 23/21841 [06:18<60:21:44,  9.96s/batch, loss=6.2772][A
+train epoch 00:   0%|          | 24/21841 [06:32<67:28:48, 11.13s/batch, loss=5.6945][A
+train epoch 00:   0%|          | 25/21841 [06:36<53:56:08,  8.90s/batch, loss=6.1010][A
+train epoch 00:   0%|          | 26/21841 [06:49<61:01:53, 10.07s/batch, loss=5.8637][A
+train epoch 00:   0%|          | 27/21841 [07:05<72:51:24, 12.02s/batch, loss=6.0615][A
+train epoch 00:   0%|          | 28/21841 [07:32<100:32:15, 16.59s/batch, loss=5.7526][A
+train epoch 00:   0%|          | 29/21841 [07:42<87:54:09, 14.51s/batch, loss=5.9186] [A
+train epoch 00:   0%|          | 30/21841 [07:54<83:37:00, 13.80s/batch, loss=5.7581][A
+train epoch 00:   0%|          | 31/21841 [08:03<74:47:28, 12.35s/batch, loss=5.8368][A
+train epoch 00:   0%|          | 32/21841 [08:16<75:53:05, 12.53s/batch, loss=5.9946][A
+train epoch 00:   0%|          | 33/21841 [08:20<60:14:44,  9.95s/batch, loss=6.1311][A
+train epoch 00:   0%|          | 34/21841 [08:57<109:20:26, 18.05s/batch, loss=6.0037][A
+train epoch 00:   0%|          | 35/21841 [09:03<88:06:13, 14.55s/batch, loss=5.8318] [A
+train epoch 00:   0%|          | 36/21841 [09:14<81:30:17, 13.46s/batch, loss=5.9639][A
+train epoch 00:   0%|          | 37/21841 [09:28<81:56:22, 13.53s/batch, loss=5.7401][A
+train epoch 00:   0%|          | 38/21841 [09:37<73:08:06, 12.08s/batch, loss=5.9616][A
+train epoch 00:   0%|          | 39/21841 [09:47<69:57:32, 11.55s/batch, loss=5.7534][A
+train epoch 00:   0%|          | 40/21841 [09:57<67:44:03, 11.18s/batch, loss=5.8652][A
+train epoch 00:   0%|          | 41/21841 [10:27<101:51:46, 16.82s/batch, loss=5.7026][A
+train epoch 00:   0%|          | 42/21841 [10:44<100:45:42, 16.64s/batch, loss=6.1586][A
+train epoch 00:   0%|          | 43/21841 [11:00<101:09:20, 16.71s/batch, loss=5.9554][A
+train epoch 00:   0%|          | 44/21841 [11:11<89:32:40, 14.79s/batch, loss=5.9468] [A
+train epoch 00:   0%|          | 45/21841 [11:34<105:37:57, 17.45s/batch, loss=5.8575][A
+train epoch 00:   0%|          | 46/21841 [12:21<158:03:12, 26.11s/batch, loss=5.9320][A
+train epoch 00:   0%|          | 47/21841 [12:52<168:10:59, 27.78s/batch, loss=6.0413][A
+train epoch 00:   0%|          | 48/21841 [13:04<139:00:50, 22.96s/batch, loss=5.9424][A
+train epoch 00:   0%|          | 49/21841 [13:21<127:59:40, 21.14s/batch, loss=5.8178][A
+train epoch 00:   0%|          | 50/21841 [13:35<115:11:05, 19.03s/batch, loss=6.0575][A
+train epoch 00:   0%|          | 51/21841 [13:53<112:37:12, 18.61s/batch, loss=5.8213][A
+train epoch 00:   0%|          | 52/21841 [14:07<105:12:27, 17.38s/batch, loss=5.8003][A
+train epoch 00:   0%|          | 53/21841 [14:47<146:12:05, 24.16s/batch, loss=5.9986][A
+train epoch 00:   0%|          | 54/21841 [15:08<140:55:51, 23.29s/batch, loss=5.8841][A
+train epoch 00:   0%|          | 55/21841 [15:18<115:06:51, 19.02s/batch, loss=5.7450][A
+train epoch 00:   0%|          | 56/21841 [15:27<98:43:14, 16.31s/batch, loss=5.7176] [A
+train epoch 00:   0%|          | 57/21841 [15:44<98:31:42, 16.28s/batch, loss=5.8088][A
+train epoch 00:   0%|          | 58/21841 [16:03<103:22:07, 17.08s/batch, loss=5.7578][A
+train epoch 00:   0%|          | 59/21841 [16:08<81:39:58, 13.50s/batch, loss=5.7922] [A
+train epoch 00:   0%|          | 60/21841 [16:39<113:04:11, 18.69s/batch, loss=6.1059][A
+train epoch 00:   0%|          | 61/21841 [16:51<102:31:34, 16.95s/batch, loss=5.7775][A
+train epoch 00:   0%|          | 62/21841 [17:04<93:56:39, 15.53s/batch, loss=5.7496] [A
+train epoch 00:   0%|          | 63/21841 [17:23<101:08:23, 16.72s/batch, loss=5.9725][A
+train epoch 00:   0%|          | 64/21841 [17:42<104:11:30, 17.22s/batch, loss=5.7329][A
+train epoch 00:   0%|          | 65/21841 [17:54<96:10:06, 15.90s/batch, loss=5.8165] [A
+train epoch 00:   0%|          | 66/21841 [18:24<120:50:57, 19.98s/batch, loss=5.8068][A
+train epoch 00:   0%|          | 67/21841 [18:33<100:53:12, 16.68s/batch, loss=5.8791][A
+train epoch 00:   0%|          | 68/21841 [18:47<95:45:26, 15.83s/batch, loss=6.0158] [A  train e00 s0000  loss=5.9809  (chain=0.000 mapq=0.423 position=0.253 router=0.004 seed=0.772 transition=0.722)  |g|=6.024  route=fast:100%,medium:0%,full:0%
+  train e00 s0001  loss=6.1274  (chain=0.000 mapq=0.334 position=0.443 router=0.004 seed=0.745 transition=0.782)
+  train e00 s0002  loss=5.9663  (chain=0.000 mapq=0.426 position=0.269 router=0.004 seed=0.733 transition=0.739)
+  train e00 s0003  loss=5.9828  (chain=0.000 mapq=0.335 position=0.276 router=0.004 seed=0.779 transition=0.755)
+  train e00 s0004  loss=5.7255  (chain=0.000 mapq=0.425 position=0.024 router=0.004 seed=0.740 transition=0.733)
+  train e00 s0005  loss=5.7438  (chain=0.000 mapq=0.453 position=0.006 router=0.004 seed=0.745 transition=0.768)
+  train e00 s0006  loss=5.7281  (chain=0.000 mapq=0.358 position=0.022 router=0.005 seed=0.770 transition=0.750)
+  train e00 s0007  loss=5.9044  (chain=0.000 mapq=0.423 position=0.148 router=0.004 seed=0.769 transition=0.788)
+  train e00 s0008  loss=6.2720  (chain=0.000 mapq=0.579 position=0.429 router=0.004 seed=0.789 transition=0.765)
+  train e00 s0009  loss=5.8606  (chain=0.000 mapq=0.417 position=0.144 router=0.004 seed=0.732 transition=0.789)
+  train e00 s0010  loss=5.9130  (chain=0.000 mapq=0.418 position=0.147 router=0.004 seed=0.783 transition=0.784)  |g|=5.724  route=fast:100%,medium:0%,full:0%
+  train e00 s0011  loss=5.8531  (chain=0.000 mapq=0.376 position=0.140 router=0.004 seed=0.750 transition=0.786)
+  train e00 s0012  loss=5.9869  (chain=0.000 mapq=0.483 position=0.257 router=0.004 seed=0.734 transition=0.745)
+  train e00 s0013  loss=6.1274  (chain=0.000 mapq=0.323 position=0.403 router=0.004 seed=0.792 transition=0.776)
+  train e00 s0014  loss=5.7351  (chain=0.000 mapq=0.396 position=0.004 router=0.004 seed=0.758 transition=0.786)
+  train e00 s0015  loss=5.9896  (chain=0.087 mapq=0.419 position=0.177 router=0.004 seed=0.758 transition=0.751)
+  train e00 s0016  loss=5.9097  (chain=0.000 mapq=0.367 position=0.177 router=0.004 seed=0.788 transition=0.759)
+  train e00 s0017  loss=6.0854  (chain=0.000 mapq=0.576 position=0.430 router=0.004 seed=0.674 transition=0.622)
+  train e00 s0018  loss=5.7560  (chain=0.000 mapq=0.422 position=0.001 router=0.004 seed=0.768 transition=0.789)
+  train e00 s0019  loss=5.9765  (chain=0.000 mapq=0.007 position=0.423 router=0.004 seed=0.763 transition=0.808)
+  train e00 s0020  loss=5.8689  (chain=0.000 mapq=0.427 position=0.111 router=0.004 seed=0.777 transition=0.771)  |g|=5.043  route=fast:100%,medium:0%,full:0%
+  train e00 s0021  loss=5.7984  (chain=0.000 mapq=0.579 position=0.427 router=0.004 seed=0.700 transition=0.000)
+  train e00 s0022  loss=6.2772  (chain=0.000 mapq=0.579 position=0.429 router=0.004 seed=0.782 transition=0.790)
+  train e00 s0023  loss=5.6945  (chain=0.000 mapq=0.329 position=0.001 router=0.004 seed=0.759 transition=0.776)
+  train e00 s0024  loss=6.1010  (chain=0.000 mapq=0.580 position=0.426 router=0.004 seed=0.637 transition=0.732)
+  train e00 s0025  loss=5.8637  (chain=0.000 mapq=0.423 position=0.114 router=0.004 seed=0.781 transition=0.749)
+  train e00 s0026  loss=6.0615  (chain=0.000 mapq=0.430 position=0.341 router=0.004 seed=0.745 transition=0.756)
+  train e00 s0027  loss=5.7526  (chain=0.000 mapq=0.386 position=0.050 router=0.004 seed=0.752 transition=0.751)
+  train e00 s0028  loss=5.9186  (chain=0.000 mapq=0.423 position=0.196 router=0.004 seed=0.744 transition=0.769)
+  train e00 s0029  loss=5.7581  (chain=0.000 mapq=0.420 position=0.033 router=0.004 seed=0.747 transition=0.773)
+  train e00 s0030  loss=5.8368  (chain=0.000 mapq=0.427 position=0.126 router=0.004 seed=0.746 transition=0.738)  |g|=5.701  route=fast:100%,medium:0%,full:0%
+  train e00 s0031  loss=5.9946  (chain=0.000 mapq=0.282 position=0.304 router=0.004 seed=0.779 transition=0.775)
+  train e00 s0032  loss=6.1311  (chain=0.000 mapq=0.579 position=0.431 router=0.004 seed=0.653 transition=0.750)
+  train e00 s0033  loss=6.0037  (chain=0.000 mapq=0.422 position=0.240 router=0.004 seed=0.773 transition=0.796)
+  train e00 s0034  loss=5.8318  (chain=0.000 mapq=0.583 position=0.434 router=0.004 seed=0.724 transition=0.000)
+  train e00 s0035  loss=5.9639  (chain=0.000 mapq=0.418 position=0.201 router=0.004 seed=0.785 transition=0.772)
+  train e00 s0036  loss=5.7401  (chain=0.000 mapq=0.394 position=0.028 router=0.004 seed=0.756 transition=0.755)
+  train e00 s0037  loss=5.9616  (chain=0.000 mapq=0.424 position=0.219 router=0.004 seed=0.781 transition=0.734)
+  train e00 s0038  loss=5.7534  (chain=0.000 mapq=0.376 position=0.029 router=0.004 seed=0.762 transition=0.784)
+  train e00 s0039  loss=5.8652  (chain=0.000 mapq=0.422 position=0.107 router=0.004 seed=0.780 transition=0.770)
+  train e00 s0040  loss=5.7026  (chain=0.000 mapq=0.420 position=0.001 router=0.004 seed=0.753 transition=0.713)  |g|=4.206  route=fast:100%,medium:0%,full:0%
+  train e00 s0041  loss=6.1586  (chain=0.000 mapq=0.422 position=0.405 router=0.004 seed=0.768 transition=0.786)
+  train e00 s0042  loss=5.9554  (chain=0.000 mapq=0.419 position=0.217 router=0.004 seed=0.764 transition=0.766)
+  train e00 s0043  loss=5.9468  (chain=0.000 mapq=0.424 position=0.204 router=0.004 seed=0.771 transition=0.754)
+  train e00 s0044  loss=5.8575  (chain=0.000 mapq=0.419 position=0.130 router=0.004 seed=0.757 transition=0.757)
+  train e00 s0045  loss=5.9320  (chain=0.000 mapq=0.422 position=0.226 router=0.004 seed=0.735 transition=0.757)
+  train e00 s0046  loss=6.0413  (chain=0.000 mapq=0.418 position=0.309 router=0.004 seed=0.750 transition=0.783)
+  train e00 s0047  loss=5.9424  (chain=0.000 mapq=0.422 position=0.195 router=0.004 seed=0.768 transition=0.774)
+  train e00 s0048  loss=5.8178  (chain=0.000 mapq=0.341 position=0.124 router=0.004 seed=0.766 transition=0.751)
+  train e00 s0049  loss=6.0575  (chain=0.000 mapq=0.346 position=0.352 router=0.004 seed=0.771 transition=0.760)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000050.pt
+  train e00 s0050  loss=5.8213  (chain=0.000 mapq=0.420 position=0.072 router=0.004 seed=0.764 transition=0.787)  |g|=4.848  route=fast:100%,medium:0%,full:0%
+  train e00 s0051  loss=5.8003  (chain=0.000 mapq=0.338 position=0.126 router=0.004 seed=0.743 transition=0.761)
+  train e00 s0052  loss=5.9986  (chain=0.000 mapq=0.470 position=0.236 router=0.004 seed=0.757 transition=0.776)
+  train e00 s0053  loss=5.8841  (chain=0.000 mapq=0.417 position=0.144 router=0.004 seed=0.760 transition=0.780)
+  train e00 s0054  loss=5.7450  (chain=0.000 mapq=0.424 position=0.003 router=0.004 seed=0.764 transition=0.769)
+  train e00 s0055  loss=5.7176  (chain=0.000 mapq=0.419 position=0.026 router=0.004 seed=0.720 transition=0.758)
+  train e00 s0056  loss=5.8088  (chain=0.000 mapq=0.421 position=0.076 router=0.004 seed=0.773 transition=0.732)
+  train e00 s0057  loss=5.7578  (chain=0.000 mapq=0.341 position=0.063 router=0.004 seed=0.778 transition=0.728)
+  train e00 s0058  loss=5.7922  (chain=0.000 mapq=0.579 position=0.433 router=0.004 seed=0.688 transition=0.000)
+  train e00 s0059  loss=6.1059  (chain=0.000 mapq=0.419 position=0.420 router=0.004 seed=0.753 transition=0.683)
+  train e00 s0060  loss=5.7775  (chain=0.000 mapq=0.422 position=0.102 router=0.004 seed=0.727 transition=0.710)  |g|=5.722  route=fast:100%,medium:0%,full:0%
+  train e00 s0061  loss=5.7496  (chain=0.000 mapq=0.423 position=0.014 router=0.004 seed=0.758 transition=0.769)
+  train e00 s0062  loss=5.9725  (chain=0.000 mapq=0.419 position=0.240 router=0.004 seed=0.771 transition=0.740)
+  train e00 s0063  loss=5.7329  (chain=0.000 mapq=0.393 position=0.006 router=0.004 seed=0.777 transition=0.744)
+  train e00 s0064  loss=5.8165  (chain=0.000 mapq=0.416 position=0.106 router=0.004 seed=0.757 transition=0.726)
+  train e00 s0065  loss=5.8068  (chain=0.000 mapq=0.421 position=0.066 router=0.004 seed=0.756 transition=0.784)
+  train e00 s0066  loss=5.8791  (chain=0.000 mapq=0.424 position=0.161 router=0.004 seed=0.749 transition=0.750)
+  train e00 s0067  loss=6.0158  (chain=0.000 mapq=0.422 position=0.275 router=0.004 seed=0.788 transition=0.719)
+
+train epoch 00:   0%|          | 69/21841 [18:52<76:15:04, 12.61s/batch, loss=6.2687][A
+train epoch 00:   0%|          | 70/21841 [19:06<78:15:55, 12.94s/batch, loss=6.0053][A
+train epoch 00:   0%|          | 71/21841 [19:09<60:14:54,  9.96s/batch, loss=6.1192][A
+train epoch 00:   0%|          | 72/21841 [19:28<78:20:46, 12.96s/batch, loss=5.6937][A
+train epoch 00:   0%|          | 73/21841 [19:37<70:21:36, 11.64s/batch, loss=5.7878][A
+train epoch 00:   0%|          | 74/21841 [19:42<58:16:40,  9.64s/batch, loss=6.0934][A
+train epoch 00:   0%|          | 75/21841 [19:53<61:22:37, 10.15s/batch, loss=5.7867][A
+train epoch 00:   0%|          | 76/21841 [19:58<51:38:07,  8.54s/batch, loss=6.2742][A
+train epoch 00:   0%|          | 77/21841 [20:49<127:27:45, 21.08s/batch, loss=5.8876][A
+train epoch 00:   0%|          | 78/21841 [21:04<117:45:58, 19.48s/batch, loss=5.7943][A
+train epoch 00:   0%|          | 79/21841 [21:29<128:04:21, 21.19s/batch, loss=5.8423][A
+train epoch 00:   0%|          | 80/21841 [21:38<104:37:07, 17.31s/batch, loss=5.7927][A
+train epoch 00:   0%|          | 81/21841 [21:47<89:18:41, 14.78s/batch, loss=5.6789] [A
+train epoch 00:   0%|          | 82/21841 [21:57<81:01:23, 13.41s/batch, loss=5.7563][A
+train epoch 00:   0%|          | 83/21841 [22:37<129:02:52, 21.35s/batch, loss=5.6901][A
+train epoch 00:   0%|          | 84/21841 [22:46<106:35:50, 17.64s/batch, loss=6.1412][A
+train epoch 00:   0%|          | 85/21841 [23:07<112:32:01, 18.62s/batch, loss=5.9258][A
+train epoch 00:   0%|          | 86/21841 [23:15<94:42:25, 15.67s/batch, loss=5.9611] [A
+train epoch 00:   0%|          | 87/21841 [23:34<99:46:32, 16.51s/batch, loss=5.9283][A
+train epoch 00:   0%|          | 88/21841 [23:43<86:06:55, 14.25s/batch, loss=6.1387][A
+train epoch 00:   0%|          | 89/21841 [24:13<115:01:29, 19.04s/batch, loss=5.7118][A
+train epoch 00:   0%|          | 90/21841 [24:18<89:01:38, 14.73s/batch, loss=5.7927] [A
+train epoch 00:   0%|          | 91/21841 [24:27<78:38:41, 13.02s/batch, loss=5.7123][A
+train epoch 00:   0%|          | 92/21841 [24:35<70:30:18, 11.67s/batch, loss=5.6982][A
+train epoch 00:   0%|          | 93/21841 [24:44<65:09:50, 10.79s/batch, loss=5.8135][A
+train epoch 00:   0%|          | 94/21841 [24:54<62:58:37, 10.43s/batch, loss=5.6854][A
+train epoch 00:   0%|          | 95/21841 [24:56<49:06:01,  8.13s/batch, loss=6.0651][A
+train epoch 00:   0%|          | 96/21841 [25:03<47:21:43,  7.84s/batch, loss=6.2705][A
+train epoch 00:   0%|          | 97/21841 [25:15<53:14:05,  8.81s/batch, loss=6.1057][A
+train epoch 00:   0%|          | 98/21841 [25:25<56:13:56,  9.31s/batch, loss=6.0359][A
+train epoch 00:   0%|          | 99/21841 [25:48<81:43:49, 13.53s/batch, loss=6.2135][A
+train epoch 00:   0%|          | 100/21841 [25:59<75:45:51, 12.55s/batch, loss=5.7851][A
+train epoch 00:   0%|          | 101/21841 [26:07<68:56:59, 11.42s/batch, loss=5.7129][A
+train epoch 00:   0%|          | 102/21841 [26:39<106:18:19, 17.60s/batch, loss=5.9132][A
+train epoch 00:   0%|          | 103/21841 [26:48<89:38:03, 14.84s/batch, loss=5.8087] [A
+train epoch 00:   0%|          | 104/21841 [27:00<84:19:45, 13.97s/batch, loss=5.7797][A
+train epoch 00:   0%|          | 105/21841 [27:04<66:45:35, 11.06s/batch, loss=6.0856][A
+train epoch 00:   0%|          | 106/21841 [27:39<109:20:57, 18.11s/batch, loss=6.1271][A
+train epoch 00:   0%|          | 107/21841 [27:42<82:06:37, 13.60s/batch, loss=6.1130] [A
+train epoch 00:   0%|          | 108/21841 [28:00<90:49:03, 15.04s/batch, loss=5.7380][A
+train epoch 00:   0%|          | 109/21841 [28:21<101:23:21, 16.80s/batch, loss=5.9983][A
+train epoch 00:   1%|          | 110/21841 [28:30<86:54:04, 14.40s/batch, loss=5.7183] [A
+train epoch 00:   1%|          | 111/21841 [28:33<65:51:28, 10.91s/batch, loss=6.2558][A
+train epoch 00:   1%|          | 112/21841 [28:41<62:01:01, 10.27s/batch, loss=5.8890][A
+train epoch 00:   1%|          | 113/21841 [28:50<58:25:46,  9.68s/batch, loss=5.7361][A
+train epoch 00:   1%|          | 114/21841 [28:52<45:46:39,  7.59s/batch, loss=6.0905][A
+train epoch 00:   1%|          | 115/21841 [29:14<71:30:23, 11.85s/batch, loss=6.0789][A
+train epoch 00:   1%|          | 116/21841 [29:22<63:26:11, 10.51s/batch, loss=6.2360][A
+train epoch 00:   1%|          | 117/21841 [29:28<56:47:10,  9.41s/batch, loss=6.1910][A
+train epoch 00:   1%|          | 118/21841 [29:38<57:24:44,  9.51s/batch, loss=6.1407][A
+train epoch 00:   1%|          | 119/21841 [29:51<62:53:28, 10.42s/batch, loss=5.9343][A
+train epoch 00:   1%|          | 120/21841 [30:08<75:02:10, 12.44s/batch, loss=5.7550][A
+train epoch 00:   1%|          | 121/21841 [30:17<68:52:55, 11.42s/batch, loss=5.7698][A
+train epoch 00:   1%|          | 122/21841 [30:37<85:15:35, 14.13s/batch, loss=5.8723][A
+train epoch 00:   1%|          | 123/21841 [30:41<66:32:49, 11.03s/batch, loss=6.2293][A
+train epoch 00:   1%|          | 124/21841 [31:19<114:18:15, 18.95s/batch, loss=5.9489][A
+train epoch 00:   1%|          | 125/21841 [31:23<87:27:46, 14.50s/batch, loss=6.1323] [A
+train epoch 00:   1%|          | 126/21841 [31:31<76:52:03, 12.74s/batch, loss=5.8639][A
+train epoch 00:   1%|          | 127/21841 [31:40<69:35:09, 11.54s/batch, loss=5.9126][A
+train epoch 00:   1%|          | 128/21841 [31:52<69:28:58, 11.52s/batch, loss=5.6926][A
+train epoch 00:   1%|          | 129/21841 [32:17<94:05:09, 15.60s/batch, loss=5.9557][A
+train epoch 00:   1%|          | 130/21841 [32:19<71:00:00, 11.77s/batch, loss=6.2233][A
+train epoch 00:   1%|          | 131/21841 [32:24<57:39:44,  9.56s/batch, loss=6.0991][A
+train epoch 00:   1%|          | 132/21841 [32:35<60:00:04,  9.95s/batch, loss=5.7516][A
+train epoch 00:   1%|          | 133/21841 [33:06<98:38:40, 16.36s/batch, loss=6.0347][A
+train epoch 00:   1%|          | 134/21841 [33:10<75:23:29, 12.50s/batch, loss=5.8917][A
+train epoch 00:   1%|          | 135/21841 [33:18<68:43:32, 11.40s/batch, loss=5.7616][A
+train epoch 00:   1%|          | 136/21841 [33:29<67:24:10, 11.18s/batch, loss=5.8327][A  train e00 s0068  loss=6.2687  (chain=0.000 mapq=0.582 position=0.431 router=0.004 seed=0.761 transition=0.805)
+  train e00 s0069  loss=6.0053  (chain=0.000 mapq=0.422 position=0.228 router=0.004 seed=0.792 transition=0.784)
+  train e00 s0070  loss=6.1192  (chain=0.000 mapq=0.254 position=0.410 router=0.004 seed=0.794 transition=0.813)  |g|=4.361  route=fast:100%,medium:0%,full:0%
+  train e00 s0071  loss=5.6937  (chain=0.000 mapq=0.426 position=0.016 router=0.004 seed=0.721 transition=0.723)
+  train e00 s0072  loss=5.7878  (chain=0.000 mapq=0.576 position=0.427 router=0.004 seed=0.690 transition=0.000)
+  train e00 s0073  loss=6.0934  (chain=0.000 mapq=0.577 position=0.430 router=0.004 seed=0.690 transition=0.605)
+  train e00 s0074  loss=5.7867  (chain=0.000 mapq=0.579 position=0.429 router=0.004 seed=0.686 transition=0.000)
+  train e00 s0075  loss=6.2742  (chain=0.000 mapq=0.584 position=0.432 router=0.004 seed=0.744 transition=0.848)
+  train e00 s0076  loss=5.8876  (chain=0.000 mapq=0.422 position=0.169 router=0.004 seed=0.749 transition=0.752)
+  train e00 s0077  loss=5.7943  (chain=0.000 mapq=0.422 position=0.088 router=0.004 seed=0.754 transition=0.718)
+  train e00 s0078  loss=5.8423  (chain=0.000 mapq=0.418 position=0.146 router=0.004 seed=0.746 transition=0.718)
+  train e00 s0079  loss=5.7927  (chain=0.000 mapq=0.423 position=0.094 router=0.004 seed=0.744 transition=0.722)
+  train e00 s0080  loss=5.6789  (chain=0.000 mapq=0.420 position=0.007 router=0.004 seed=0.711 transition=0.738)  |g|=5.419  route=fast:100%,medium:0%,full:0%
+  train e00 s0081  loss=5.7563  (chain=0.000 mapq=0.419 position=0.059 router=0.004 seed=0.739 transition=0.733)
+  train e00 s0082  loss=5.6901  (chain=0.000 mapq=0.425 position=0.009 router=0.004 seed=0.716 transition=0.739)
+  train e00 s0083  loss=6.1412  (chain=0.000 mapq=0.421 position=0.430 router=0.004 seed=0.737 transition=0.762)
+  train e00 s0084  loss=5.9258  (chain=0.000 mapq=0.485 position=0.187 router=0.004 seed=0.731 transition=0.765)
+  train e00 s0085  loss=5.9611  (chain=0.000 mapq=0.479 position=0.221 router=0.004 seed=0.728 transition=0.782)
+  train e00 s0086  loss=5.9283  (chain=0.000 mapq=0.418 position=0.228 router=0.004 seed=0.739 transition=0.740)
+  train e00 s0087  loss=6.1387  (chain=0.000 mapq=0.582 position=0.428 router=0.004 seed=0.686 transition=0.703)
+  train e00 s0088  loss=5.7118  (chain=0.000 mapq=0.424 position=0.004 router=0.004 seed=0.741 transition=0.747)
+  train e00 s0089  loss=5.7927  (chain=0.000 mapq=0.584 position=0.432 router=0.004 seed=0.686 transition=0.000)
+  train e00 s0090  loss=5.7123  (chain=0.000 mapq=0.426 position=0.009 router=0.004 seed=0.753 transition=0.711)  |g|=5.709  route=fast:100%,medium:0%,full:0%
+  train e00 s0091  loss=5.6982  (chain=0.000 mapq=0.421 position=0.013 router=0.004 seed=0.714 transition=0.757)
+  train e00 s0092  loss=5.8135  (chain=0.085 mapq=0.369 position=0.001 router=0.004 seed=0.766 transition=0.789)
+  train e00 s0093  loss=5.6854  (chain=0.000 mapq=0.380 position=0.036 router=0.004 seed=0.721 transition=0.710)
+  train e00 s0094  loss=6.0651  (chain=0.000 mapq=0.575 position=0.429 router=0.004 seed=0.694 transition=0.545)
+  train e00 s0095  loss=6.2705  (chain=0.000 mapq=0.572 position=0.424 router=0.004 seed=0.768 transition=0.821)
+  train e00 s0096  loss=6.1057  (chain=0.000 mapq=0.575 position=0.426 router=0.004 seed=0.701 transition=0.617)
+  train e00 s0097  loss=6.0359  (chain=0.000 mapq=0.420 position=0.319 router=0.004 seed=0.728 transition=0.793)
+  train e00 s0098  loss=6.2135  (chain=0.000 mapq=0.569 position=0.433 router=0.004 seed=0.725 transition=0.777)
+  train e00 s0099  loss=5.7851  (chain=0.000 mapq=0.481 position=0.025 router=0.004 seed=0.750 transition=0.775)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000100.pt
+  train e00 s0100  loss=5.7129  (chain=0.000 mapq=0.416 position=0.009 router=0.004 seed=0.734 transition=0.759)  |g|=4.998  route=fast:100%,medium:0%,full:0%
+  train e00 s0101  loss=5.9132  (chain=0.000 mapq=0.420 position=0.176 router=0.004 seed=0.763 transition=0.765)
+  train e00 s0102  loss=5.8087  (chain=0.000 mapq=0.341 position=0.132 router=0.004 seed=0.746 transition=0.755)
+  train e00 s0103  loss=5.7797  (chain=0.000 mapq=0.481 position=0.048 router=0.004 seed=0.722 transition=0.773)
+  train e00 s0104  loss=6.0856  (chain=0.000 mapq=0.548 position=0.378 router=0.004 seed=0.719 transition=0.665)
+  train e00 s0105  loss=6.1271  (chain=0.000 mapq=0.358 position=0.446 router=0.004 seed=0.760 transition=0.720)
+  train e00 s0106  loss=6.1130  (chain=0.000 mapq=0.574 position=0.418 router=0.004 seed=0.693 transition=0.665)
+  train e00 s0107  loss=5.7380  (chain=0.000 mapq=0.420 position=0.021 router=0.004 seed=0.741 transition=0.768)
+  train e00 s0108  loss=5.9983  (chain=0.000 mapq=0.409 position=0.267 router=0.004 seed=0.770 transition=0.749)
+  train e00 s0109  loss=5.7183  (chain=0.000 mapq=0.426 position=0.034 router=0.004 seed=0.720 transition=0.738)
+  train e00 s0110  loss=6.2558  (chain=0.000 mapq=0.576 position=0.432 router=0.004 seed=0.769 transition=0.769)  |g|=4.612  route=fast:100%,medium:0%,full:0%
+  train e00 s0111  loss=5.8890  (chain=0.000 mapq=0.424 position=0.206 router=0.004 seed=0.710 transition=0.757)
+  train e00 s0112  loss=5.7361  (chain=0.000 mapq=0.424 position=0.108 router=0.004 seed=0.660 transition=0.748)
+  train e00 s0113  loss=6.0905  (chain=0.000 mapq=0.579 position=0.429 router=0.004 seed=0.679 transition=0.621)
+  train e00 s0114  loss=6.0789  (chain=0.000 mapq=0.581 position=0.432 router=0.004 seed=0.652 transition=0.644)
+  train e00 s0115  loss=6.2360  (chain=0.000 mapq=0.571 position=0.425 router=0.004 seed=0.789 transition=0.709)
+  train e00 s0116  loss=6.1910  (chain=-0.000 mapq=0.476 position=0.475 router=0.004 seed=0.768 transition=0.655)
+  train e00 s0117  loss=6.1407  (chain=0.000 mapq=0.580 position=0.431 router=0.004 seed=0.696 transition=0.683)
+  train e00 s0118  loss=5.9343  (chain=0.000 mapq=0.365 position=0.263 router=0.004 seed=0.720 transition=0.775)
+  train e00 s0119  loss=5.7550  (chain=0.000 mapq=0.416 position=0.082 router=0.004 seed=0.701 transition=0.762)
+  train e00 s0120  loss=5.7698  (chain=0.000 mapq=0.422 position=0.141 router=0.004 seed=0.678 transition=0.717)  |g|=5.516  route=fast:100%,medium:0%,full:0%
+  train e00 s0121  loss=5.8723  (chain=0.000 mapq=0.483 position=0.147 router=0.004 seed=0.726 transition=0.751)
+  train e00 s0122  loss=6.2293  (chain=0.000 mapq=0.571 position=0.431 router=0.004 seed=0.725 transition=0.813)
+  train e00 s0123  loss=5.9489  (chain=0.000 mapq=0.423 position=0.280 router=0.004 seed=0.716 transition=0.720)
+  train e00 s0124  loss=6.1323  (chain=0.000 mapq=0.576 position=0.424 router=0.004 seed=0.662 transition=0.752)
+  train e00 s0125  loss=5.8639  (chain=0.000 mapq=0.419 position=0.154 router=0.004 seed=0.744 transition=0.748)
+  train e00 s0126  loss=5.9126  (chain=0.000 mapq=0.377 position=0.249 router=0.004 seed=0.712 transition=0.763)
+  train e00 s0127  loss=5.6926  (chain=0.000 mapq=0.364 position=0.003 router=0.004 seed=0.737 transition=0.778)
+  train e00 s0128  loss=5.9557  (chain=0.000 mapq=0.405 position=0.236 router=0.004 seed=0.751 transition=0.769)
+  train e00 s0129  loss=6.2233  (chain=0.000 mapq=0.577 position=0.426 router=0.004 seed=0.711 transition=0.831)
+  train e00 s0130  loss=6.0991  (chain=0.000 mapq=0.574 position=0.428 router=0.004 seed=0.676 transition=0.651)  |g|=3.227  route=fast:100%,medium:0%,full:0%
+  train e00 s0131  loss=5.7516  (chain=0.000 mapq=0.403 position=0.015 router=0.004 seed=0.764 transition=0.777)
+  train e00 s0132  loss=6.0347  (chain=0.000 mapq=0.474 position=0.290 router=0.004 seed=0.743 transition=0.764)
+  train e00 s0133  loss=5.8917  (chain=0.000 mapq=0.011 position=0.377 router=0.004 seed=0.758 transition=0.738)
+  train e00 s0134  loss=5.7616  (chain=0.000 mapq=0.406 position=0.021 router=0.004 seed=0.781 transition=0.749)
+  train e00 s0135  loss=5.8327  (chain=0.000 mapq=0.396 position=0.150 router=0.004 seed=0.721 transition=0.761)
+
+train epoch 00:   1%|          | 137/21841 [33:49<82:37:14, 13.70s/batch, loss=5.7328][A
+train epoch 00:   1%|          | 138/21841 [33:57<73:46:46, 12.24s/batch, loss=6.0739][A
+train epoch 00:   1%|          | 139/21841 [34:00<56:17:18,  9.34s/batch, loss=6.2046][A
+train epoch 00:   1%|          | 140/21841 [34:26<85:54:56, 14.25s/batch, loss=5.7439][A
+train epoch 00:   1%|          | 141/21841 [34:35<76:08:51, 12.63s/batch, loss=5.6701][A
+train epoch 00:   1%|          | 142/21841 [34:40<62:45:50, 10.41s/batch, loss=6.1554][A
+train epoch 00:   1%|          | 143/21841 [34:52<66:44:31, 11.07s/batch, loss=5.8181][A
+train epoch 00:   1%|          | 144/21841 [35:07<73:05:44, 12.13s/batch, loss=5.9306][A
+train epoch 00:   1%|          | 145/21841 [35:11<57:39:35,  9.57s/batch, loss=6.1965][A
+train epoch 00:   1%|          | 146/21841 [35:28<71:00:17, 11.78s/batch, loss=5.8720][A
+train epoch 00:   1%|          | 147/21841 [35:37<66:51:25, 11.09s/batch, loss=5.9210][A
+train epoch 00:   1%|          | 148/21841 [35:56<80:26:02, 13.35s/batch, loss=6.0025][A
+train epoch 00:   1%|          | 149/21841 [36:25<109:25:26, 18.16s/batch, loss=5.6064][A
+train epoch 00:   1%|          | 150/21841 [36:43<109:33:37, 18.18s/batch, loss=5.7210][A
+train epoch 00:   1%|          | 151/21841 [36:53<94:20:08, 15.66s/batch, loss=5.9719] [A
+train epoch 00:   1%|          | 152/21841 [37:04<86:39:41, 14.38s/batch, loss=5.7260][A
+train epoch 00:   1%|          | 153/21841 [37:13<76:47:01, 12.75s/batch, loss=5.7186][A
+train epoch 00:   1%|          | 154/21841 [37:22<69:51:53, 11.60s/batch, loss=5.8882][A
+train epoch 00:   1%|          | 155/21841 [37:43<86:26:41, 14.35s/batch, loss=6.0793][A
+train epoch 00:   1%|          | 156/21841 [38:12<111:52:11, 18.57s/batch, loss=5.9489][A
+train epoch 00:   1%|          | 157/21841 [38:14<83:13:53, 13.82s/batch, loss=5.9677] [A
+train epoch 00:   1%|          | 158/21841 [38:18<64:35:33, 10.72s/batch, loss=6.0925][A
+train epoch 00:   1%|          | 159/21841 [38:26<60:53:26, 10.11s/batch, loss=5.7020][A
+train epoch 00:   1%|          | 160/21841 [38:35<58:46:00,  9.76s/batch, loss=5.6976][A
+train epoch 00:   1%|          | 161/21841 [38:38<46:07:49,  7.66s/batch, loss=6.2140][A
+train epoch 00:   1%|          | 162/21841 [38:52<57:25:16,  9.54s/batch, loss=5.8825][A
+train epoch 00:   1%|          | 163/21841 [38:55<45:17:00,  7.52s/batch, loss=6.1174][A
+train epoch 00:   1%|          | 164/21841 [39:16<69:48:56, 11.59s/batch, loss=5.7947][A
+train epoch 00:   1%|          | 165/21841 [39:41<94:17:23, 15.66s/batch, loss=5.9542][A
+train epoch 00:   1%|          | 166/21841 [40:04<106:31:02, 17.69s/batch, loss=5.9149][A
+train epoch 00:   1%|          | 167/21841 [40:06<79:24:35, 13.19s/batch, loss=6.2226] [A
+train epoch 00:   1%|          | 168/21841 [40:18<76:59:38, 12.79s/batch, loss=5.6634][A
+train epoch 00:   1%|          | 169/21841 [41:02<132:55:51, 22.08s/batch, loss=6.0571][A
+train epoch 00:   1%|          | 170/21841 [41:11<108:47:38, 18.07s/batch, loss=6.0166][A
+train epoch 00:   1%|          | 171/21841 [41:13<81:13:41, 13.49s/batch, loss=5.8441] [A
+train epoch 00:   1%|          | 172/21841 [41:23<74:52:43, 12.44s/batch, loss=5.7643][A
+train epoch 00:   1%|          | 173/21841 [41:32<68:05:58, 11.31s/batch, loss=5.9811][A
+train epoch 00:   1%|          | 174/21841 [42:00<97:59:15, 16.28s/batch, loss=5.6981][A
+train epoch 00:   1%|          | 175/21841 [42:09<84:24:54, 14.03s/batch, loss=6.0978][A
+train epoch 00:   1%|          | 176/21841 [42:21<82:14:29, 13.67s/batch, loss=5.9778][A
+train epoch 00:   1%|          | 177/21841 [42:42<95:19:13, 15.84s/batch, loss=5.8057][A
+train epoch 00:   1%|          | 178/21841 [42:55<89:00:58, 14.79s/batch, loss=5.9880][A
+train epoch 00:   1%|          | 179/21841 [43:06<82:27:07, 13.70s/batch, loss=6.0694][A
+train epoch 00:   1%|          | 180/21841 [43:32<104:54:08, 17.43s/batch, loss=5.6980][A
+train epoch 00:   1%|          | 181/21841 [43:50<106:24:03, 17.68s/batch, loss=5.6679][A
+train epoch 00:   1%|          | 182/21841 [44:02<96:25:06, 16.03s/batch, loss=5.9413] [A
+train epoch 00:   1%|          | 183/21841 [44:11<83:13:12, 13.83s/batch, loss=5.8010][A
+train epoch 00:   1%|          | 184/21841 [44:14<63:21:50, 10.53s/batch, loss=5.7829][A
+train epoch 00:   1%|          | 185/21841 [44:34<79:46:04, 13.26s/batch, loss=5.6436][A
+train epoch 00:   1%|          | 186/21841 [44:39<64:49:05, 10.78s/batch, loss=6.1588][A
+train epoch 00:   1%|          | 187/21841 [44:46<58:18:49,  9.69s/batch, loss=6.1823][A
+train epoch 00:   1%|          | 188/21841 [44:50<49:09:22,  8.17s/batch, loss=6.2205][A
+train epoch 00:   1%|          | 189/21841 [45:29<103:33:27, 17.22s/batch, loss=5.8576][A
+train epoch 00:   1%|          | 190/21841 [45:43<97:19:32, 16.18s/batch, loss=5.8355] [A
+train epoch 00:   1%|          | 191/21841 [45:58<95:34:40, 15.89s/batch, loss=5.8257][A
+train epoch 00:   1%|          | 192/21841 [46:10<89:40:58, 14.91s/batch, loss=5.8710][A
+train epoch 00:   1%|          | 193/21841 [46:19<78:38:14, 13.08s/batch, loss=5.5730][A
+train epoch 00:   1%|          | 194/21841 [46:22<59:41:29,  9.93s/batch, loss=6.1760][A
+train epoch 00:   1%|          | 195/21841 [46:30<57:06:19,  9.50s/batch, loss=5.8100][A
+train epoch 00:   1%|          | 196/21841 [48:10<220:25:20, 36.66s/batch, loss=5.8535][A
+train epoch 00:   1%|          | 197/21841 [48:18<169:03:10, 28.12s/batch, loss=6.1495][A
+train epoch 00:   1%|          | 198/21841 [48:25<130:54:33, 21.77s/batch, loss=6.2263][A
+train epoch 00:   1%|          | 199/21841 [48:34<107:56:15, 17.95s/batch, loss=6.2173][A
+train epoch 00:   1%|          | 200/21841 [48:46<96:48:00, 16.10s/batch, loss=5.6661] [A
+train epoch 00:   1%|          | 201/21841 [49:01<94:47:28, 15.77s/batch, loss=5.7263][A
+train epoch 00:   1%|          | 202/21841 [49:13<87:41:42, 14.59s/batch, loss=5.9098][A
+train epoch 00:   1%|          | 203/21841 [49:22<77:11:33, 12.84s/batch, loss=5.8508][A  train e00 s0136  loss=5.7328  (chain=0.000 mapq=0.414 position=0.034 router=0.004 seed=0.725 transition=0.768)
+  train e00 s0137  loss=6.0739  (chain=0.000 mapq=0.417 position=0.343 router=0.004 seed=0.758 transition=0.765)
+  train e00 s0138  loss=6.2046  (chain=0.000 mapq=0.575 position=0.431 router=0.004 seed=0.726 transition=0.755)
+  train e00 s0139  loss=5.7439  (chain=0.000 mapq=0.416 position=0.033 router=0.004 seed=0.745 transition=0.750)
+  train e00 s0140  loss=5.6701  (chain=0.000 mapq=0.423 position=0.011 router=0.004 seed=0.706 transition=0.719)  |g|=5.152  route=fast:100%,medium:0%,full:0%
+  train e00 s0141  loss=6.1554  (chain=0.000 mapq=0.571 position=0.422 router=0.004 seed=0.679 transition=0.773)
+  train e00 s0142  loss=5.8181  (chain=0.000 mapq=0.093 position=0.434 router=0.004 seed=0.661 transition=0.589)
+  train e00 s0143  loss=5.9306  (chain=0.000 mapq=0.436 position=0.192 router=0.004 seed=0.730 transition=0.817)
+  train e00 s0144  loss=6.1965  (chain=0.000 mapq=0.570 position=0.433 router=0.004 seed=0.715 transition=0.762)
+  train e00 s0145  loss=5.8720  (chain=0.000 mapq=0.422 position=0.217 router=0.004 seed=0.699 transition=0.727)
+  train e00 s0146  loss=5.9210  (chain=0.000 mapq=0.413 position=0.237 router=0.004 seed=0.719 transition=0.752)
+  train e00 s0147  loss=6.0025  (chain=0.000 mapq=0.343 position=0.364 router=0.004 seed=0.718 transition=0.734)
+  train e00 s0148  loss=5.6064  (chain=0.000 mapq=0.243 position=0.007 router=0.004 seed=0.739 transition=0.711)
+  train e00 s0149  loss=5.7210  (chain=0.000 mapq=0.255 position=0.127 router=0.003 seed=0.717 transition=0.735)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000150.pt
+  train e00 s0150  loss=5.9719  (chain=0.000 mapq=0.415 position=0.286 router=0.004 seed=0.715 transition=0.762)  |g|=4.062  route=fast:100%,medium:0%,full:0%
+  train e00 s0151  loss=5.7260  (chain=0.000 mapq=0.422 position=0.087 router=0.004 seed=0.691 transition=0.711)
+  train e00 s0152  loss=5.7186  (chain=0.000 mapq=0.421 position=0.040 router=0.004 seed=0.699 transition=0.774)
+  train e00 s0153  loss=5.8882  (chain=0.000 mapq=0.394 position=0.237 router=0.004 seed=0.708 transition=0.727)
+  train e00 s0154  loss=6.0793  (chain=0.000 mapq=0.417 position=0.395 router=0.004 seed=0.703 transition=0.782)
+  train e00 s0155  loss=5.9489  (chain=0.136 mapq=0.357 position=0.171 router=0.004 seed=0.697 transition=0.769)
+  train e00 s0156  loss=5.9677  (chain=0.000 mapq=0.479 position=0.283 router=0.004 seed=0.705 transition=0.716)
+  train e00 s0157  loss=6.0925  (chain=0.000 mapq=0.575 position=0.425 router=0.004 seed=0.670 transition=0.656)
+  train e00 s0158  loss=5.7020  (chain=0.000 mapq=0.427 position=0.068 router=0.004 seed=0.675 transition=0.725)
+  train e00 s0159  loss=5.6976  (chain=0.000 mapq=0.415 position=0.013 router=0.004 seed=0.709 transition=0.771)
+  train e00 s0160  loss=6.2140  (chain=0.000 mapq=0.576 position=0.421 router=0.004 seed=0.728 transition=0.790)  |g|=3.865  route=fast:100%,medium:0%,full:0%
+  train e00 s0161  loss=5.8825  (chain=0.000 mapq=0.411 position=0.216 router=0.004 seed=0.708 transition=0.741)
+  train e00 s0162  loss=6.1174  (chain=0.000 mapq=0.577 position=0.424 router=0.004 seed=0.692 transition=0.660)
+  train e00 s0163  loss=5.7947  (chain=0.000 mapq=0.271 position=0.197 router=0.004 seed=0.704 transition=0.753)
+  train e00 s0164  loss=5.9542  (chain=0.000 mapq=0.121 position=0.410 router=0.004 seed=0.729 transition=0.746)
+  train e00 s0165  loss=5.9149  (chain=0.000 mapq=0.414 position=0.225 router=0.004 seed=0.723 transition=0.756)
+  train e00 s0166  loss=6.2226  (chain=0.000 mapq=0.578 position=0.429 router=0.004 seed=0.740 transition=0.762)
+  train e00 s0167  loss=5.6634  (chain=0.000 mapq=0.419 position=0.003 router=0.004 seed=0.703 transition=0.731)
+  train e00 s0168  loss=6.0571  (chain=0.000 mapq=0.449 position=0.387 router=0.004 seed=0.702 transition=0.722)
+  train e00 s0169  loss=6.0166  (chain=0.000 mapq=0.483 position=0.426 router=0.004 seed=0.666 transition=0.603)
+  train e00 s0170  loss=5.8441  (chain=0.000 mapq=0.566 position=0.025 router=0.004 seed=0.760 transition=0.789)  |g|=4.735  route=fast:100%,medium:0%,full:0%
+  train e00 s0171  loss=5.7643  (chain=0.000 mapq=0.373 position=0.130 router=0.004 seed=0.700 transition=0.730)
+  train e00 s0172  loss=5.9811  (chain=0.000 mapq=0.418 position=0.224 router=0.004 seed=0.783 transition=0.767)
+  train e00 s0173  loss=5.6981  (chain=0.000 mapq=0.404 position=0.010 router=0.004 seed=0.734 transition=0.738)
+  train e00 s0174  loss=6.0978  (chain=0.000 mapq=0.420 position=0.410 router=0.004 seed=0.717 transition=0.758)
+  train e00 s0175  loss=5.9778  (chain=0.000 mapq=0.411 position=0.320 router=0.004 seed=0.701 transition=0.738)
+  train e00 s0176  loss=5.8057  (chain=0.000 mapq=0.360 position=0.154 router=0.004 seed=0.714 transition=0.751)
+  train e00 s0177  loss=5.9880  (chain=0.000 mapq=0.412 position=0.350 router=0.004 seed=0.677 transition=0.746)
+  train e00 s0178  loss=6.0694  (chain=0.000 mapq=0.465 position=0.438 router=0.004 seed=0.694 transition=0.645)
+  train e00 s0179  loss=5.6980  (chain=0.000 mapq=0.415 position=0.048 router=0.004 seed=0.698 transition=0.724)
+  train e00 s0180  loss=5.6679  (chain=0.000 mapq=0.420 position=0.034 router=0.004 seed=0.689 transition=0.705)  |g|=5.663  route=fast:100%,medium:0%,full:0%
+  train e00 s0181  loss=5.9413  (chain=0.000 mapq=0.363 position=0.316 router=0.004 seed=0.691 transition=0.741)
+  train e00 s0182  loss=5.8010  (chain=0.000 mapq=0.394 position=0.132 router=0.004 seed=0.698 transition=0.785)
+  train e00 s0183  loss=5.7829  (chain=0.000 mapq=0.571 position=0.426 router=0.004 seed=0.689 transition=0.000)
+  train e00 s0184  loss=5.6436  (chain=0.000 mapq=0.422 position=0.013 router=0.004 seed=0.679 transition=0.718)
+  train e00 s0185  loss=6.1588  (chain=0.000 mapq=0.572 position=0.421 router=0.004 seed=0.694 transition=0.750)
+  train e00 s0186  loss=6.1823  (chain=0.000 mapq=0.583 position=0.423 router=0.004 seed=0.686 transition=0.800)
+  train e00 s0187  loss=6.2205  (chain=0.000 mapq=0.573 position=0.422 router=0.004 seed=0.728 transition=0.805)
+  train e00 s0188  loss=5.8576  (chain=0.000 mapq=0.419 position=0.245 router=0.004 seed=0.669 transition=0.704)
+  train e00 s0189  loss=5.8355  (chain=0.000 mapq=0.375 position=0.173 router=0.004 seed=0.711 transition=0.764)
+  train e00 s0190  loss=5.8257  (chain=0.000 mapq=0.390 position=0.162 router=0.004 seed=0.703 transition=0.767)  |g|=4.559  route=fast:100%,medium:0%,full:0%
+  train e00 s0191  loss=5.8710  (chain=0.000 mapq=0.420 position=0.276 router=0.004 seed=0.643 transition=0.719)
+  train e00 s0192  loss=5.5730  (chain=0.000 mapq=0.277 position=0.021 router=0.004 seed=0.659 transition=0.746)
+  train e00 s0193  loss=6.1760  (chain=0.000 mapq=0.519 position=0.423 router=0.004 seed=0.711 transition=0.799)
+  train e00 s0194  loss=5.8100  (chain=0.000 mapq=0.416 position=0.157 router=0.004 seed=0.683 transition=0.758)
+  train e00 s0195  loss=5.8535  (chain=0.000 mapq=0.393 position=0.167 router=0.004 seed=0.719 transition=0.779)
+  train e00 s0196  loss=6.1495  (chain=0.000 mapq=0.576 position=0.419 router=0.004 seed=0.733 transition=0.655)
+  train e00 s0197  loss=6.2263  (chain=0.000 mapq=0.578 position=0.429 router=0.004 seed=0.732 transition=0.790)
+  train e00 s0198  loss=6.2173  (chain=0.000 mapq=0.570 position=0.429 router=0.004 seed=0.735 transition=0.772)
+  train e00 s0199  loss=5.6661  (chain=0.000 mapq=0.385 position=0.019 router=0.004 seed=0.696 transition=0.753)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000200.pt
+  train e00 s0200  loss=5.7263  (chain=0.087 mapq=0.414 position=0.016 router=0.004 seed=0.667 transition=0.734)  |g|=5.463  route=fast:100%,medium:0%,full:0%
+  train e00 s0201  loss=5.9098  (chain=0.000 mapq=0.377 position=0.274 router=0.004 seed=0.689 transition=0.751)
+  train e00 s0202  loss=5.8508  (chain=0.000 mapq=0.417 position=0.167 router=0.004 seed=0.726 transition=0.735)
+  train e00 s0203  loss=5.8158  (chain=0.000 mapq=0.578 position=0.425 router=0.004 seed=0.719 transition=0.000)
+
+train epoch 00:   1%|          | 204/21841 [49:25<58:51:44,  9.79s/batch, loss=5.8158][A
+train epoch 00:   1%|          | 205/21841 [49:55<95:48:50, 15.94s/batch, loss=5.6568][A
+train epoch 00:   1%|          | 206/21841 [50:04<82:51:05, 13.79s/batch, loss=5.7054][A
+train epoch 00:   1%|          | 207/21841 [50:11<71:16:17, 11.86s/batch, loss=6.1936][A
+train epoch 00:   1%|          | 208/21841 [50:14<55:20:42,  9.21s/batch, loss=6.1717][A
+train epoch 00:   1%|          | 209/21841 [50:26<59:59:17,  9.98s/batch, loss=5.6958][A
+train epoch 00:   1%|          | 210/21841 [50:34<57:44:55,  9.61s/batch, loss=6.1192][A
+train epoch 00:   1%|          | 211/21841 [50:51<70:37:36, 11.75s/batch, loss=5.8282][A
+train epoch 00:   1%|          | 212/21841 [51:02<67:56:47, 11.31s/batch, loss=6.0138][A
+train epoch 00:   1%|          | 213/21841 [51:28<94:34:14, 15.74s/batch, loss=5.6622][A
+train epoch 00:   1%|          | 214/21841 [51:30<71:16:13, 11.86s/batch, loss=6.0952][A
+train epoch 00:   1%|          | 215/21841 [52:06<114:12:33, 19.01s/batch, loss=5.7024][A
+train epoch 00:   1%|          | 216/21841 [52:28<119:26:50, 19.88s/batch, loss=5.7372][A
+train epoch 00:   1%|          | 217/21841 [52:33<93:25:48, 15.55s/batch, loss=6.0894] [A
+train epoch 00:   1%|          | 218/21841 [52:39<75:42:50, 12.61s/batch, loss=5.8053][A
+train epoch 00:   1%|          | 219/21841 [53:10<108:02:06, 17.99s/batch, loss=5.7429][A
+train epoch 00:   1%|          | 220/21841 [53:20<93:33:05, 15.58s/batch, loss=5.7406] [A
+train epoch 00:   1%|          | 221/21841 [53:49<117:56:21, 19.64s/batch, loss=5.6685][A
+train epoch 00:   1%|          | 222/21841 [53:58<98:28:09, 16.40s/batch, loss=6.1312] [A
+train epoch 00:   1%|          | 223/21841 [54:06<84:47:40, 14.12s/batch, loss=5.7613][A
+train epoch 00:   1%|          | 224/21841 [54:14<72:09:32, 12.02s/batch, loss=6.2002][A
+train epoch 00:   1%|          | 225/21841 [54:24<68:55:19, 11.48s/batch, loss=5.6519][A
+train epoch 00:   1%|          | 226/21841 [54:33<64:46:04, 10.79s/batch, loss=5.7161][A
+train epoch 00:   1%|          | 227/21841 [54:36<50:00:43,  8.33s/batch, loss=6.1777][A
+train epoch 00:   1%|          | 228/21841 [54:46<53:58:45,  8.99s/batch, loss=5.6511][A
+train epoch 00:   1%|          | 229/21841 [55:13<86:27:44, 14.40s/batch, loss=5.6625][A
+train epoch 00:   1%|          | 230/21841 [55:25<82:30:32, 13.74s/batch, loss=5.9357][A
+train epoch 00:   1%|          | 231/21841 [55:40<84:16:44, 14.04s/batch, loss=6.0756][A
+train epoch 00:   1%|          | 232/21841 [55:49<74:43:48, 12.45s/batch, loss=5.6456][A
+train epoch 00:   1%|          | 233/21841 [56:03<77:50:00, 12.97s/batch, loss=5.7969][A
+train epoch 00:   1%|          | 234/21841 [56:12<70:26:51, 11.74s/batch, loss=5.7081][A
+train epoch 00:   1%|          | 235/21841 [56:38<97:04:04, 16.17s/batch, loss=5.6644][A
+train epoch 00:   1%|          | 236/21841 [56:42<74:46:43, 12.46s/batch, loss=5.8084][A
+train epoch 00:   1%|          | 237/21841 [57:02<87:58:14, 14.66s/batch, loss=5.6465][A
+train epoch 00:   1%|          | 238/21841 [57:06<69:20:40, 11.56s/batch, loss=6.1286][A
+train epoch 00:   1%|          | 239/21841 [57:17<67:00:39, 11.17s/batch, loss=6.1889][A
+train epoch 00:   1%|          | 240/21841 [57:40<89:13:43, 14.87s/batch, loss=5.7211][A
+train epoch 00:   1%|          | 241/21841 [57:50<79:53:03, 13.31s/batch, loss=5.7318][A
+train epoch 00:   1%|          | 242/21841 [57:58<71:40:37, 11.95s/batch, loss=5.7769][A
+train epoch 00:   1%|          | 243/21841 [58:11<72:54:34, 12.15s/batch, loss=6.0712][A
+train epoch 00:   1%|          | 244/21841 [58:40<102:12:36, 17.04s/batch, loss=5.9033][A
+train epoch 00:   1%|          | 245/21841 [58:54<97:31:42, 16.26s/batch, loss=5.8785] [A
+train epoch 00:   1%|          | 246/21841 [59:02<81:55:28, 13.66s/batch, loss=6.1599][A
+train epoch 00:   1%|          | 247/21841 [59:21<92:10:46, 15.37s/batch, loss=5.6595][A
+train epoch 00:   1%|          | 248/21841 [59:30<80:59:00, 13.50s/batch, loss=5.8470][A
+train epoch 00:   1%|          | 249/21841 [59:43<80:00:09, 13.34s/batch, loss=5.5860][A
+train epoch 00:   1%|          | 250/21841 [1:00:20<121:39:55, 20.29s/batch, loss=5.7733][A
+train epoch 00:   1%|          | 251/21841 [1:00:31<105:51:45, 17.65s/batch, loss=5.6937][A
+train epoch 00:   1%|          | 252/21841 [1:00:35<81:55:53, 13.66s/batch, loss=6.0911] [A
+train epoch 00:   1%|          | 253/21841 [1:00:45<74:55:40, 12.49s/batch, loss=5.5941][A
+train epoch 00:   1%|          | 254/21841 [1:00:54<68:09:01, 11.37s/batch, loss=5.6153][A
+train epoch 00:   1%|          | 255/21841 [1:01:16<87:45:13, 14.64s/batch, loss=5.6534][A
+train epoch 00:   1%|          | 256/21841 [1:01:25<77:10:10, 12.87s/batch, loss=5.8055][A
+train epoch 00:   1%|          | 257/21841 [1:02:01<119:48:30, 19.98s/batch, loss=5.9449][A
+train epoch 00:   1%|          | 258/21841 [1:02:04<88:42:09, 14.80s/batch, loss=6.1753] [A
+train epoch 00:   1%|          | 259/21841 [1:02:13<77:48:23, 12.98s/batch, loss=5.7101][A
+train epoch 00:   1%|          | 260/21841 [1:02:16<59:24:23,  9.91s/batch, loss=5.7671][A
+train epoch 00:   1%|          | 261/21841 [1:02:26<60:41:54, 10.13s/batch, loss=5.7524][A
+train epoch 00:   1%|          | 262/21841 [1:02:29<47:17:53,  7.89s/batch, loss=6.0336][A
+train epoch 00:   1%|          | 263/21841 [1:02:33<40:14:46,  6.71s/batch, loss=6.1418][A
+train epoch 00:   1%|          | 264/21841 [1:02:43<46:25:00,  7.74s/batch, loss=6.1189][A
+train epoch 00:   1%|          | 265/21841 [1:02:59<60:49:30, 10.15s/batch, loss=5.7328][A
+train epoch 00:   1%|          | 266/21841 [1:03:02<48:07:29,  8.03s/batch, loss=6.0916][A
+train epoch 00:   1%|          | 267/21841 [1:03:28<79:56:09, 13.34s/batch, loss=5.5003][A
+train epoch 00:   1%|          | 268/21841 [1:03:53<101:46:50, 16.98s/batch, loss=5.7911][A
+train epoch 00:   1%|          | 269/21841 [1:05:06<201:54:58, 33.70s/batch, loss=5.6691][A
+train epoch 00:   1%|          | 270/21841 [1:05:15<157:50:37, 26.34s/batch, loss=5.8098][A
+train epoch 00:   1%|          | 271/21841 [1:05:24<126:49:03, 21.17s/batch, loss=5.8703][A
+train epoch 00:   1%|          | 272/21841 [1:05:27<93:46:48, 15.65s/batch, loss=6.1059] [A  train e00 s0204  loss=5.6568  (chain=0.000 mapq=0.458 position=0.038 router=0.004 seed=0.651 transition=0.713)
+  train e00 s0205  loss=5.7054  (chain=0.000 mapq=0.419 position=0.044 router=0.004 seed=0.690 transition=0.759)
+  train e00 s0206  loss=6.1936  (chain=0.000 mapq=0.575 position=0.424 router=0.004 seed=0.707 transition=0.787)
+  train e00 s0207  loss=6.1717  (chain=0.000 mapq=0.571 position=0.413 router=0.004 seed=0.722 transition=0.739)
+  train e00 s0208  loss=5.6958  (chain=0.000 mapq=0.415 position=0.085 router=0.004 seed=0.640 transition=0.762)
+  train e00 s0209  loss=6.1192  (chain=0.000 mapq=0.432 position=0.432 router=0.004 seed=0.697 transition=0.784)
+  train e00 s0210  loss=5.8282  (chain=0.000 mapq=0.330 position=0.234 router=0.004 seed=0.676 transition=0.742)  |g|=4.380  route=fast:100%,medium:0%,full:0%
+  train e00 s0211  loss=6.0138  (chain=0.000 mapq=0.378 position=0.406 router=0.004 seed=0.689 transition=0.696)
+  train e00 s0212  loss=5.6622  (chain=0.000 mapq=0.336 position=0.068 router=0.004 seed=0.668 transition=0.752)
+  train e00 s0213  loss=6.0952  (chain=0.000 mapq=0.571 position=0.422 router=0.004 seed=0.684 transition=0.643)
+  train e00 s0214  loss=5.7024  (chain=0.000 mapq=0.365 position=0.097 router=0.004 seed=0.692 transition=0.698)
+  train e00 s0215  loss=5.7372  (chain=0.000 mapq=0.414 position=0.073 router=0.004 seed=0.695 transition=0.760)
+  train e00 s0216  loss=6.0894  (chain=0.000 mapq=0.573 position=0.422 router=0.004 seed=0.698 transition=0.601)
+  train e00 s0217  loss=5.8053  (chain=0.000 mapq=0.570 position=0.426 router=0.004 seed=0.712 transition=0.000)
+  train e00 s0218  loss=5.7429  (chain=0.000 mapq=0.370 position=0.124 router=0.004 seed=0.680 transition=0.743)
+  train e00 s0219  loss=5.7406  (chain=0.000 mapq=0.421 position=0.147 router=0.004 seed=0.646 transition=0.711)
+  train e00 s0220  loss=5.6685  (chain=0.000 mapq=0.413 position=0.077 router=0.004 seed=0.656 transition=0.694)  |g|=5.684  route=fast:100%,medium:0%,full:0%
+  train e00 s0221  loss=6.1312  (chain=0.000 mapq=0.570 position=0.420 router=0.004 seed=0.646 transition=0.797)
+  train e00 s0222  loss=5.7613  (chain=0.000 mapq=0.417 position=0.145 router=0.004 seed=0.647 transition=0.757)
+  train e00 s0223  loss=6.2002  (chain=0.000 mapq=0.575 position=0.423 router=0.004 seed=0.699 transition=0.817)
+  train e00 s0224  loss=5.6519  (chain=0.000 mapq=0.415 position=0.004 router=0.004 seed=0.692 transition=0.732)
+  train e00 s0225  loss=5.7161  (chain=0.000 mapq=0.414 position=0.111 router=0.004 seed=0.643 transition=0.745)
+  train e00 s0226  loss=6.1777  (chain=0.000 mapq=0.563 position=0.427 router=0.004 seed=0.692 transition=0.789)
+  train e00 s0227  loss=5.6511  (chain=0.000 mapq=0.410 position=0.028 router=0.004 seed=0.673 transition=0.727)
+  train e00 s0228  loss=5.6625  (chain=0.000 mapq=0.412 position=0.035 router=0.004 seed=0.667 transition=0.744)
+  train e00 s0229  loss=5.9357  (chain=0.000 mapq=0.489 position=0.204 router=0.004 seed=0.732 transition=0.746)
+  train e00 s0230  loss=6.0756  (chain=0.000 mapq=0.491 position=0.374 router=0.004 seed=0.715 transition=0.718)  |g|=2.416  route=fast:100%,medium:0%,full:0%
+  train e00 s0231  loss=5.6456  (chain=0.000 mapq=0.414 position=0.005 router=0.004 seed=0.692 transition=0.719)
+  train e00 s0232  loss=5.7969  (chain=0.000 mapq=0.410 position=0.162 router=0.004 seed=0.672 transition=0.751)
+  train e00 s0233  loss=5.7081  (chain=0.000 mapq=0.411 position=0.085 router=0.004 seed=0.664 transition=0.742)
+  train e00 s0234  loss=5.6644  (chain=0.000 mapq=0.415 position=0.068 router=0.004 seed=0.642 transition=0.730)
+  train e00 s0235  loss=5.8084  (chain=0.000 mapq=0.570 position=0.424 router=0.004 seed=0.718 transition=0.000)
+  train e00 s0236  loss=5.6465  (chain=0.000 mapq=0.417 position=0.006 router=0.004 seed=0.675 transition=0.750)
+  train e00 s0237  loss=6.1286  (chain=0.000 mapq=0.568 position=0.422 router=0.004 seed=0.699 transition=0.684)
+  train e00 s0238  loss=6.1889  (chain=0.000 mapq=0.570 position=0.416 router=0.004 seed=0.710 transition=0.791)
+  train e00 s0239  loss=5.7211  (chain=0.000 mapq=0.407 position=0.091 router=0.004 seed=0.663 transition=0.763)
+  train e00 s0240  loss=5.7318  (chain=0.000 mapq=0.425 position=0.151 router=0.004 seed=0.631 transition=0.709)  |g|=4.916  route=fast:100%,medium:0%,full:0%
+  train e00 s0241  loss=5.7769  (chain=0.000 mapq=0.420 position=0.196 router=0.004 seed=0.640 transition=0.696)
+  train e00 s0242  loss=6.0712  (chain=0.232 mapq=0.411 position=0.330 router=0.004 seed=0.557 transition=0.730)
+  train e00 s0243  loss=5.9033  (chain=0.000 mapq=0.415 position=0.332 router=0.004 seed=0.621 transition=0.722)
+  train e00 s0244  loss=5.8785  (chain=0.000 mapq=0.397 position=0.272 router=0.004 seed=0.669 transition=0.714)
+  train e00 s0245  loss=6.1599  (chain=0.000 mapq=0.570 position=0.424 router=0.004 seed=0.676 transition=0.786)
+  train e00 s0246  loss=5.6595  (chain=0.000 mapq=0.408 position=0.064 router=0.004 seed=0.644 transition=0.730)
+  train e00 s0247  loss=5.8470  (chain=0.000 mapq=0.417 position=0.302 router=0.004 seed=0.606 transition=0.697)
+  train e00 s0248  loss=5.5860  (chain=0.000 mapq=0.362 position=0.031 router=0.004 seed=0.622 transition=0.739)
+  train e00 s0249  loss=5.7733  (chain=0.000 mapq=0.366 position=0.210 router=0.004 seed=0.636 transition=0.724)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000250.pt
+  train e00 s0250  loss=5.6937  (chain=0.000 mapq=0.412 position=0.173 router=0.004 seed=0.583 transition=0.699)  |g|=4.570  route=fast:100%,medium:0%,full:0%
+  train e00 s0251  loss=6.0911  (chain=-0.000 mapq=0.472 position=0.419 router=0.004 seed=0.671 transition=0.766)
+  train e00 s0252  loss=5.5941  (chain=0.000 mapq=0.409 position=0.020 router=0.004 seed=0.625 transition=0.725)
+  train e00 s0253  loss=5.6153  (chain=0.000 mapq=0.412 position=0.058 router=0.004 seed=0.603 transition=0.732)
+  train e00 s0254  loss=5.6534  (chain=0.000 mapq=0.410 position=0.046 router=0.004 seed=0.636 transition=0.770)
+  train e00 s0255  loss=5.8055  (chain=0.000 mapq=0.408 position=0.205 router=0.004 seed=0.651 transition=0.727)
+  train e00 s0256  loss=5.9449  (chain=0.000 mapq=0.411 position=0.316 router=0.004 seed=0.670 transition=0.744)
+  train e00 s0257  loss=6.1753  (chain=0.000 mapq=0.568 position=0.416 router=0.004 seed=0.715 transition=0.757)
+  train e00 s0258  loss=5.7101  (chain=0.000 mapq=0.416 position=0.142 router=0.004 seed=0.612 transition=0.732)
+  train e00 s0259  loss=5.7671  (chain=0.000 mapq=0.565 position=0.420 router=0.004 seed=0.683 transition=0.000)
+  train e00 s0260  loss=5.7524  (chain=0.000 mapq=0.416 position=0.222 router=0.004 seed=0.588 transition=0.705)  |g|=4.316  route=fast:100%,medium:0%,full:0%
+  train e00 s0261  loss=6.0336  (chain=0.000 mapq=0.431 position=0.426 router=0.004 seed=0.696 transition=0.628)
+  train e00 s0262  loss=6.1418  (chain=0.000 mapq=0.564 position=0.422 router=0.004 seed=0.713 transition=0.684)
+  train e00 s0263  loss=6.1189  (chain=0.000 mapq=0.567 position=0.411 router=0.004 seed=0.684 transition=0.715)
+  train e00 s0264  loss=5.7328  (chain=0.000 mapq=0.410 position=0.129 router=0.004 seed=0.654 transition=0.726)
+  train e00 s0265  loss=6.0916  (chain=0.000 mapq=0.561 position=0.421 router=0.004 seed=0.690 transition=0.636)
+  train e00 s0266  loss=5.5003  (chain=0.000 mapq=0.413 position=0.003 router=0.004 seed=0.574 transition=0.669)
+  train e00 s0267  loss=5.7911  (chain=0.000 mapq=0.409 position=0.202 router=0.004 seed=0.622 transition=0.760)
+  train e00 s0268  loss=5.6691  (chain=0.000 mapq=0.492 position=0.001 router=0.004 seed=0.688 transition=0.703)
+  train e00 s0269  loss=5.8098  (chain=0.000 mapq=0.418 position=0.240 router=0.004 seed=0.630 transition=0.695)
+  train e00 s0270  loss=5.8703  (chain=0.000 mapq=0.408 position=0.260 router=0.004 seed=0.661 transition=0.727)  |g|=3.974  route=fast:100%,medium:0%,full:0%
+  train e00 s0271  loss=6.1059  (chain=0.000 mapq=0.525 position=0.418 router=0.004 seed=0.717 transition=0.651)
+
+train epoch 00:   1%|          | 273/21841 [1:05:40<88:18:11, 14.74s/batch, loss=5.7765][A
+train epoch 00:   1%|▏         | 274/21841 [1:05:51<82:26:35, 13.76s/batch, loss=5.9148][A
+train epoch 00:   1%|▏         | 275/21841 [1:06:18<106:08:36, 17.72s/batch, loss=5.9394][A
+train epoch 00:   1%|▏         | 276/21841 [1:06:21<79:17:49, 13.24s/batch, loss=6.1165] [A
+train epoch 00:   1%|▏         | 277/21841 [1:06:29<71:05:20, 11.87s/batch, loss=5.5101][A
+train epoch 00:   1%|▏         | 278/21841 [1:06:41<71:05:18, 11.87s/batch, loss=5.6354][A
+train epoch 00:   1%|▏         | 279/21841 [1:06:57<77:38:58, 12.96s/batch, loss=5.9367][A
+train epoch 00:   1%|▏         | 280/21841 [1:07:09<76:14:44, 12.73s/batch, loss=5.7687][A
+train epoch 00:   1%|▏         | 281/21841 [1:07:12<59:10:23,  9.88s/batch, loss=6.1590][A
+train epoch 00:   1%|▏         | 282/21841 [1:07:38<88:05:20, 14.71s/batch, loss=5.6782][A
+train epoch 00:   1%|▏         | 283/21841 [1:08:22<140:37:41, 23.48s/batch, loss=5.3686][A
+train epoch 00:   1%|▏         | 284/21841 [1:08:31<114:27:54, 19.12s/batch, loss=5.4875][A
+train epoch 00:   1%|▏         | 285/21841 [1:08:45<105:37:08, 17.64s/batch, loss=5.6631][A
+train epoch 00:   1%|▏         | 286/21841 [1:08:54<89:30:14, 14.95s/batch, loss=5.6472] [A
+train epoch 00:   1%|▏         | 287/21841 [1:09:10<90:42:52, 15.15s/batch, loss=5.7895][A
+train epoch 00:   1%|▏         | 288/21841 [1:09:12<68:27:15, 11.43s/batch, loss=5.8852][A
+train epoch 00:   1%|▏         | 289/21841 [1:09:31<82:07:34, 13.72s/batch, loss=5.5515][A
+train epoch 00:   1%|▏         | 290/21841 [1:09:38<70:03:49, 11.70s/batch, loss=6.0992][A
+train epoch 00:   1%|▏         | 291/21841 [1:10:06<98:44:49, 16.50s/batch, loss=5.7118][A
+train epoch 00:   1%|▏         | 292/21841 [1:10:11<77:53:40, 13.01s/batch, loss=6.0999][A
+train epoch 00:   1%|▏         | 293/21841 [1:10:28<85:24:32, 14.27s/batch, loss=5.5523][A
+train epoch 00:   1%|▏         | 294/21841 [1:10:38<77:21:28, 12.92s/batch, loss=5.8057][A
+train epoch 00:   1%|▏         | 295/21841 [1:10:42<61:57:41, 10.35s/batch, loss=6.1588][A
+train epoch 00:   1%|▏         | 296/21841 [1:11:00<74:45:23, 12.49s/batch, loss=5.5944][A
+train epoch 00:   1%|▏         | 297/21841 [1:11:08<66:16:53, 11.08s/batch, loss=5.7810][A
+train epoch 00:   1%|▏         | 298/21841 [1:11:20<68:40:19, 11.48s/batch, loss=5.8808][A
+train epoch 00:   1%|▏         | 299/21841 [1:11:46<94:41:56, 15.83s/batch, loss=5.6338][A
+train epoch 00:   1%|▏         | 300/21841 [1:11:55<83:27:30, 13.95s/batch, loss=5.6641][A
+train epoch 00:   1%|▏         | 301/21841 [1:12:14<92:19:10, 15.43s/batch, loss=5.6750][A
+train epoch 00:   1%|▏         | 302/21841 [1:12:26<85:26:30, 14.28s/batch, loss=5.6891][A
+train epoch 00:   1%|▏         | 303/21841 [1:13:19<155:54:31, 26.06s/batch, loss=6.1288][A
+train epoch 00:   1%|▏         | 304/21841 [1:13:24<116:30:18, 19.47s/batch, loss=5.7749][A
+train epoch 00:   1%|▏         | 305/21841 [1:13:49<126:39:02, 21.17s/batch, loss=5.4846][A
+train epoch 00:   1%|▏         | 306/21841 [1:14:06<119:34:39, 19.99s/batch, loss=5.6782][A
+train epoch 00:   1%|▏         | 307/21841 [1:14:18<105:38:27, 17.66s/batch, loss=6.0430][A
+train epoch 00:   1%|▏         | 308/21841 [1:14:29<92:37:15, 15.48s/batch, loss=5.6046] [A
+train epoch 00:   1%|▏         | 309/21841 [1:14:31<69:43:16, 11.66s/batch, loss=5.6734][A
+train epoch 00:   1%|▏         | 310/21841 [1:14:41<66:07:40, 11.06s/batch, loss=5.5815][A
+train epoch 00:   1%|▏         | 311/21841 [1:14:49<61:10:07, 10.23s/batch, loss=6.0628][A
+train epoch 00:   1%|▏         | 312/21841 [1:14:58<58:28:12,  9.78s/batch, loss=5.6761][A
+train epoch 00:   1%|▏         | 313/21841 [1:15:19<79:04:46, 13.22s/batch, loss=5.7803][A
+train epoch 00:   1%|▏         | 314/21841 [1:17:16<264:49:32, 44.29s/batch, loss=5.8256][A
+train epoch 00:   1%|▏         | 315/21841 [1:17:26<202:40:09, 33.89s/batch, loss=6.1107][A
+train epoch 00:   1%|▏         | 316/21841 [1:17:34<157:06:37, 26.28s/batch, loss=6.1430][A
+train epoch 00:   1%|▏         | 317/21841 [1:17:55<147:40:14, 24.70s/batch, loss=5.6800][A
+train epoch 00:   1%|▏         | 318/21841 [1:19:45<300:16:06, 50.22s/batch, loss=5.6776][A
+train epoch 00:   1%|▏         | 319/21841 [1:19:54<225:55:28, 37.79s/batch, loss=5.6936][A
+train epoch 00:   1%|▏         | 320/21841 [1:20:09<185:29:03, 31.03s/batch, loss=5.6864][A
+train epoch 00:   1%|▏         | 321/21841 [1:21:25<266:03:37, 44.51s/batch, loss=5.7248][A
+train epoch 00:   1%|▏         | 322/21841 [1:21:44<219:37:11, 36.74s/batch, loss=5.8526][A
+train epoch 00:   1%|▏         | 323/21841 [1:21:51<166:54:45, 27.92s/batch, loss=6.0867][A
+train epoch 00:   1%|▏         | 324/21841 [1:21:59<132:08:12, 22.11s/batch, loss=5.4761][A
+train epoch 00:   1%|▏         | 325/21841 [1:22:15<120:31:45, 20.17s/batch, loss=5.6651][A
+train epoch 00:   1%|▏         | 326/21841 [1:22:25<102:50:26, 17.21s/batch, loss=5.7778][A
+train epoch 00:   1%|▏         | 327/21841 [1:22:52<119:18:10, 19.96s/batch, loss=5.6136][A
+train epoch 00:   2%|▏         | 328/21841 [1:23:05<107:31:31, 17.99s/batch, loss=6.0126][A
+train epoch 00:   2%|▏         | 329/21841 [1:23:14<90:47:40, 15.19s/batch, loss=5.7324] [A
+train epoch 00:   2%|▏         | 330/21841 [1:23:25<83:10:24, 13.92s/batch, loss=5.5445][A
+train epoch 00:   2%|▏         | 331/21841 [1:23:28<63:27:49, 10.62s/batch, loss=6.0978][A
+train epoch 00:   2%|▏         | 332/21841 [1:23:45<75:20:56, 12.61s/batch, loss=5.7241][A
+train epoch 00:   2%|▏         | 333/21841 [1:23:51<64:08:02, 10.73s/batch, loss=6.1151][A
+train epoch 00:   2%|▏         | 334/21841 [1:24:15<87:14:18, 14.60s/batch, loss=5.5471][A
+train epoch 00:   2%|▏         | 335/21841 [1:24:39<103:18:54, 17.29s/batch, loss=5.5363][A
+train epoch 00:   2%|▏         | 336/21841 [1:25:12<133:03:33, 22.27s/batch, loss=5.5201][A
+train epoch 00:   2%|▏         | 337/21841 [1:25:21<108:39:25, 18.19s/batch, loss=5.6487][A
+train epoch 00:   2%|▏         | 338/21841 [1:25:30<91:47:43, 15.37s/batch, loss=5.7047] [A
+train epoch 00:   2%|▏         | 339/21841 [1:25:49<99:15:02, 16.62s/batch, loss=5.5740][A
+train epoch 00:   2%|▏         | 340/21841 [1:25:59<86:04:15, 14.41s/batch, loss=5.6889][A  train e00 s0272  loss=5.7765  (chain=0.114 mapq=0.376 position=0.146 router=0.003 seed=0.582 transition=0.730)
+  train e00 s0273  loss=5.9148  (chain=0.000 mapq=0.204 position=0.408 router=0.004 seed=0.645 transition=0.755)
+  train e00 s0274  loss=5.9394  (chain=-0.000 mapq=0.443 position=0.326 router=0.004 seed=0.655 transition=0.709)
+  train e00 s0275  loss=6.1165  (chain=0.000 mapq=0.565 position=0.414 router=0.004 seed=0.681 transition=0.714)
+  train e00 s0276  loss=5.5101  (chain=0.000 mapq=0.174 position=0.037 router=0.004 seed=0.623 transition=0.762)
+  train e00 s0277  loss=5.6354  (chain=0.000 mapq=0.408 position=0.079 router=0.004 seed=0.609 transition=0.722)
+  train e00 s0278  loss=5.9367  (chain=0.000 mapq=0.409 position=0.363 router=0.004 seed=0.621 transition=0.730)
+  train e00 s0279  loss=5.7687  (chain=0.000 mapq=0.557 position=0.412 router=0.004 seed=0.696 transition=0.000)
+  train e00 s0280  loss=6.1590  (chain=0.000 mapq=0.565 position=0.416 router=0.004 seed=0.694 transition=0.768)  |g|=4.080  route=fast:100%,medium:0%,full:0%
+  train e00 s0281  loss=5.6782  (chain=0.000 mapq=0.406 position=0.116 router=0.004 seed=0.613 transition=0.728)
+  train e00 s0282  loss=5.3686  (chain=0.000 mapq=0.107 position=0.007 router=0.004 seed=0.575 transition=0.702)
+  train e00 s0283  loss=5.4875  (chain=0.000 mapq=0.226 position=0.028 router=0.004 seed=0.599 transition=0.731)
+  train e00 s0284  loss=5.6631  (chain=0.000 mapq=0.482 position=0.049 router=0.005 seed=0.622 transition=0.736)
+  train e00 s0285  loss=5.6472  (chain=0.000 mapq=0.415 position=0.149 router=0.004 seed=0.562 transition=0.692)
+  train e00 s0286  loss=5.7895  (chain=0.000 mapq=0.404 position=0.207 router=0.004 seed=0.627 transition=0.743)
+  train e00 s0287  loss=5.8852  (chain=0.000 mapq=0.459 position=0.262 router=0.004 seed=0.648 transition=0.726)
+  train e00 s0288  loss=5.5515  (chain=0.000 mapq=0.275 position=0.070 router=0.004 seed=0.599 transition=0.726)
+  train e00 s0289  loss=6.0992  (chain=0.000 mapq=0.557 position=0.412 router=0.004 seed=0.693 transition=0.665)
+  train e00 s0290  loss=5.7118  (chain=0.000 mapq=0.409 position=0.215 router=0.004 seed=0.560 transition=0.700)  |g|=4.177  route=fast:100%,medium:0%,full:0%
+  train e00 s0291  loss=6.0999  (chain=0.000 mapq=0.563 position=0.406 router=0.004 seed=0.638 transition=0.782)
+  train e00 s0292  loss=5.5523  (chain=0.000 mapq=0.409 position=0.053 router=0.004 seed=0.562 transition=0.701)
+  train e00 s0293  loss=5.8057  (chain=0.000 mapq=0.409 position=0.252 router=0.004 seed=0.605 transition=0.726)
+  train e00 s0294  loss=6.1588  (chain=0.000 mapq=0.560 position=0.410 router=0.004 seed=0.721 transition=0.731)
+  train e00 s0295  loss=5.5944  (chain=0.000 mapq=0.414 position=0.101 router=0.004 seed=0.545 transition=0.719)
+  train e00 s0296  loss=5.7810  (chain=0.000 mapq=0.157 position=0.264 router=0.004 seed=0.695 transition=0.722)
+  train e00 s0297  loss=5.8808  (chain=0.000 mapq=0.404 position=0.316 router=0.004 seed=0.621 transition=0.718)
+  train e00 s0298  loss=5.6338  (chain=0.000 mapq=0.403 position=0.064 router=0.004 seed=0.624 transition=0.725)
+  train e00 s0299  loss=5.6641  (chain=0.000 mapq=0.413 position=0.172 router=0.004 seed=0.553 transition=0.700)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000300.pt
+  train e00 s0300  loss=5.6750  (chain=0.000 mapq=0.404 position=0.129 router=0.004 seed=0.606 transition=0.713)  |g|=3.747  route=fast:100%,medium:0%,full:0%
+  train e00 s0301  loss=5.6891  (chain=0.000 mapq=0.408 position=0.133 router=0.004 seed=0.602 transition=0.737)
+  train e00 s0302  loss=6.1288  (chain=0.000 mapq=0.496 position=0.422 router=0.004 seed=0.699 transition=0.755)
+  train e00 s0303  loss=5.7749  (chain=0.000 mapq=0.568 position=0.417 router=0.004 seed=0.692 transition=0.000)
+  train e00 s0304  loss=5.4846  (chain=0.000 mapq=0.414 position=0.007 router=0.004 seed=0.537 transition=0.703)
+  train e00 s0305  loss=5.6782  (chain=0.000 mapq=0.356 position=0.183 router=0.004 seed=0.593 transition=0.683)
+  train e00 s0306  loss=6.0430  (chain=0.086 mapq=0.411 position=0.442 router=0.004 seed=0.580 transition=0.694)
+  train e00 s0307  loss=5.6046  (chain=0.000 mapq=0.356 position=0.079 router=0.004 seed=0.591 transition=0.749)
+  train e00 s0308  loss=5.6734  (chain=0.000 mapq=0.050 position=0.270 router=0.004 seed=0.690 transition=0.612)
+  train e00 s0309  loss=5.5815  (chain=0.000 mapq=0.409 position=0.067 router=0.004 seed=0.572 transition=0.711)
+  train e00 s0310  loss=6.0628  (chain=0.000 mapq=0.399 position=0.434 router=0.004 seed=0.651 transition=0.792)  |g|=5.069  route=fast:100%,medium:0%,full:0%
+  train e00 s0311  loss=5.6761  (chain=0.000 mapq=0.372 position=0.158 router=0.004 seed=0.606 transition=0.686)
+  train e00 s0312  loss=5.7803  (chain=0.000 mapq=0.254 position=0.263 router=0.004 seed=0.644 transition=0.727)
+  train e00 s0313  loss=5.8256  (chain=0.000 mapq=0.400 position=0.273 router=0.004 seed=0.620 transition=0.701)
+  train e00 s0314  loss=6.1107  (chain=0.000 mapq=0.562 position=0.406 router=0.004 seed=0.689 transition=0.706)
+  train e00 s0315  loss=6.1430  (chain=0.000 mapq=0.556 position=0.406 router=0.004 seed=0.664 transition=0.826)
+  train e00 s0316  loss=5.6800  (chain=0.000 mapq=0.407 position=0.096 router=0.004 seed=0.623 transition=0.751)
+  train e00 s0317  loss=5.6776  (chain=0.000 mapq=0.438 position=0.078 router=0.004 seed=0.660 transition=0.675)
+  train e00 s0318  loss=5.6936  (chain=0.000 mapq=0.406 position=0.250 router=0.004 seed=0.511 transition=0.694)
+  train e00 s0319  loss=5.6864  (chain=0.000 mapq=0.405 position=0.166 router=0.004 seed=0.571 transition=0.728)
+  train e00 s0320  loss=5.7248  (chain=0.000 mapq=0.401 position=0.214 router=0.004 seed=0.578 transition=0.700)  |g|=4.022  route=fast:100%,medium:0%,full:0%
+  train e00 s0321  loss=5.8526  (chain=0.000 mapq=0.401 position=0.284 router=0.004 seed=0.607 transition=0.757)
+  train e00 s0322  loss=6.0867  (chain=0.000 mapq=0.555 position=0.412 router=0.004 seed=0.700 transition=0.631)
+  train e00 s0323  loss=5.4761  (chain=0.000 mapq=0.410 position=0.018 router=0.004 seed=0.508 transition=0.727)
+  train e00 s0324  loss=5.6651  (chain=0.087 mapq=0.388 position=0.131 router=0.004 seed=0.518 transition=0.706)
+  train e00 s0325  loss=5.7778  (chain=0.000 mapq=0.401 position=0.249 router=0.004 seed=0.578 transition=0.736)
+  train e00 s0326  loss=5.6136  (chain=0.000 mapq=0.363 position=0.072 router=0.004 seed=0.608 transition=0.739)
+  train e00 s0327  loss=6.0126  (chain=0.000 mapq=0.449 position=0.405 router=0.004 seed=0.659 transition=0.684)
+  train e00 s0328  loss=5.7324  (chain=0.000 mapq=0.414 position=0.240 router=0.004 seed=0.541 transition=0.724)
+  train e00 s0329  loss=5.5445  (chain=0.000 mapq=0.396 position=0.040 router=0.004 seed=0.570 transition=0.709)
+  train e00 s0330  loss=6.0978  (chain=0.000 mapq=0.559 position=0.411 router=0.004 seed=0.702 transition=0.645)  |g|=2.932  route=fast:100%,medium:0%,full:0%
+  train e00 s0331  loss=5.7241  (chain=0.000 mapq=0.382 position=0.226 router=0.004 seed=0.582 transition=0.686)
+  train e00 s0332  loss=6.1151  (chain=0.000 mapq=0.549 position=0.414 router=0.004 seed=0.744 transition=0.600)
+  train e00 s0333  loss=5.5471  (chain=0.000 mapq=0.433 position=0.030 router=0.004 seed=0.573 transition=0.689)
+  train e00 s0334  loss=5.5363  (chain=0.000 mapq=0.385 position=0.002 router=0.004 seed=0.594 transition=0.732)
+  train e00 s0335  loss=5.5201  (chain=0.000 mapq=0.401 position=0.082 router=0.004 seed=0.507 transition=0.697)
+  train e00 s0336  loss=5.6487  (chain=0.000 mapq=0.405 position=0.191 router=0.004 seed=0.526 transition=0.694)
+  train e00 s0337  loss=5.7047  (chain=0.000 mapq=0.398 position=0.219 router=0.004 seed=0.556 transition=0.696)
+  train e00 s0338  loss=5.5740  (chain=0.000 mapq=0.389 position=0.015 router=0.004 seed=0.650 transition=0.665)
+  train e00 s0339  loss=5.6889  (chain=0.000 mapq=0.401 position=0.195 router=0.004 seed=0.559 transition=0.705)
+
+train epoch 00:   2%|▏         | 341/21841 [1:26:02<65:34:06, 10.98s/batch, loss=6.1561][A
+train epoch 00:   2%|▏         | 342/21841 [1:26:05<52:19:02,  8.76s/batch, loss=6.0988][A
+train epoch 00:   2%|▏         | 343/21841 [1:27:03<140:56:23, 23.60s/batch, loss=5.4859][A
+train epoch 00:   2%|▏         | 344/21841 [1:27:10<111:10:18, 18.62s/batch, loss=6.0453][A
+train epoch 00:   2%|▏         | 345/21841 [1:27:18<90:44:08, 15.20s/batch, loss=6.1506] [A
+train epoch 00:   2%|▏         | 346/21841 [1:27:38<100:11:50, 16.78s/batch, loss=5.5060][A
+train epoch 00:   2%|▏         | 347/21841 [1:27:49<88:46:38, 14.87s/batch, loss=5.4464] [A
+train epoch 00:   2%|▏         | 348/21841 [1:27:57<77:49:36, 13.04s/batch, loss=5.5431][A
+train epoch 00:   2%|▏         | 349/21841 [1:28:11<79:23:27, 13.30s/batch, loss=5.5703][A
+train epoch 00:   2%|▏         | 350/21841 [1:28:23<76:34:10, 12.83s/batch, loss=5.4770][A
+train epoch 00:   2%|▏         | 351/21841 [1:28:59<118:48:36, 19.90s/batch, loss=5.7912][A
+train epoch 00:   2%|▏         | 352/21841 [1:29:07<96:39:53, 16.19s/batch, loss=6.0337] [A
+train epoch 00:   2%|▏         | 353/21841 [1:29:23<96:50:59, 16.23s/batch, loss=5.6546][A
+train epoch 00:   2%|▏         | 354/21841 [1:29:41<99:22:03, 16.65s/batch, loss=5.7890][A
+train epoch 00:   2%|▏         | 355/21841 [1:29:52<89:16:36, 14.96s/batch, loss=5.5929][A
+train epoch 00:   2%|▏         | 356/21841 [1:30:11<96:27:00, 16.16s/batch, loss=5.6798][A
+train epoch 00:   2%|▏         | 357/21841 [1:30:21<86:16:02, 14.46s/batch, loss=5.6831][A
+train epoch 00:   2%|▏         | 358/21841 [1:30:49<109:10:40, 18.30s/batch, loss=5.5914][A
+train epoch 00:   2%|▏         | 359/21841 [1:31:09<113:15:33, 18.98s/batch, loss=5.5228][A
+train epoch 00:   2%|▏         | 360/21841 [1:31:30<117:17:48, 19.66s/batch, loss=5.5112][A
+train epoch 00:   2%|▏         | 361/21841 [1:31:50<116:38:37, 19.55s/batch, loss=5.6755][A
+train epoch 00:   2%|▏         | 362/21841 [1:31:59<97:41:12, 16.37s/batch, loss=5.7560] [A
+train epoch 00:   2%|▏         | 363/21841 [1:32:09<86:11:00, 14.45s/batch, loss=5.6731][A
+train epoch 00:   2%|▏         | 364/21841 [1:32:46<126:58:39, 21.28s/batch, loss=5.5695][A
+train epoch 00:   2%|▏         | 365/21841 [1:33:08<129:13:11, 21.66s/batch, loss=5.4436][A
+train epoch 00:   2%|▏         | 366/21841 [1:33:14<100:54:59, 16.92s/batch, loss=6.1458][A
+train epoch 00:   2%|▏         | 367/21841 [1:33:45<125:35:04, 21.05s/batch, loss=5.4849][A
+train epoch 00:   2%|▏         | 368/21841 [1:34:01<116:20:13, 19.50s/batch, loss=5.6234][A
+train epoch 00:   2%|▏         | 369/21841 [1:34:10<97:23:41, 16.33s/batch, loss=5.5967] [A
+train epoch 00:   2%|▏         | 370/21841 [1:34:19<84:10:15, 14.11s/batch, loss=5.5526][A
+train epoch 00:   2%|▏         | 371/21841 [1:34:57<127:17:18, 21.34s/batch, loss=5.4725][A
+train epoch 00:   2%|▏         | 372/21841 [1:35:14<119:03:47, 19.96s/batch, loss=5.6398][A
+train epoch 00:   2%|▏         | 373/21841 [1:35:20<94:19:29, 15.82s/batch, loss=6.1462] [A
+train epoch 00:   2%|▏         | 374/21841 [1:35:22<70:50:06, 11.88s/batch, loss=6.0305][A
+train epoch 00:   2%|▏         | 375/21841 [1:35:34<70:02:31, 11.75s/batch, loss=5.5422][A
+train epoch 00:   2%|▏         | 376/21841 [1:36:31<151:54:13, 25.48s/batch, loss=5.6720][A
+train epoch 00:   2%|▏         | 377/21841 [1:36:58<154:04:51, 25.84s/batch, loss=5.4408][A
+train epoch 00:   2%|▏         | 378/21841 [1:37:20<146:16:03, 24.53s/batch, loss=5.7491][A
+train epoch 00:   2%|▏         | 379/21841 [1:38:23<215:54:38, 36.22s/batch, loss=5.6344][A
+train epoch 00:   2%|▏         | 380/21841 [1:38:42<184:27:54, 30.94s/batch, loss=5.7090][A
+train epoch 00:   2%|▏         | 381/21841 [1:38:57<156:07:53, 26.19s/batch, loss=5.5714][A
+train epoch 00:   2%|▏         | 382/21841 [1:39:06<126:37:18, 21.24s/batch, loss=5.5314][A
+train epoch 00:   2%|▏         | 383/21841 [1:39:22<115:34:08, 19.39s/batch, loss=5.7070][A
+train epoch 00:   2%|▏         | 384/21841 [1:39:24<86:01:13, 14.43s/batch, loss=6.1556] [A
+train epoch 00:   2%|▏         | 385/21841 [1:39:33<75:42:31, 12.70s/batch, loss=5.6925][A
+train epoch 00:   2%|▏         | 386/21841 [1:39:38<61:01:25, 10.24s/batch, loss=6.1575][A
+train epoch 00:   2%|▏         | 387/21841 [1:40:07<94:47:06, 15.91s/batch, loss=5.8063][A
+train epoch 00:   2%|▏         | 388/21841 [1:40:12<76:30:24, 12.84s/batch, loss=6.0204][A
+train epoch 00:   2%|▏         | 389/21841 [1:40:24<74:52:29, 12.57s/batch, loss=6.0707][A
+train epoch 00:   2%|▏         | 390/21841 [1:40:46<90:43:56, 15.23s/batch, loss=5.5150][A
+train epoch 00:   2%|▏         | 391/21841 [1:40:58<85:22:14, 14.33s/batch, loss=5.5495][A
+train epoch 00:   2%|▏         | 392/21841 [1:41:07<75:29:12, 12.67s/batch, loss=5.3923][A
+train epoch 00:   2%|▏         | 393/21841 [1:41:25<84:40:36, 14.21s/batch, loss=5.4828][A
+train epoch 00:   2%|▏         | 394/21841 [1:41:29<67:10:36, 11.28s/batch, loss=6.0091][A
+train epoch 00:   2%|▏         | 395/21841 [1:42:02<105:59:50, 17.79s/batch, loss=5.5695][A
+train epoch 00:   2%|▏         | 396/21841 [1:42:05<79:52:36, 13.41s/batch, loss=6.1435] [A
+train epoch 00:   2%|▏         | 397/21841 [1:42:40<118:21:03, 19.87s/batch, loss=5.5941][A
+train epoch 00:   2%|▏         | 398/21841 [1:43:29<169:34:22, 28.47s/batch, loss=5.6255][A
+train epoch 00:   2%|▏         | 399/21841 [1:43:42<142:48:47, 23.98s/batch, loss=5.6007][A
+train epoch 00:   2%|▏         | 400/21841 [1:44:14<155:57:52, 26.19s/batch, loss=5.3719][A
+train epoch 00:   2%|▏         | 401/21841 [1:44:47<168:50:15, 28.35s/batch, loss=5.5769][A
+train epoch 00:   2%|▏         | 402/21841 [1:44:57<136:25:54, 22.91s/batch, loss=5.6834][A
+train epoch 00:   2%|▏         | 403/21841 [1:45:07<112:44:25, 18.93s/batch, loss=5.4871][A
+train epoch 00:   2%|▏         | 404/21841 [1:45:19<101:17:46, 17.01s/batch, loss=5.4168][A
+train epoch 00:   2%|▏         | 405/21841 [1:45:29<88:22:03, 14.84s/batch, loss=5.6114] [A
+train epoch 00:   2%|▏         | 406/21841 [1:45:43<87:02:31, 14.62s/batch, loss=5.7124][A
+train epoch 00:   2%|▏         | 407/21841 [1:46:00<91:04:24, 15.30s/batch, loss=5.5314][A  train e00 s0340  loss=6.1561  (chain=0.000 mapq=0.545 position=0.418 router=0.004 seed=0.690 transition=0.788)  |g|=3.301  route=fast:100%,medium:0%,full:0%
+  train e00 s0341  loss=6.0988  (chain=0.000 mapq=0.555 position=0.403 router=0.004 seed=0.659 transition=0.752)
+  train e00 s0342  loss=5.4859  (chain=0.000 mapq=0.406 position=0.074 router=0.004 seed=0.487 transition=0.679)
+  train e00 s0343  loss=6.0453  (chain=0.000 mapq=0.558 position=0.408 router=0.004 seed=0.593 transition=0.766)
+  train e00 s0344  loss=6.1506  (chain=0.000 mapq=0.557 position=0.405 router=0.004 seed=0.703 transition=0.764)
+  train e00 s0345  loss=5.5060  (chain=0.000 mapq=0.404 position=0.073 router=0.004 seed=0.497 transition=0.703)
+  train e00 s0346  loss=5.4464  (chain=0.000 mapq=0.408 position=0.004 router=0.004 seed=0.509 transition=0.696)
+  train e00 s0347  loss=5.5431  (chain=0.000 mapq=0.405 position=0.070 router=0.004 seed=0.538 transition=0.702)
+  train e00 s0348  loss=5.5703  (chain=0.000 mapq=0.400 position=0.078 router=0.004 seed=0.570 transition=0.679)
+  train e00 s0349  loss=5.4770  (chain=0.000 mapq=0.396 position=0.046 router=0.004 seed=0.508 transition=0.686)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000350.pt
+  train e00 s0350  loss=5.7912  (chain=0.000 mapq=0.396 position=0.279 router=0.004 seed=0.567 transition=0.731)  |g|=3.068  route=fast:100%,medium:0%,full:0%
+  train e00 s0351  loss=6.0337  (chain=0.000 mapq=0.553 position=0.404 router=0.004 seed=0.595 transition=0.752)
+  train e00 s0352  loss=5.6546  (chain=0.000 mapq=0.396 position=0.156 router=0.004 seed=0.576 transition=0.685)
+  train e00 s0353  loss=5.7890  (chain=0.000 mapq=0.353 position=0.354 router=0.004 seed=0.518 transition=0.718)
+  train e00 s0354  loss=5.5929  (chain=0.000 mapq=0.404 position=0.180 router=0.004 seed=0.479 transition=0.700)
+  train e00 s0355  loss=5.6798  (chain=0.000 mapq=0.404 position=0.184 router=0.004 seed=0.553 transition=0.718)
+  train e00 s0356  loss=5.6831  (chain=0.000 mapq=0.402 position=0.242 router=0.004 seed=0.521 transition=0.674)
+  train e00 s0357  loss=5.5914  (chain=0.000 mapq=0.391 position=0.111 router=0.004 seed=0.544 transition=0.718)
+  train e00 s0358  loss=5.5228  (chain=0.000 mapq=0.399 position=0.011 router=0.004 seed=0.580 transition=0.699)
+  train e00 s0359  loss=5.5112  (chain=0.000 mapq=0.402 position=0.053 router=0.004 seed=0.525 transition=0.701)
+  train e00 s0360  loss=5.6755  (chain=0.087 mapq=0.398 position=0.066 router=0.004 seed=0.582 transition=0.717)  |g|=3.836  route=fast:100%,medium:0%,full:0%
+  train e00 s0361  loss=5.7560  (chain=0.000 mapq=0.409 position=0.344 router=0.004 seed=0.475 transition=0.701)
+  train e00 s0362  loss=5.6731  (chain=0.000 mapq=0.400 position=0.277 router=0.004 seed=0.469 transition=0.690)
+  train e00 s0363  loss=5.5695  (chain=0.000 mapq=0.400 position=0.169 router=0.004 seed=0.468 transition=0.699)
+  train e00 s0364  loss=5.4436  (chain=0.000 mapq=0.402 position=0.013 router=0.004 seed=0.501 transition=0.693)
+  train e00 s0365  loss=6.1458  (chain=0.000 mapq=0.548 position=0.400 router=0.004 seed=0.690 transition=0.799)
+  train e00 s0366  loss=5.4849  (chain=0.000 mapq=0.397 position=0.001 router=0.004 seed=0.562 transition=0.682)
+  train e00 s0367  loss=5.6234  (chain=0.000 mapq=0.403 position=0.218 router=0.004 seed=0.482 transition=0.679)
+  train e00 s0368  loss=5.5967  (chain=0.000 mapq=0.392 position=0.140 router=0.004 seed=0.529 transition=0.699)
+  train e00 s0369  loss=5.5526  (chain=0.000 mapq=0.396 position=0.138 router=0.004 seed=0.498 transition=0.672)
+  train e00 s0370  loss=5.4725  (chain=0.000 mapq=0.401 position=0.075 router=0.004 seed=0.470 transition=0.690)  |g|=3.722  route=fast:100%,medium:0%,full:0%
+  train e00 s0371  loss=5.6398  (chain=0.000 mapq=0.396 position=0.165 router=0.004 seed=0.540 transition=0.710)
+  train e00 s0372  loss=6.1462  (chain=0.000 mapq=0.557 position=0.405 router=0.004 seed=0.708 transition=0.745)
+  train e00 s0373  loss=6.0305  (chain=0.000 mapq=0.548 position=0.405 router=0.004 seed=0.587 transition=0.765)
+  train e00 s0374  loss=5.5422  (chain=0.000 mapq=0.399 position=0.088 router=0.004 seed=0.546 transition=0.654)
+  train e00 s0375  loss=5.6720  (chain=0.000 mapq=0.409 position=0.211 router=0.004 seed=0.526 transition=0.698)
+  train e00 s0376  loss=5.4408  (chain=0.000 mapq=0.324 position=0.013 router=0.004 seed=0.526 transition=0.715)
+  train e00 s0377  loss=5.7491  (chain=0.000 mapq=0.550 position=0.405 router=0.004 seed=0.687 transition=0.000)
+  train e00 s0378  loss=5.6344  (chain=0.000 mapq=0.393 position=0.163 router=0.004 seed=0.535 transition=0.715)
+  train e00 s0379  loss=5.7090  (chain=0.181 mapq=0.326 position=0.144 router=0.004 seed=0.496 transition=0.684)
+  train e00 s0380  loss=5.5714  (chain=0.000 mapq=0.393 position=0.153 router=0.004 seed=0.492 transition=0.697)  |g|=3.595  route=fast:100%,medium:0%,full:0%
+  train e00 s0381  loss=5.5314  (chain=0.000 mapq=0.393 position=0.158 router=0.004 seed=0.455 transition=0.681)
+  train e00 s0382  loss=5.7070  (chain=0.088 mapq=0.396 position=0.232 router=0.004 seed=0.480 transition=0.653)
+  train e00 s0383  loss=6.1556  (chain=0.000 mapq=0.548 position=0.415 router=0.004 seed=0.762 transition=0.645)
+  train e00 s0384  loss=5.6925  (chain=0.000 mapq=0.400 position=0.263 router=0.004 seed=0.495 transition=0.704)
+  train e00 s0385  loss=6.1575  (chain=0.000 mapq=0.546 position=0.398 router=0.004 seed=0.683 transition=0.843)
+  train e00 s0386  loss=5.8063  (chain=0.000 mapq=0.366 position=0.367 router=0.004 seed=0.527 transition=0.694)
+  train e00 s0387  loss=6.0204  (chain=0.000 mapq=0.538 position=0.401 router=0.004 seed=0.589 transition=0.758)
+  train e00 s0388  loss=6.0707  (chain=0.000 mapq=0.546 position=0.402 router=0.004 seed=0.689 transition=0.649)
+  train e00 s0389  loss=5.5150  (chain=0.000 mapq=0.395 position=0.022 router=0.004 seed=0.569 transition=0.690)
+  train e00 s0390  loss=5.5495  (chain=0.000 mapq=0.389 position=0.061 router=0.004 seed=0.555 transition=0.713)  |g|=3.469  route=fast:100%,medium:0%,full:0%
+  train e00 s0391  loss=5.3923  (chain=0.000 mapq=0.394 position=0.021 router=0.004 seed=0.453 transition=0.678)
+  train e00 s0392  loss=5.4828  (chain=0.000 mapq=0.397 position=0.098 router=0.004 seed=0.471 transition=0.665)
+  train e00 s0393  loss=6.0091  (chain=0.000 mapq=0.543 position=0.397 router=0.004 seed=0.585 transition=0.746)
+  train e00 s0394  loss=5.5695  (chain=0.000 mapq=0.396 position=0.101 router=0.004 seed=0.555 transition=0.668)
+  train e00 s0395  loss=6.1435  (chain=0.000 mapq=0.546 position=0.403 router=0.004 seed=0.727 transition=0.717)
+  train e00 s0396  loss=5.5941  (chain=0.000 mapq=0.392 position=0.231 router=0.004 seed=0.452 transition=0.667)
+  train e00 s0397  loss=5.6255  (chain=0.000 mapq=0.419 position=0.032 router=0.004 seed=0.673 transition=0.656)
+  train e00 s0398  loss=5.6007  (chain=0.000 mapq=0.393 position=0.181 router=0.004 seed=0.500 transition=0.682)
+  train e00 s0399  loss=5.3719  (chain=0.000 mapq=0.391 position=0.016 router=0.004 seed=0.446 transition=0.664)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000400.pt
+  train e00 s0400  loss=5.5769  (chain=0.000 mapq=0.391 position=0.214 router=0.004 seed=0.453 transition=0.666)  |g|=3.515  route=fast:100%,medium:0%,full:0%
+  train e00 s0401  loss=5.6834  (chain=0.000 mapq=0.156 position=0.431 router=0.004 seed=0.450 transition=0.684)
+  train e00 s0402  loss=5.4871  (chain=0.000 mapq=0.392 position=0.091 router=0.004 seed=0.467 transition=0.702)
+  train e00 s0403  loss=5.4168  (chain=0.000 mapq=0.348 position=0.034 router=0.004 seed=0.487 transition=0.680)
+  train e00 s0404  loss=5.6114  (chain=0.000 mapq=0.391 position=0.165 router=0.004 seed=0.523 transition=0.692)
+  train e00 s0405  loss=5.7124  (chain=0.000 mapq=0.394 position=0.269 router=0.004 seed=0.510 transition=0.709)
+  train e00 s0406  loss=5.5314  (chain=0.000 mapq=0.278 position=0.116 router=0.004 seed=0.548 transition=0.692)
+  train e00 s0407  loss=5.3813  (chain=0.000 mapq=0.265 position=0.004 router=0.004 seed=0.520 transition=0.684)
+
+train epoch 00:   2%|▏         | 408/21841 [1:46:38<130:36:38, 21.94s/batch, loss=5.3813][A
+train epoch 00:   2%|▏         | 409/21841 [1:46:48<109:56:31, 18.47s/batch, loss=5.7702][A
+train epoch 00:   2%|▏         | 410/21841 [1:46:57<93:46:03, 15.75s/batch, loss=5.3816] [A
+train epoch 00:   2%|▏         | 411/21841 [1:47:17<100:27:54, 16.88s/batch, loss=5.5394][A
+train epoch 00:   2%|▏         | 412/21841 [1:47:31<95:45:39, 16.09s/batch, loss=6.0471] [A
+train epoch 00:   2%|▏         | 413/21841 [1:47:45<91:14:30, 15.33s/batch, loss=6.0717][A
+train epoch 00:   2%|▏         | 414/21841 [1:48:34<152:06:44, 25.56s/batch, loss=5.4806][A
+train epoch 00:   2%|▏         | 415/21841 [1:48:45<126:26:57, 21.25s/batch, loss=5.5377][A
+train epoch 00:   2%|▏         | 416/21841 [1:48:59<112:56:30, 18.98s/batch, loss=5.5908][A
+train epoch 00:   2%|▏         | 417/21841 [1:49:08<94:47:14, 15.93s/batch, loss=5.5855] [A
+train epoch 00:   2%|▏         | 418/21841 [1:49:26<98:10:45, 16.50s/batch, loss=5.6530][A
+train epoch 00:   2%|▏         | 419/21841 [1:49:36<87:50:18, 14.76s/batch, loss=5.7267][A
+train epoch 00:   2%|▏         | 420/21841 [1:50:13<127:51:50, 21.49s/batch, loss=5.5534][A
+train epoch 00:   2%|▏         | 421/21841 [1:50:17<95:17:59, 16.02s/batch, loss=5.9978] [A
+train epoch 00:   2%|▏         | 422/21841 [1:50:29<88:38:57, 14.90s/batch, loss=5.3773][A
+train epoch 00:   2%|▏         | 423/21841 [1:51:00<116:46:54, 19.63s/batch, loss=5.4997][A
+train epoch 00:   2%|▏         | 424/21841 [1:51:03<88:09:59, 14.82s/batch, loss=5.9619] [A
+train epoch 00:   2%|▏         | 425/21841 [1:51:15<83:24:18, 14.02s/batch, loss=5.8572][A
+train epoch 00:   2%|▏         | 426/21841 [1:51:25<76:09:44, 12.80s/batch, loss=5.4237][A
+train epoch 00:   2%|▏         | 427/21841 [1:51:34<69:29:35, 11.68s/batch, loss=5.8554][A
+train epoch 00:   2%|▏         | 428/21841 [1:52:03<99:18:30, 16.70s/batch, loss=5.5680][A
+train epoch 00:   2%|▏         | 429/21841 [1:52:12<85:19:04, 14.34s/batch, loss=5.6079][A
+train epoch 00:   2%|▏         | 430/21841 [1:52:22<78:27:42, 13.19s/batch, loss=5.4581][A
+train epoch 00:   2%|▏         | 431/21841 [1:52:31<70:46:33, 11.90s/batch, loss=5.7044][A
+train epoch 00:   2%|▏         | 432/21841 [1:52:34<55:33:04,  9.34s/batch, loss=5.7545][A
+train epoch 00:   2%|▏         | 433/21841 [1:52:38<45:33:19,  7.66s/batch, loss=5.7610][A
+train epoch 00:   2%|▏         | 434/21841 [1:52:46<46:36:24,  7.84s/batch, loss=5.7069][A
+train epoch 00:   2%|▏         | 435/21841 [1:52:51<41:07:58,  6.92s/batch, loss=5.9581][A
+train epoch 00:   2%|▏         | 436/21841 [1:53:53<139:24:46, 23.45s/batch, loss=5.4889][A
+train epoch 00:   2%|▏         | 437/21841 [1:54:02<113:08:55, 19.03s/batch, loss=5.7485][A
+train epoch 00:   2%|▏         | 438/21841 [1:54:10<93:17:08, 15.69s/batch, loss=5.9916] [A
+train epoch 00:   2%|▏         | 439/21841 [1:54:19<81:54:56, 13.78s/batch, loss=5.4212][A
+train epoch 00:   2%|▏         | 440/21841 [1:54:28<72:59:13, 12.28s/batch, loss=5.3373][A
+train epoch 00:   2%|▏         | 441/21841 [1:54:36<66:20:17, 11.16s/batch, loss=5.7506][A
+train epoch 00:   2%|▏         | 442/21841 [1:54:48<67:52:21, 11.42s/batch, loss=5.4538][A
+train epoch 00:   2%|▏         | 443/21841 [1:54:58<65:07:22, 10.96s/batch, loss=5.4163][A
+train epoch 00:   2%|▏         | 444/21841 [1:55:26<95:31:59, 16.07s/batch, loss=5.7272][A
+train epoch 00:   2%|▏         | 445/21841 [1:55:44<98:19:12, 16.54s/batch, loss=5.6081][A
+train epoch 00:   2%|▏         | 446/21841 [1:55:54<86:45:32, 14.60s/batch, loss=5.6077][A
+train epoch 00:   2%|▏         | 447/21841 [1:56:19<105:47:04, 17.80s/batch, loss=5.6167][A
+train epoch 00:   2%|▏         | 448/21841 [1:56:33<98:16:03, 16.54s/batch, loss=5.3625] [A
+train epoch 00:   2%|▏         | 449/21841 [1:56:50<99:05:01, 16.67s/batch, loss=5.5964][A
+train epoch 00:   2%|▏         | 450/21841 [1:56:54<76:11:57, 12.82s/batch, loss=5.9880][A
+train epoch 00:   2%|▏         | 451/21841 [1:57:30<118:10:43, 19.89s/batch, loss=5.4889][A
+train epoch 00:   2%|▏         | 452/21841 [1:57:57<130:13:57, 21.92s/batch, loss=5.3911][A
+train epoch 00:   2%|▏         | 453/21841 [1:58:14<122:02:10, 20.54s/batch, loss=5.7710][A
+train epoch 00:   2%|▏         | 454/21841 [1:58:19<93:16:46, 15.70s/batch, loss=5.7471] [A
+train epoch 00:   2%|▏         | 455/21841 [1:58:39<101:53:49, 17.15s/batch, loss=5.4103][A
+train epoch 00:   2%|▏         | 456/21841 [1:58:48<87:18:27, 14.70s/batch, loss=5.6244] [A
+train epoch 00:   2%|▏         | 457/21841 [1:58:57<77:10:24, 12.99s/batch, loss=5.4497][A
+train epoch 00:   2%|▏         | 458/21841 [1:59:29<111:07:33, 18.71s/batch, loss=5.4658][A
+train epoch 00:   2%|▏         | 459/21841 [1:59:32<82:52:38, 13.95s/batch, loss=6.0986] [A
+train epoch 00:   2%|▏         | 460/21841 [1:59:42<75:58:52, 12.79s/batch, loss=5.9382][A
+train epoch 00:   2%|▏         | 461/21841 [1:59:52<70:19:23, 11.84s/batch, loss=5.4874][A
+train epoch 00:   2%|▏         | 462/21841 [1:59:56<56:25:31,  9.50s/batch, loss=5.9728][A
+train epoch 00:   2%|▏         | 463/21841 [2:00:00<47:04:30,  7.93s/batch, loss=5.9237][A
+train epoch 00:   2%|▏         | 464/21841 [2:00:11<52:07:31,  8.78s/batch, loss=5.4939][A
+train epoch 00:   2%|▏         | 465/21841 [2:00:20<53:39:40,  9.04s/batch, loss=5.4481][A
+train epoch 00:   2%|▏         | 466/21841 [2:00:51<92:26:47, 15.57s/batch, loss=5.6359][A
+train epoch 00:   2%|▏         | 467/21841 [2:01:02<83:33:24, 14.07s/batch, loss=5.5021][A
+train epoch 00:   2%|▏         | 468/21841 [2:01:11<74:04:00, 12.48s/batch, loss=5.6449][A
+train epoch 00:   2%|▏         | 469/21841 [2:01:30<85:48:36, 14.45s/batch, loss=5.3887][A
+train epoch 00:   2%|▏         | 470/21841 [2:01:34<68:01:48, 11.46s/batch, loss=6.0228][A
+train epoch 00:   2%|▏         | 471/21841 [2:01:45<66:59:57, 11.29s/batch, loss=5.5828][A
+train epoch 00:   2%|▏         | 472/21841 [2:01:47<51:23:34,  8.66s/batch, loss=6.0719][A
+train epoch 00:   2%|▏         | 473/21841 [2:01:56<51:15:50,  8.64s/batch, loss=5.5688][A
+train epoch 00:   2%|▏         | 474/21841 [2:02:31<97:59:58, 16.51s/batch, loss=5.6376][A
+train epoch 00:   2%|▏         | 475/21841 [2:02:40<84:08:24, 14.18s/batch, loss=5.4438][A
+train epoch 00:   2%|▏         | 476/21841 [2:02:56<88:06:55, 14.85s/batch, loss=5.8550][A  train e00 s0408  loss=5.7702  (chain=0.000 mapq=0.447 position=0.191 router=0.004 seed=0.583 transition=0.781)
+  train e00 s0409  loss=5.3816  (chain=0.000 mapq=0.392 position=0.002 router=0.004 seed=0.455 transition=0.693)
+  train e00 s0410  loss=5.5394  (chain=0.000 mapq=0.489 position=0.038 router=0.004 seed=0.526 transition=0.697)  |g|=3.155  route=fast:100%,medium:0%,full:0%
+  train e00 s0411  loss=6.0471  (chain=0.000 mapq=0.512 position=0.406 router=0.004 seed=0.640 transition=0.726)
+  train e00 s0412  loss=6.0717  (chain=0.000 mapq=0.537 position=0.396 router=0.004 seed=0.661 transition=0.728)
+  train e00 s0413  loss=5.4806  (chain=0.000 mapq=0.387 position=0.031 router=0.004 seed=0.525 transition=0.697)
+  train e00 s0414  loss=5.5377  (chain=0.000 mapq=0.387 position=0.192 router=0.004 seed=0.439 transition=0.662)
+  train e00 s0415  loss=5.5908  (chain=0.000 mapq=0.387 position=0.172 router=0.004 seed=0.508 transition=0.670)
+  train e00 s0416  loss=5.5855  (chain=0.000 mapq=0.427 position=0.179 router=0.004 seed=0.466 transition=0.689)
+  train e00 s0417  loss=5.6530  (chain=0.000 mapq=0.389 position=0.239 router=0.004 seed=0.494 transition=0.685)
+  train e00 s0418  loss=5.7267  (chain=0.000 mapq=0.426 position=0.286 router=0.004 seed=0.500 transition=0.689)
+  train e00 s0419  loss=5.5534  (chain=0.000 mapq=0.374 position=0.189 router=0.004 seed=0.459 transition=0.671)
+  train e00 s0420  loss=5.9978  (chain=0.000 mapq=0.543 position=0.395 router=0.004 seed=0.577 transition=0.745)  |g|=4.167  route=fast:100%,medium:0%,full:0%
+  train e00 s0421  loss=5.3773  (chain=0.000 mapq=0.391 position=0.048 router=0.004 seed=0.426 transition=0.651)
+  train e00 s0422  loss=5.4997  (chain=0.000 mapq=0.367 position=0.100 router=0.004 seed=0.483 transition=0.701)
+  train e00 s0423  loss=5.9619  (chain=-0.000 mapq=0.540 position=0.401 router=0.004 seed=0.557 transition=0.703)
+  train e00 s0424  loss=5.8572  (chain=0.000 mapq=0.382 position=0.399 router=0.004 seed=0.524 transition=0.723)
+  train e00 s0425  loss=5.4237  (chain=0.000 mapq=0.385 position=0.008 router=0.004 seed=0.504 transition=0.674)
+  train e00 s0426  loss=5.8554  (chain=0.100 mapq=0.247 position=0.437 router=0.004 seed=0.470 transition=0.685)
+  train e00 s0427  loss=5.5680  (chain=0.000 mapq=0.386 position=0.129 router=0.004 seed=0.519 transition=0.690)
+  train e00 s0428  loss=5.6079  (chain=0.000 mapq=0.343 position=0.238 router=0.004 seed=0.471 transition=0.692)
+  train e00 s0429  loss=5.4581  (chain=0.000 mapq=0.390 position=0.003 router=0.004 seed=0.531 transition=0.694)
+  train e00 s0430  loss=5.7044  (chain=0.000 mapq=0.181 position=0.353 router=0.004 seed=0.526 transition=0.704)  |g|=3.256  route=fast:100%,medium:0%,full:0%
+  train e00 s0431  loss=5.7545  (chain=0.000 mapq=0.536 position=0.388 router=0.004 seed=0.716 transition=0.000)
+  train e00 s0432  loss=5.7610  (chain=0.000 mapq=0.536 position=0.389 router=0.004 seed=0.722 transition=0.000)
+  train e00 s0433  loss=5.7069  (chain=0.000 mapq=0.386 position=0.336 router=0.004 seed=0.453 transition=0.685)
+  train e00 s0434  loss=5.9581  (chain=0.000 mapq=0.542 position=0.396 router=0.004 seed=0.549 transition=0.720)
+  train e00 s0435  loss=5.4889  (chain=0.000 mapq=0.381 position=0.025 router=0.004 seed=0.568 transition=0.646)
+  train e00 s0436  loss=5.7485  (chain=0.000 mapq=0.383 position=0.342 router=0.004 seed=0.492 transition=0.681)
+  train e00 s0437  loss=5.9916  (chain=0.000 mapq=0.519 position=0.379 router=0.004 seed=0.607 transition=0.727)
+  train e00 s0438  loss=5.4212  (chain=0.086 mapq=0.385 position=0.027 router=0.004 seed=0.421 transition=0.625)
+  train e00 s0439  loss=5.3373  (chain=0.000 mapq=0.385 position=0.009 router=0.004 seed=0.425 transition=0.658)
+  train e00 s0440  loss=5.7506  (chain=0.000 mapq=0.533 position=0.399 router=0.004 seed=0.703 transition=0.000)  |g|=1.890  route=fast:100%,medium:0%,full:0%
+  train e00 s0441  loss=5.4538  (chain=0.000 mapq=0.382 position=0.052 router=0.004 seed=0.491 transition=0.676)
+  train e00 s0442  loss=5.4163  (chain=0.000 mapq=0.274 position=0.042 router=0.004 seed=0.518 transition=0.675)
+  train e00 s0443  loss=5.7272  (chain=0.000 mapq=0.061 position=0.260 router=0.004 seed=0.675 transition=0.760)
+  train e00 s0444  loss=5.6081  (chain=0.000 mapq=0.385 position=0.227 router=0.004 seed=0.470 transition=0.674)
+  train e00 s0445  loss=5.6077  (chain=0.000 mapq=0.381 position=0.189 router=0.004 seed=0.503 transition=0.685)
+  train e00 s0446  loss=5.6167  (chain=0.000 mapq=0.383 position=0.231 router=0.004 seed=0.482 transition=0.661)
+  train e00 s0447  loss=5.3625  (chain=0.000 mapq=0.382 position=0.001 router=0.004 seed=0.461 transition=0.655)
+  train e00 s0448  loss=5.5964  (chain=0.000 mapq=0.380 position=0.288 router=0.004 seed=0.414 transition=0.645)
+  train e00 s0449  loss=5.9880  (chain=0.000 mapq=0.526 position=0.389 router=0.004 seed=0.614 transition=0.680)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000450.pt
+  train e00 s0450  loss=5.4889  (chain=-0.000 mapq=0.512 position=0.067 router=0.004 seed=0.454 transition=0.659)  |g|=2.951  route=fast:100%,medium:0%,full:0%
+  train e00 s0451  loss=5.3911  (chain=0.000 mapq=0.385 position=0.075 router=0.004 seed=0.423 transition=0.637)
+  train e00 s0452  loss=5.7710  (chain=0.000 mapq=0.516 position=0.211 router=0.004 seed=0.563 transition=0.714)
+  train e00 s0453  loss=5.7471  (chain=0.000 mapq=0.528 position=0.392 router=0.004 seed=0.709 transition=0.000)
+  train e00 s0454  loss=5.4103  (chain=0.000 mapq=0.348 position=0.057 router=0.004 seed=0.471 transition=0.653)
+  train e00 s0455  loss=5.6244  (chain=0.000 mapq=0.382 position=0.241 router=0.004 seed=0.471 transition=0.679)
+  train e00 s0456  loss=5.4497  (chain=0.000 mapq=0.382 position=0.133 router=0.004 seed=0.425 transition=0.637)
+  train e00 s0457  loss=5.4658  (chain=0.000 mapq=0.380 position=0.159 router=0.004 seed=0.409 transition=0.651)
+  train e00 s0458  loss=6.0986  (chain=0.000 mapq=0.526 position=0.393 router=0.004 seed=0.719 transition=0.682)
+  train e00 s0459  loss=5.9382  (chain=0.000 mapq=0.362 position=0.448 router=0.004 seed=0.593 transition=0.668)
+  train e00 s0460  loss=5.4874  (chain=0.000 mapq=0.376 position=0.030 router=0.004 seed=0.536 transition=0.703)  |g|=2.619  route=fast:100%,medium:0%,full:0%
+  train e00 s0461  loss=5.9728  (chain=0.000 mapq=0.537 position=0.394 router=0.004 seed=0.576 transition=0.704)
+  train e00 s0462  loss=5.9237  (chain=0.000 mapq=0.534 position=0.397 router=0.004 seed=0.514 transition=0.727)
+  train e00 s0463  loss=5.4939  (chain=0.000 mapq=0.349 position=0.103 router=0.004 seed=0.508 transition=0.652)
+  train e00 s0464  loss=5.4481  (chain=0.000 mapq=0.379 position=0.031 router=0.004 seed=0.507 transition=0.677)
+  train e00 s0465  loss=5.6359  (chain=0.000 mapq=0.489 position=0.194 router=0.004 seed=0.494 transition=0.643)
+  train e00 s0466  loss=5.5021  (chain=0.000 mapq=0.383 position=0.143 router=0.004 seed=0.454 transition=0.663)
+  train e00 s0467  loss=5.6449  (chain=0.000 mapq=0.349 position=0.248 router=0.004 seed=0.490 transition=0.701)
+  train e00 s0468  loss=5.3887  (chain=0.000 mapq=0.379 position=0.003 router=0.004 seed=0.481 transition=0.666)
+  train e00 s0469  loss=6.0228  (chain=0.000 mapq=0.527 position=0.388 router=0.004 seed=0.622 transition=0.735)
+  train e00 s0470  loss=5.5828  (chain=0.000 mapq=0.374 position=0.228 router=0.004 seed=0.451 transition=0.669)  |g|=3.095  route=fast:100%,medium:0%,full:0%
+  train e00 s0471  loss=6.0719  (chain=0.000 mapq=0.520 position=0.392 router=0.004 seed=0.680 transition=0.715)
+  train e00 s0472  loss=5.5688  (chain=0.000 mapq=0.382 position=0.271 router=0.004 seed=0.403 transition=0.642)
+  train e00 s0473  loss=5.6376  (chain=0.000 mapq=0.391 position=0.257 router=0.004 seed=0.461 transition=0.684)
+  train e00 s0474  loss=5.4438  (chain=0.000 mapq=0.368 position=0.040 router=0.004 seed=0.506 transition=0.663)
+  train e00 s0475  loss=5.8550  (chain=0.000 mapq=0.322 position=0.446 router=0.004 seed=0.521 transition=0.690)
+
+train epoch 00:   2%|▏         | 477/21841 [2:03:02<72:14:09, 12.17s/batch, loss=6.0631][A
+train epoch 00:   2%|▏         | 478/21841 [2:03:24<89:38:24, 15.11s/batch, loss=5.5587][A
+train epoch 00:   2%|▏         | 479/21841 [2:03:36<83:30:52, 14.07s/batch, loss=6.0915][A
+train epoch 00:   2%|▏         | 480/21841 [2:04:04<109:31:45, 18.46s/batch, loss=5.3957][A
+train epoch 00:   2%|▏         | 481/21841 [2:04:13<92:41:04, 15.62s/batch, loss=5.6044] [A
+train epoch 00:   2%|▏         | 482/21841 [2:04:49<127:49:41, 21.55s/batch, loss=5.4773][A
+train epoch 00:   2%|▏         | 483/21841 [2:04:57<104:53:19, 17.68s/batch, loss=5.4525][A
+train epoch 00:   2%|▏         | 484/21841 [2:05:20<114:01:38, 19.22s/batch, loss=5.3461][A
+train epoch 00:   2%|▏         | 485/21841 [2:05:27<92:42:51, 15.63s/batch, loss=5.8928] [A
+train epoch 00:   2%|▏         | 486/21841 [2:05:41<88:54:15, 14.99s/batch, loss=5.4671][A
+train epoch 00:   2%|▏         | 487/21841 [2:05:45<68:59:19, 11.63s/batch, loss=5.7241][A
+train epoch 00:   2%|▏         | 488/21841 [2:05:55<67:10:06, 11.32s/batch, loss=5.4298][A
+train epoch 00:   2%|▏         | 489/21841 [2:06:43<131:43:09, 22.21s/batch, loss=5.4674][A
+train epoch 00:   2%|▏         | 490/21841 [2:06:57<116:42:50, 19.68s/batch, loss=5.4762][A
+train epoch 00:   2%|▏         | 491/21841 [2:06:59<86:37:14, 14.61s/batch, loss=6.0726] [A
+train epoch 00:   2%|▏         | 492/21841 [2:07:17<91:34:12, 15.44s/batch, loss=5.5681][A
+train epoch 00:   2%|▏         | 493/21841 [2:07:28<83:09:09, 14.02s/batch, loss=5.3211][A
+train epoch 00:   2%|▏         | 494/21841 [2:07:36<73:34:04, 12.41s/batch, loss=5.3381][A
+train epoch 00:   2%|▏         | 495/21841 [2:07:45<67:31:25, 11.39s/batch, loss=6.0221][A
+train epoch 00:   2%|▏         | 496/21841 [2:07:57<69:05:14, 11.65s/batch, loss=5.6549][A
+train epoch 00:   2%|▏         | 497/21841 [2:08:32<109:57:34, 18.55s/batch, loss=5.4383][A
+train epoch 00:   2%|▏         | 498/21841 [2:08:45<99:25:14, 16.77s/batch, loss=6.1316] [A
+train epoch 00:   2%|▏         | 499/21841 [2:08:54<86:27:10, 14.58s/batch, loss=5.3366][A
+train epoch 00:   2%|▏         | 500/21841 [2:09:05<79:43:06, 13.45s/batch, loss=5.5037][A
+train epoch 00:   2%|▏         | 501/21841 [2:09:25<92:11:32, 15.55s/batch, loss=5.3512][A
+train epoch 00:   2%|▏         | 502/21841 [2:09:46<101:05:27, 17.05s/batch, loss=5.3809][A
+train epoch 00:   2%|▏         | 503/21841 [2:09:49<75:35:53, 12.75s/batch, loss=5.5140] [A
+train epoch 00:   2%|▏         | 504/21841 [2:10:25<117:56:40, 19.90s/batch, loss=5.4782][A
+train epoch 00:   2%|▏         | 505/21841 [2:10:38<105:44:02, 17.84s/batch, loss=5.4846][A
+train epoch 00:   2%|▏         | 506/21841 [2:10:51<95:55:44, 16.19s/batch, loss=5.3723] [A
+train epoch 00:   2%|▏         | 507/21841 [2:10:55<74:51:43, 12.63s/batch, loss=5.9181][A
+train epoch 00:   2%|▏         | 508/21841 [2:11:14<85:59:57, 14.51s/batch, loss=5.5123][A
+train epoch 00:   2%|▏         | 509/21841 [2:11:24<77:15:16, 13.04s/batch, loss=5.4938][A
+train epoch 00:   2%|▏         | 510/21841 [2:11:32<69:23:09, 11.71s/batch, loss=5.5635][A
+train epoch 00:   2%|▏         | 511/21841 [2:12:07<110:15:59, 18.61s/batch, loss=5.4127][A
+train epoch 00:   2%|▏         | 512/21841 [2:12:14<90:36:35, 15.29s/batch, loss=6.0667] [A
+train epoch 00:   2%|▏         | 513/21841 [2:12:29<88:57:11, 15.01s/batch, loss=5.6750][A
+train epoch 00:   2%|▏         | 514/21841 [2:12:51<101:45:55, 17.18s/batch, loss=5.8379][A
+train epoch 00:   2%|▏         | 515/21841 [2:13:03<92:01:42, 15.54s/batch, loss=6.1101] [A
+train epoch 00:   2%|▏         | 516/21841 [2:13:14<84:38:57, 14.29s/batch, loss=5.3475][A
+train epoch 00:   2%|▏         | 517/21841 [2:13:32<91:22:58, 15.43s/batch, loss=5.6038][A
+train epoch 00:   2%|▏         | 518/21841 [2:13:44<85:08:49, 14.38s/batch, loss=5.2219][A
+train epoch 00:   2%|▏         | 519/21841 [2:13:55<78:47:43, 13.30s/batch, loss=5.3612][A
+train epoch 00:   2%|▏         | 520/21841 [2:14:30<116:43:11, 19.71s/batch, loss=5.3968][A
+train epoch 00:   2%|▏         | 521/21841 [2:14:47<112:50:05, 19.05s/batch, loss=5.1791][A
+train epoch 00:   2%|▏         | 522/21841 [2:14:59<99:27:23, 16.79s/batch, loss=5.3939] [A
+train epoch 00:   2%|▏         | 523/21841 [2:15:09<87:39:37, 14.80s/batch, loss=5.4582][A
+train epoch 00:   2%|▏         | 524/21841 [2:15:26<91:17:46, 15.42s/batch, loss=5.5366][A
+train epoch 00:   2%|▏         | 525/21841 [2:16:01<127:27:25, 21.53s/batch, loss=5.5428][A
+train epoch 00:   2%|▏         | 526/21841 [2:16:10<104:51:40, 17.71s/batch, loss=5.9101][A
+train epoch 00:   2%|▏         | 527/21841 [2:16:30<108:40:27, 18.36s/batch, loss=5.3771][A
+train epoch 00:   2%|▏         | 528/21841 [2:16:59<127:09:17, 21.48s/batch, loss=5.5020][A
+train epoch 00:   2%|▏         | 529/21841 [2:17:05<99:23:27, 16.79s/batch, loss=6.0564] [A
+train epoch 00:   2%|▏         | 530/21841 [2:17:11<80:07:48, 13.54s/batch, loss=5.6139][A
+train epoch 00:   2%|▏         | 531/21841 [2:17:23<78:22:12, 13.24s/batch, loss=5.2445][A
+train epoch 00:   2%|▏         | 532/21841 [2:17:37<79:02:47, 13.35s/batch, loss=5.6208][A
+train epoch 00:   2%|▏         | 533/21841 [2:18:09<112:59:15, 19.09s/batch, loss=5.6019][A
+train epoch 00:   2%|▏         | 534/21841 [2:18:23<104:11:31, 17.60s/batch, loss=5.5303][A
+train epoch 00:   2%|▏         | 535/21841 [2:18:32<88:32:23, 14.96s/batch, loss=5.4522] [A
+train epoch 00:   2%|▏         | 536/21841 [2:18:41<77:02:14, 13.02s/batch, loss=5.5311][A
+train epoch 00:   2%|▏         | 537/21841 [2:18:49<68:44:09, 11.62s/batch, loss=6.0242][A
+train epoch 00:   2%|▏         | 538/21841 [2:19:02<71:20:55, 12.06s/batch, loss=5.6876][A
+train epoch 00:   2%|▏         | 539/21841 [2:19:05<54:46:30,  9.26s/batch, loss=5.5003][A
+train epoch 00:   2%|▏         | 540/21841 [2:19:11<48:31:05,  8.20s/batch, loss=6.1528][A
+train epoch 00:   2%|▏         | 541/21841 [2:19:31<70:57:17, 11.99s/batch, loss=5.4345][A
+train epoch 00:   2%|▏         | 542/21841 [2:20:04<107:18:13, 18.14s/batch, loss=5.4102][A
+train epoch 00:   2%|▏         | 543/21841 [2:20:12<89:37:46, 15.15s/batch, loss=6.0695] [A
+train epoch 00:   2%|▏         | 544/21841 [2:20:26<87:06:12, 14.72s/batch, loss=5.3275][A  train e00 s0476  loss=6.0631  (chain=0.000 mapq=0.522 position=0.389 router=0.004 seed=0.695 transition=0.671)
+  train e00 s0477  loss=5.5587  (chain=0.000 mapq=0.377 position=0.186 router=0.004 seed=0.465 transition=0.674)
+  train e00 s0478  loss=6.0915  (chain=0.000 mapq=0.527 position=0.399 router=0.004 seed=0.690 transition=0.714)
+  train e00 s0479  loss=5.3957  (chain=0.000 mapq=0.376 position=0.089 router=0.004 seed=0.412 transition=0.648)
+  train e00 s0480  loss=5.6044  (chain=0.000 mapq=0.373 position=0.219 router=0.004 seed=0.483 transition=0.666)  |g|=2.975  route=fast:100%,medium:0%,full:0%
+  train e00 s0481  loss=5.4773  (chain=0.000 mapq=0.377 position=0.193 router=0.004 seed=0.398 transition=0.631)
+  train e00 s0482  loss=5.4525  (chain=0.000 mapq=0.380 position=0.039 router=0.003 seed=0.528 transition=0.626)
+  train e00 s0483  loss=5.3461  (chain=0.000 mapq=0.372 position=0.003 router=0.004 seed=0.448 transition=0.654)
+  train e00 s0484  loss=5.8928  (chain=0.000 mapq=0.517 position=0.390 router=0.004 seed=0.496 transition=0.732)
+  train e00 s0485  loss=5.4671  (chain=0.000 mapq=0.242 position=0.119 router=0.004 seed=0.523 transition=0.645)
+  train e00 s0486  loss=5.7241  (chain=0.000 mapq=0.522 position=0.397 router=0.004 seed=0.684 transition=0.000)
+  train e00 s0487  loss=5.4298  (chain=0.000 mapq=0.373 position=0.176 router=0.004 seed=0.381 transition=0.607)
+  train e00 s0488  loss=5.4674  (chain=0.000 mapq=0.371 position=0.149 router=0.004 seed=0.420 transition=0.661)
+  train e00 s0489  loss=5.4762  (chain=0.000 mapq=0.372 position=0.153 router=0.004 seed=0.434 transition=0.644)
+  train e00 s0490  loss=6.0726  (chain=0.000 mapq=0.520 position=0.386 router=0.004 seed=0.708 transition=0.672)  |g|=2.773  route=fast:100%,medium:0%,full:0%
+  train e00 s0491  loss=5.5681  (chain=0.000 mapq=0.494 position=0.113 router=0.004 seed=0.508 transition=0.636)
+  train e00 s0492  loss=5.3211  (chain=0.000 mapq=0.367 position=0.003 router=0.004 seed=0.434 transition=0.634)
+  train e00 s0493  loss=5.3381  (chain=0.000 mapq=0.370 position=0.026 router=0.004 seed=0.421 transition=0.647)
+  train e00 s0494  loss=6.0221  (chain=0.000 mapq=0.517 position=0.380 router=0.004 seed=0.695 transition=0.613)
+  train e00 s0495  loss=5.6549  (chain=0.000 mapq=0.380 position=0.376 router=0.003 seed=0.387 transition=0.639)
+  train e00 s0496  loss=5.4383  (chain=0.000 mapq=0.366 position=0.089 router=0.004 seed=0.459 transition=0.651)
+  train e00 s0497  loss=6.1316  (chain=0.000 mapq=0.511 position=0.388 router=0.004 seed=0.758 transition=0.697)
+  train e00 s0498  loss=5.3366  (chain=0.000 mapq=0.367 position=0.081 router=0.004 seed=0.377 transition=0.627)
+  train e00 s0499  loss=5.5037  (chain=0.000 mapq=0.367 position=0.180 router=0.004 seed=0.424 transition=0.668)
+  saved data/training_runs/chr21_hg002_pangenome_windows_balanced/checkpoints/step_000500.pt
+  train e00 s0500  loss=5.3512  (chain=0.000 mapq=0.340 position=0.011 router=0.004 seed=0.453 transition=0.670)  |g|=2.995  route=fast:100%,medium:0%,full:0%
+  train e00 s0501  loss=5.3809  (chain=0.000 mapq=0.410 position=0.070 router=0.004 seed=0.403 transition=0.642)
+  train e00 s0502  loss=5.5140  (chain=0.000 mapq=0.352 position=0.232 router=0.004 seed=0.723 transition=0.000)
+  train e00 s0503  loss=5.4782  (chain=0.000 mapq=0.245 position=0.167 router=0.003 seed=0.478 transition=0.657)
+  train e00 s0504  loss=5.4846  (chain=0.000 mapq=0.369 position=0.222 router=0.004 seed=0.378 transition=0.635)
+  train e00 s0505  loss=5.3723  (chain=0.000 mapq=0.367 position=0.112 router=0.004 seed=0.397 transition=0.595)
+  train e00 s0506  loss=5.9181  (chain=0.000 mapq=0.515 position=0.390 router=0.004 seed=0.548 transition=0.680)
+  train e00 s0507  loss=5.5123  (chain=0.000 mapq=0.366 position=0.240 router=0.003 seed=0.376 transition=0.662)
+  train e00 s0508  loss=5.4938  (chain=0.000 mapq=0.361 position=0.137 router=0.003 seed=0.474 transition=0.641)
+  train e00 s0509  loss=5.5635  (chain=0.000 mapq=0.364 position=0.235 router=0.003 seed=0.446 transition=0.635)
+  train e00 s0510  loss=5.4127  (chain=0.000 mapq=0.368 position=0.145 router=0.003 seed=0.383 transition=0.638)  |g|=3.178  route=fast:100%,medium:0%,full:0%
+  train e00 s0511  loss=6.0667  (chain=0.000 mapq=0.509 position=0.380 router=0.004 seed=0.731 transition=0.639)
+  train e00 s0512  loss=5.6750  (chain=0.000 mapq=0.383 position=0.323 router=0.004 seed=0.458 transition=0.640)
+  train e00 s0513  loss=5.8379  (chain=0.000 mapq=0.506 position=0.379 router=0.004 seed=0.494 transition=0.661)
+  train e00 s0514  loss=6.1101  (chain=0.000 mapq=0.245 position=0.377 router=0.004 seed=0.896 transition=0.664)
+  train e00 s0515  loss=5.3475  (chain=0.000 mapq=0.361 position=0.028 router=0.004 seed=0.434 transition=0.645)
+  train e00 s0516  loss=5.6038  (chain=0.000 mapq=0.363 position=0.313 router=0.004 seed=0.411 transition=0.634)
+  train e00 s0517  loss=5.2219  (chain=0.000 mapq=0.145 position=0.049 router=0.003 seed=0.382 transition=0.672)
+  train e00 s0518  loss=5.3612  (chain=0.000 mapq=0.364 position=0.032 router=0.003 seed=0.464 transition=0.602)
+  train e00 s0519  loss=5.3968  (chain=0.000 mapq=0.339 position=0.091 router=0.003 seed=0.427 transition=0.655)
+  train e00 s0520  loss=5.1791  (chain=0.000 mapq=0.113 position=0.062 router=0.003 seed=0.371 transition=0.615)  |g|=2.678  route=fast:100%,medium:0%,full:0%
+  train e00 s0521  loss=5.3939  (chain=0.000 mapq=0.359 position=0.039 router=0.003 seed=0.453 transition=0.680)
+  train e00 s0522  loss=5.4582  (chain=0.000 mapq=0.364 position=0.088 router=0.003 seed=0.486 transition=0.640)
+  train e00 s0523  loss=5.5366  (chain=0.000 mapq=0.501 position=0.187 router=0.004 seed=0.387 transition=0.660)
+  train e00 s0524  loss=5.5428  (chain=0.000 mapq=0.372 position=0.253 router=0.003 seed=0.403 transition=0.638)
+  train e00 s0525  loss=5.9101  (chain=0.000 mapq=0.543 position=0.359 router=0.004 seed=0.560 transition=0.674)
+  train e00 s0526  loss=5.3771  (chain=0.000 mapq=0.365 position=0.070 router=0.003 seed=0.408 transition=0.669)
+  train e00 s0527  loss=5.5020  (chain=0.000 mapq=0.364 position=0.260 router=0.003 seed=0.373 transition=0.611)
+  train e00 s0528  loss=6.0564  (chain=0.000 mapq=0.501 position=0.378 router=0.004 seed=0.702 transition=0.687)
+  train e00 s0529  loss=5.6139  (chain=0.000 mapq=0.337 position=0.241 router=0.004 seed=0.499 transition=0.646)
+  train e00 s0530  loss=5.2445  (chain=0.000 mapq=0.363 position=0.007 router=0.003 seed=0.356 transition=0.636)  |g|=2.518  route=fast:100%,medium:0%,full:0%
+  train e00 s0531  loss=5.6208  (chain=0.000 mapq=0.246 position=0.422 router=0.003 seed=0.390 transition=0.607)
+  train e00 s0532  loss=5.6019  (chain=0.000 mapq=0.341 position=0.268 router=0.003 seed=0.457 transition=0.648)
+  train e00 s0533  loss=5.5303  (chain=0.000 mapq=0.311 position=0.192 router=0.003 seed=0.467 transition=0.669)
+  train e00 s0534  loss=5.4522  (chain=0.000 mapq=0.355 position=0.114 router=0.003 seed=0.450 transition=0.656)
+  train e00 s0535  loss=5.5311  (chain=0.000 mapq=0.360 position=0.233 router=0.003 seed=0.440 transition=0.591)
+  train e00 s0536  loss=6.0242  (chain=0.000 mapq=0.499 position=0.382 router=0.004 seed=0.696 transition=0.630)
+  train e00 s0537  loss=5.6876  (chain=-0.000 mapq=0.532 position=0.229 router=0.003 seed=0.489 transition=0.642)
+  train e00 s0538  loss=5.5003  (chain=0.000 mapq=0.337 position=0.243 router=0.004 seed=0.706 transition=0.000)
+  train e00 s0539  loss=6.1528  (chain=0.000 mapq=0.500 position=0.380 router=0.004 seed=0.717 transition=0.848)
+  train e00 s0540  loss=5.4345  (chain=0.000 mapq=0.351 position=0.172 router=0.004 seed=0.398 transition=0.613)  |g|=2.964  route=fast:100%,medium:0%,full:0%
+  train e00 s0541  loss=5.4102  (chain=0.000 mapq=0.318 position=0.151 router=0.004 seed=0.399 transition=0.638)
+  train e00 s0542  loss=6.0695  (chain=0.000 mapq=0.504 position=0.377 router=0.004 seed=0.699 transition=0.719)
+  train e00 s0543  loss=5.3275  (chain=0.000 mapq=0.354 position=0.091 router=0.003 seed=0.366 transition=0.623)
+
+train epoch 00:   2%|▏         | 545/21841 [2:20:46<96:02:05, 16.23s/batch, loss=5.3116][A
+train epoch 00:   2%|▏         | 546/21841 [2:20:56<85:17:38, 14.42s/batch, loss=5.5616][A
+train epoch 00:   3%|▎         | 547/21841 [2:21:15<94:11:24, 15.92s/batch, loss=5.3943][A
+train epoch 00:   3%|▎         | 548/21841 [2:21:27<87:43:07, 14.83s/batch, loss=5.3101][A
+train epoch 00:   3%|▎         | 549/21841 [2:21:56<111:26:04, 18.84s/batch, loss=5.2440][A
+train epoch 00:   3%|▎         | 550/21841 [2:22:02<88:27:45, 14.96s/batch, loss=5.8530] [A
+train epoch 00:   3%|▎         | 551/21841 [2:22:38<126:22:54, 21.37s/batch, loss=5.3261][A
+train epoch 00:   3%|▎         | 552/21841 [2:23:00<127:24:27, 21.54s/batch, loss=5.4696][A
+train epoch 00:   3%|▎         | 553/21841 [2:23:02<93:51:11, 15.87s/batch, loss=6.1202] [A
+train epoch 00:   3%|▎         | 554/21841 [2:23:15<88:09:17, 14.91s/batch, loss=5.3073][A
+train epoch 00:   3%|▎         | 555/21841 [2:23:34<95:40:54, 16.18s/batch, loss=5.2196][A
+train epoch 00:   3%|▎         | 556/21841 [2:24:08<126:19:30, 21.37s/batch, loss=5.3336][A
+train epoch 00:   3%|▎         | 557/21841 [2:24:13<97:59:29, 16.57s/batch, loss=6.0987] [A
+train epoch 00:   3%|▎         | 558/21841 [2:24:22<83:31:04, 14.13s/batch, loss=5.4593][A
+train epoch 00:   3%|▎         | 559/21841 [2:24:30<73:59:50, 12.52s/batch, loss=5.3077][A
+train epoch 00:   3%|▎         | 560/21841 [2:24:38<65:45:31, 11.12s/batch, loss=5.7380][A
+train epoch 00:   3%|▎         | 561/21841 [2:24:51<68:12:15, 11.54s/batch, loss=5.3123][A
+train epoch 00:   3%|▎         | 562/21841 [2:24:59<63:17:39, 10.71s/batch, loss=5.8090][A
+train epoch 00:   3%|▎         | 563/21841 [2:25:08<60:08:10, 10.17s/batch, loss=5.8000][A
+train epoch 00:   3%|▎         | 564/21841 [2:25:26<74:00:28, 12.52s/batch, loss=5.3778][A
+train epoch 00:   3%|▎         | 565/21841 [2:26:05<120:58:51, 20.47s/batch, loss=5.5056][A
+train epoch 00:   3%|▎         | 566/21841 [2:26:10<92:50:26, 15.71s/batch, loss=6.0980] [A
+train epoch 00:   3%|▎         | 567/21841 [2:26:26<93:40:52, 15.85s/batch, loss=5.3673][A
+train epoch 00:   3%|▎         | 568/21841 [2:26:51<108:53:02, 18.43s/batch, loss=5.2981][A
+train epoch 00:   3%|▎         | 569/21841 [2:27:01<94:42:07, 16.03s/batch, loss=5.4303] [A
+train epoch 00:   3%|▎         | 570/21841 [2:27:17<94:41:29, 16.03s/batch, loss=5.6566][A

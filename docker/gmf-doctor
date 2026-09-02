@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Report every tool the image provides and fail if one is missing or wrong.
+# Works in both image targets: the model section is skipped in the fig6 image.
+set -uo pipefail
+
+miss=0
+show() {
+  local name="$1"; shift
+  if command -v "$name" >/dev/null 2>&1; then
+    printf '  %-11s %s\n' "$name" "$("$@" 2>&1 | head -1)"
+  else
+    printf '  %-11s MISSING\n' "$name"
+    miss=1
+  fi
+}
+
+echo "== genomics stack =="
+show vg        vg version
+show bwa       bash -c 'bwa 2>&1 | grep -i ^Version'
+show samtools  samtools --version
+show bcftools  bcftools --version
+show parallel  bash -c 'parallel --version 2>/dev/null | head -1'
+show docker    docker --version
+
+if [ -x /opt/deepvariant/bin/make_examples ]; then
+  printf '  %-11s %s\n' "deepvariant" "models: $(ls -d /opt/models/* 2>/dev/null | xargs -n1 basename | tr '\n' ' ')"
+else
+  printf '  %-11s MISSING\n' "deepvariant"; miss=1
+fi
+
+if [ -x /opt/hap.py/bin/hap.py ]; then
+  printf '  %-11s %s\n' "hap.py" "native"
+else
+  printf '  %-11s %s\n' "hap.py" "external image (needs /var/run/docker.sock)"
+fi
+
+printf '  %-11s %s\n' "plot" \
+  "$("${PLOT_PY:-/opt/plotenv/bin/python}" -c \
+     'import sys,pandas,matplotlib;print("python",sys.version.split()[0],
+      "pandas",pandas.__version__,"matplotlib",matplotlib.__version__)' 2>&1 | tr -d '\n')"
+
+# The base image puts conda's samtools 1.10 on PATH; the pipeline pins 1.19.
+case "$(samtools --version 2>/dev/null | head -1)" in
+  *1.19*) ;;
+  *) echo "  WARNING: samtools on PATH is not 1.19 — check PATH ordering"; miss=1 ;;
+esac
+
+if [ -x /opt/gmf/bin/python ]; then
+  echo
+  echo "== model stack =="
+  printf '  %-11s %s\n' "python" "$(/opt/gmf/bin/python -V 2>&1)"
+  out="$(/opt/gmf/bin/python -c \
+    'import torch,einops,numpy,pysam
+print("torch",torch.__version__,"| einops",einops.__version__,
+      "| numpy",numpy.__version__,"| pysam",pysam.__version__)' 2>&1 | tr -d '\n')"
+  printf '  %-11s %s\n' "deps" "$out"
+  case "$out" in *Traceback*|*Error*) miss=1 ;; esac
+
+  imp="$(/opt/gmf/bin/python -c \
+    'import graphmambaformer as g
+print("import ok, device:", g.get_device())' 2>&1 | tail -1)"
+  printf '  %-11s %s\n' "package" "$imp"
+  case "$imp" in *Traceback*|*Error*) miss=1 ;; esac
+
+  # Which acceleration tier is actually live. Printed for every image so a GPU
+  # build that fell back to CPU (missing --gpus, wrong channel, no driver) shows
+  # up here instead of merely running slowly. Lists every visible GPU so an
+  # A100/H100/H200 host is unambiguous in the log.
+  accel="$(/opt/gmf/bin/python - <<'PY' 2>&1
+from graphmambaformer.accel import detect_capabilities, list_visible_gpus
+caps = detect_capabilities()
+print(caps.summary())
+for g in list_visible_gpus():
+    bits = [g["name"]]
+    cc = g.get("compute_capability")
+    mem = g.get("total_memory_gb")
+    if cc:
+        bits.append(f"sm_{cc[0]}{cc[1]}")
+    if mem:
+        bits.append(f"{mem}GiB")
+    if g.get("hip_arch"):
+        bits.append(g["hip_arch"])
+    print(f"gpu[{g['index']}] " + ", ".join(bits))
+PY
+)"
+  printf '  %-11s %s\n' "accel" "$(printf '%s\n' "$accel" | head -1)"
+  printf '%s\n' "$accel" | tail -n +2 | while IFS= read -r line; do
+    [ -n "$line" ] && printf '  %-11s %s\n' "" "$line"
+  done
+  case "$accel" in *Traceback*|*Error*) miss=1 ;; esac
+
+  if [ -n "${GMF_GPU_CHANNEL:-}" ]; then
+    printf '  %-11s %s\n' "gpu build" "$GMF_GPU_CHANNEL"
+    case "$accel" in
+      *tier=torch_cpu*)
+        echo "  WARNING: built for $GMF_GPU_CHANNEL but no GPU is visible."
+        echo "           NVIDIA: docker run --gpus all ...; AMD: --device /dev/kfd --device /dev/dri"
+        miss=1 ;;
+    esac
+  fi
+
+  plt="$(/opt/gmf/bin/python -c \
+    'from graphmambaformer.training import plotting_available
+print("available" if plotting_available() else "MISSING (training plots skipped)")' 2>&1 | tail -1)"
+  printf '  %-11s %s\n' "plotting" "$plt"
+fi
+
+echo
+[ "$miss" -eq 0 ] && echo "all good" || echo "PROBLEMS FOUND"
+exit "$miss"

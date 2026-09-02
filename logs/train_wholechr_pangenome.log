@@ -1,0 +1,62 @@
+==========================================================================
+Building dataset and model
+==========================================================================
+device: tier=cuda_rawkernel | vendor=nvidia | device=cuda:0 | name=NVIDIA A100-SXM4-80GB | arch=Ampere/A100 (sm_80) | gpus=1 | cupy=True | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+  gpu[0]: NVIDIA A100-SXM4-80GB, sm_80, 79.3 GiB
+manifest: data/hprc/manifests/chr21_HG002_all_modalities_pangenome.wholechr.json  entries=3  ref-mode=pangenome
+build manifest entries:   0%|          | 0/3 [00:00<?, ?entry/s]
+read GFA chr21.gfa: 0line [00:00, ?line/s][A
+read GFA chr21.gfa: 105122line [00:00, 1051153.34line/s][A
+read GFA chr21.gfa: 219062line [00:00, 1103028.37line/s][A
+read GFA chr21.gfa: 333500line [00:00, 1121898.09line/s][A
+read GFA chr21.gfa: 445690line [00:00, 1115124.20line/s][A
+read GFA chr21.gfa: 557209line [00:00, 1106028.39line/s][A
+read GFA chr21.gfa: 667826line [00:00, 1094803.88line/s][A
+read GFA chr21.gfa: 777329line [00:00, 1079236.23line/s][A
+read GFA chr21.gfa: 889220line [00:00, 1091629.84line/s][A
+read GFA chr21.gfa: 998435line [00:00, 1031710.02line/s][A
+read GFA chr21.gfa: 1108350line [00:01, 1051544.04line/s][A
+read GFA chr21.gfa: 1219966line [00:01, 1070659.12line/s][A
+read GFA chr21.gfa: 1331042line [00:01, 1082568.92line/s][A
+read GFA chr21.gfa: 1440318line [00:01, 1085599.65line/s][A
+read GFA chr21.gfa: 1549114line [00:01, 1075152.04line/s][A
+read GFA chr21.gfa: 1656807line [00:01, 1059418.26line/s][A
+read GFA chr21.gfa: 1762904line [00:01, 1043298.13line/s][A
+read GFA chr21.gfa: 1867367line [00:01, 1021978.61line/s][A
+read GFA chr21.gfa: 1969706line [00:01, 1004824.79line/s][A
+read GFA chr21.gfa: 2070301line [00:01, 938828.63line/s] [A
+read GFA chr21.gfa: 2180429line [00:02, 984126.44line/s][A
+read GFA chr21.gfa: 2288942line [00:02, 1012884.28line/s][A
+read GFA chr21.gfa: 2426576line [00:02, 1118002.55line/s][A
+read GFA chr21.gfa: 2572299line [00:02, 1217168.45line/s][A
+read GFA chr21.gfa: 2712104line [00:02, 1270438.21line/s][A
+                                                         [Abuild manifest entries:   0%|          | 0/3 [00:16<?, ?entry/s]
+Traceback (most recent call last):
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train.py", line 654, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train.py", line 587, in main
+    train_batches, val_batches, data_info = build_real(args, pipeline, model_cfg)
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train.py", line 355, in build_real
+    tb, vb, info = _build_real_entry(
+                   ^^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train.py", line 236, in _build_real_entry
+    rr = build_reference_from_files(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/graphmambaformer/data/real_data.py", line 184, in build_reference_from_files
+    return _build_pangenome(
+           ^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/graphmambaformer/data/real_data.py", line 214, in _build_pangenome
+    batch = pangenome_graph_batch(graph, kmer_size=kmer_size, device=device)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/graphmambaformer/data/reference_build.py", line 30, in pangenome_graph_batch
+    inputs = graph_to_encoder_inputs(graph, tokenizer, device=device)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/graphmambaformer/data/dataset.py", line 144, in graph_to_encoder_inputs
+    enc = tokenizer.batch_encode(graph.node_seqs, device=device)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/graphmambaformer/tokenization.py", line 77, in batch_encode
+    token_ids = torch.full((B, max_len), self.PAD_ID, dtype=torch.long)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: [enforce fail at alloc_cpu.cpp:127] err == 0. DefaultCPUAllocator: can't allocate memory: you tried to allocate 37364876063488 bytes. Error code 12 (Cannot allocate memory)

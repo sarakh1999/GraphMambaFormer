@@ -1,0 +1,119 @@
+# Publish GraphMambaFormer container images to GHCR.
+#
+# Manual only: the DeepVariant-based image is multi-GB and exceeds typical
+# GitHub-hosted runner disk/time budgets. Prefer `docker/publish.sh` on a
+# machine that already has the local image (from `docker/build.sh`).
+#
+# Triggers:
+#   - workflow_dispatch (Actions → Docker publish → Run workflow)
+#   - push of tags matching v* (optional convenience)
+name: Docker publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Image target to build and push"
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - fig6
+          - gpu
+      tag:
+        description: "Extra tag (optional), e.g. v0.1.0"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: graphmambaformer
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          # Prefer a classic PAT (repo secret GHCR_TOKEN with write:packages) when the
+          # package is not linked to this repository — GITHUB_TOKEN then gets 403.
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Resolve target / tags
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ inputs.target }}"
+            EXTRA="${{ inputs.tag }}"
+          else
+            TARGET=full
+            EXTRA="${GITHUB_REF_NAME}"
+          fi
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          REMOTE="${{ env.REGISTRY }}/${OWNER}/${{ env.IMAGE_NAME }}"
+          case "$TARGET" in
+            full) BUILD_TARGET=full; PRIMARY=latest ;;
+            fig6) BUILD_TARGET=fig6; PRIMARY=fig6-1.6.1 ;;
+            gpu)  BUILD_TARGET=gpu;  PRIMARY=gpu ;;
+            *) echo "bad target $TARGET"; exit 1 ;;
+          esac
+          TAGS="${REMOTE}:${PRIMARY}"
+          if [ -n "$EXTRA" ]; then
+            TAGS="${TAGS},${REMOTE}:${EXTRA}"
+          fi
+          echo "build_target=$BUILD_TARGET" >> "$GITHUB_OUTPUT"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "remote=$REMOTE" >> "$GITHUB_OUTPUT"
+          echo "primary=$PRIMARY" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: ${{ steps.meta.outputs.build_target }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
+          # DeepVariant base = Python 3.8; cu124 only has torch 2.4.x for that ABI.
+          build-args: |
+            TORCH_CHANNEL=cu124
+            GPU_TORCH_VERSION=2.4.1
+            INSTALL_TRITON=1
+            INSTALL_CUPY=0
+
+      - name: Summary
+        run: |
+          {
+            echo "## Published"
+            echo ""
+            echo '\`\`\`'
+            echo "docker pull ${{ steps.meta.outputs.remote }}:${{ steps.meta.outputs.primary }}"
+            echo "docker run --rm -it ${{ steps.meta.outputs.remote }}:${{ steps.meta.outputs.primary }} gmf-doctor"
+            echo '\`\`\`'
+          } >> "$GITHUB_STEP_SUMMARY"

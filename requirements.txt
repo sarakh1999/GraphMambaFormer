@@ -1,0 +1,35 @@
+# Core dependencies for the GraphMambaFormer modules.
+# On Apple Silicon, the default torch wheel includes Metal/MPS GPU support.
+torch>=2.2
+torchvision
+torchaudio
+einops>=0.7
+numpy>=1.24
+
+# x86 CPU extension tier: parasail dispatches to AVX2 or SSE2 striped
+# Smith-Waterman kernels. Apple Silicon and non-x86 images use the portable
+# torch implementation.
+parasail>=1.3; platform_machine == "x86_64" or platform_machine == "AMD64"
+
+# BAM/SAM/CRAM I/O (bundles htslib, so no external samtools needed). Used to
+# write sorted+indexed synthetic BAMs and to read real BAMs (e.g. HG002).
+pysam>=0.22
+
+# Training-run figures (loss curves, validation metrics, model behaviour).
+# Imported lazily on the Agg backend, so training still runs without it -- the
+# plots are simply skipped with a message.
+matplotlib>=3.7
+
+# Progress bars for training, alignment, and large I/O (disable with GMF_DISABLE_TQDM=1).
+tqdm>=4.66
+
+# Apple Silicon native stack (Metal + M5 Neural Accelerators when available).
+# Markers keep `pip install -r requirements.txt` working on Linux/x86-64, where
+# no mlx wheel exists (e.g. inside the Docker image).
+mlx>=0.20; sys_platform == "darwin" and platform_machine == "arm64"
+mlx-lm>=0.20; sys_platform == "darwin" and platform_machine == "arm64"
+
+# Optional (CUDA only): fast Mamba-2 kernels. The pure-PyTorch reference scan
+# in graphmambaformer/layers/mamba2.py is used automatically when this is
+# unavailable (e.g. on CPU / Apple Silicon).
+# mamba-ssm>=2.0

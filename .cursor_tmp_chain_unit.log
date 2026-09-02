@@ -1,0 +1,7 @@
+/users/PCS0289/sarakhosravi/mambaformer/.venv/lib/python3.12/site-packages/torch/cuda/__init__.py:188: UserWarning: CUDA initialization: Unexpected error from cudaGetDeviceCount(). Did you run some cuda functions before calling NumCudaDevices() that might have already set an error? Error 304: OS call failed or operation not supported on this OS (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return torch._C._cuda_getDeviceCount() > 0
+k=1: candidates=2 primary.score=8.0 decoy.score=4.0 decoy.ref=(300,308) label=0
+k=2: candidates=2 primary.score=16.0 decoy.score=8.0 decoy.ref=(100,108) label=0
+k=5: candidates=2 primary.score=40.0 decoy.score=32.0 decoy.ref=(100,138) label=0
+chain_loss singleton=0.000000  two-candidate=0.875568
+OK

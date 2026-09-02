@@ -1,0 +1,32 @@
+# rsync exclude list for moving mambaformer -> OSC Ascend.
+# Everything here is either platform-specific or regenerable on the target.
+.venv/
+__pycache__/
+*.pyc
+.git/
+.mypy_cache/
+.pytest_cache/
+# Stage-1 seed index is a pure cache rebuilt from the reference FASTA.
+data/chr21/HG002/index_cache/
+# Local agent scratch (safe to skip; comment out to keep training logs).
+logs/_smoke_*.log
+data/training_runs/_smoke_both_all3/
+# Fixes applied directly on OSC (multi-GPU CUDA device handling, DDP scalar
+# collectives, and the frequent-checkpoint launch script). Excluded so a push
+# from a local copy that lacks them cannot overwrite/clobber them on OSC.
+# NOTE: this exclude file is read by the LOCAL push_to_osc.sh, so it only
+# protects OSC once this updated file is present on the machine you push from.
+graphmambaformer/accel/cuda_kernels.py
+graphmambaformer/distributed.py
+scripts/transfer/run_hg005_local.sh
+scripts/train.py
+scripts/plot_loss.py
+# NEW fixed files (kept alongside the originals, which are untouched):
+#   * run_fixes.py            — fix logic (router balance, eager Kendall, local position)
+#   * graph_mamba_loss_fixed.py — FixedGraphMambaLoss drop-in (router + eager weights)
+#   * train_fixed.py          — entrypoint that wires the fixed loss (no original edited)
+#   * run_hg005_fixed.sh      — launcher for the fixed stack (writes to *_fixed OUT dir)
+graphmambaformer/training/run_fixes.py
+graphmambaformer/losses/graph_mamba_loss_fixed.py
+scripts/train_fixed.py
+scripts/transfer/run_hg005_fixed.sh

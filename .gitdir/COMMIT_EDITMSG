@@ -1,0 +1,8 @@
+feat(cache): parameterize HG005 cache build + train by BATCH_SIZE
+
+- build_hg005_cache_cpu.sh: add BATCH_SIZE (default 4); non-default sizes build
+  into their own isolated cache/out dirs (mambaformer_cache_cpu_bs<N>) so a bs=8
+  build on a separate node cannot collide with the bs=4 cache/training, and the
+  "already present?" glob can't false-positive across batch sizes.
+- run_hg005_local.sh: add matching BATCH_SIZE; bs=4 keeps historical cache and
+  checkpoint dirs unchanged, other sizes get d<model>_bs<N> dirs.

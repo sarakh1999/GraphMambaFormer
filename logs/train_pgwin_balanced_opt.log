@@ -1,0 +1,21 @@
+==========================================================================
+Building dataset and model
+==========================================================================
+device: tier=cuda_rawkernel | vendor=nvidia | device=cuda:0 | name=NVIDIA A100-PCIE-40GB | arch=Ampere/A100 (sm_80) | gpus=1 | cupy=True | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+  gpu[0]: NVIDIA A100-PCIE-40GB, sm_80, 39.5 GiB
+manifest: data/hprc/manifests/chr21_HG002_pangenome_windows.bal.json  entries=1428  ref-mode=pangenome
+dataset cache: loading prebuilt dataset -> /fs/ess/PCS0289/gmf_dataset_cache/chr21_HG002_pangenome_windows.bal.d0abec46fb3a354b.pt
+dataset cache: loaded 21841 train / 5895 val batches in 327.0s (skipped build)
+ref-mode: pangenome
+reads: 170137 train / 41851 val   batches: 21841 train / 5895 val
+
+==========================================================================
+Training
+==========================================================================
+host threads: torch=128 (cores=128)
+torch.compile: on (mode=default)
+device: tier=cuda_rawkernel | vendor=nvidia | device=cuda:0 | name=NVIDIA A100-PCIE-40GB | arch=Ampere/A100 (sm_80) | gpus=1 | cupy=True | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+training 15,130,857 parameters on 170137 reads (41851 held out) for up to 60 epochs
+
+epochs:   0%|          | 0/60 [00:00<?, ?epoch/s]
+train epoch 00:   0%|          | 0/21841 [00:00<?, ?batch/s][A

@@ -1,0 +1,18 @@
+HPRC map: sample=HG002 modalities=hifi bam-mode=separate
+  ref=data/chr21/HG002/ref/chr21.fa
+  reads-root=data/hprc/reads
+  out=data/hprc/bam/HG002.neural.hifi.bam
+[ours] reference contig=chr21 len=46,709,983  (0.1s)
+read FASTQ HG002.chr21.pacbio_hifi.fastq.gz: 0read [00:00, ?read/s]read FASTQ HG002.chr21.pacbio_hifi.fastq.gz: 197read [00:00, 1969.44read/s]                                                                           dedupe read IDs:   0%|          | 0/5 [00:00<?, ?read/s]                                                        [ours] hifi: 5 reads  modality=pacbio_hifi  files=1
+         - data/hprc/reads/HG002/hifi/HG002.chr21.pacbio_hifi.fastq.gz
+[ours] total reads=5 modalities=['pacbio_hifi'] mode=hybrid bam-mode=separate
+[ours] loaded checkpoint: data/training_runs/chr21_both_hprc/checkpoint.pt (d_model=256)
+[ours] workers=12 batch_size=64 threads=12 d_model=256
+[ours] loaded reference index from cache (data/chr21/HG002/index_cache)
+[ours] reference index ready  (0.7s)
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s]align[hybrid]: 100%|██████████| 1/1 [01:35<00:00, 95.59s/batch]                                                               [ours] aligned  (95.6s, 0.1 reads/s)
+[ours] stats: reads=5 mapped=5 anchors=25000 (pruned 0) chains=5 extended=5 neural_batches=1 rescued=0 | passes: hybrid=5
+alignments to records:   0%|          | 0/5 [00:00<?, ?read/s]                                                              write BAM:   0%|          | 0/5 [00:00<?, ?read/s]                                                  [ours] wrote data/hprc/bam/HG002.neural.hifi.bam
+[ours] done  total 97.3s
+Done: data/hprc/bam/HG002.neural.hifi.bam
+note: per-modality BAMs use stem data/hprc/bam/HG002.neural.hifi.<modality>.bam

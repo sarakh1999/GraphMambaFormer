@@ -1,0 +1,155 @@
+==========================================================================
+Building dataset and model
+==========================================================================
+device: tier=triton | vendor=nvidia | device=cuda:0 | name=NVIDIA A100-SXM4-80GB | arch=Ampere/A100 (sm_80) | gpus=1 | cupy=False | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+  gpu[0]: NVIDIA A100-SXM4-80GB, sm_80, 79.3 GiB
+manifest: data/hprc/manifests/chr21_HG002_all_modalities_both.smoke.json  entries=3  ref-mode=both
+build manifest entries:   0%|          | 0/3 [00:00<?, ?entry/s]
+build indexes:   0%|          | 0/3 [00:00<?, ?read/s][A
+                                                      [A[ref linear] contig=chr21 len=50,001bp offset=19999999
+
+read GFA chr21.q.window.gfa: 0line [00:00, ?line/s][A
+                                                   [A
+build indexes:   0%|          | 0/3 [00:00<?, ?read/s][A
+                                                      [A[ref pangenome] contig=chr21 len=50,001bp offset=19999999  graph=1112n/1285e
+
+read BAM HG002.chr21.q.giab.sorted.bam: 0aln [00:00, ?aln/s][A
+read BAM HG002.chr21.q.giab.sorted.bam: 1920aln [00:00, 19197.00aln/s][A
+read BAM HG002.chr21.q.giab.sorted.bam: 5721aln [00:00, 30253.99aln/s][A
+read BAM HG002.chr21.q.giab.sorted.bam: 9536aln [00:00, 33682.27aln/s][A
+                                                                      [A
+shift reads into window:   0%|          | 0/12000 [00:00<?, ?read/s][A
+                                                                    [A
+dedupe read IDs:   0%|          | 0/40 [00:00<?, ?read/s][A
+                                                         [Abuild manifest entries:  33%|███▎      | 1/3 [00:03<00:06,  3.25s/entry]  [HG002/illumina] reads=40 labels=truth_bam (train 32 / val 8)
+
+read BAM HG002.chr21.pacbio_hifi.truth.sorted.bam: 0aln [00:00, ?aln/s][A
+read BAM HG002.chr21.pacbio_hifi.truth.sorted.bam: 105aln [00:00, 1046.66aln/s][A
+read BAM HG002.chr21.pacbio_hifi.truth.sorted.bam: 210aln [00:00, 936.85aln/s] [A
+                                                                              [A
+shift reads into window:   0%|          | 0/300 [00:00<?, ?read/s][A
+                                                                  [A
+dedupe read IDs:   0%|          | 0/10 [00:00<?, ?read/s][A
+                                                         [Abuild manifest entries:  67%|██████▋   | 2/3 [00:03<00:01,  1.55s/entry]  [HG002/pacbio_hifi] reads=10 labels=truth_bam (train 8 / val 2)
+
+read BAM HG002.chr21.ont.truth.sorted.bam: 0aln [00:00, ?aln/s][A
+read BAM HG002.chr21.ont.truth.sorted.bam: 53aln [00:00, 450.73aln/s][A
+read BAM HG002.chr21.ont.truth.sorted.bam: 99aln [00:00, 383.51aln/s][A
+read BAM HG002.chr21.ont.truth.sorted.bam: 138aln [00:00, 372.90aln/s][A
+read BAM HG002.chr21.ont.truth.sorted.bam: 211aln [00:00, 498.22aln/s][A
+                                                                      [A
+shift reads into window:   0%|          | 0/300 [00:00<?, ?read/s][A
+                                                                  [A
+dedupe read IDs:   0%|          | 0/10 [00:00<?, ?read/s][A
+                                                         [Abuild manifest entries: 100%|██████████| 3/3 [00:04<00:00,  1.14s/entry]build manifest entries: 100%|██████████| 3/3 [00:04<00:00,  1.42s/entry]
+  [HG002/ont] reads=10 labels=truth_bam (train 8 / val 2)
+source: real  entries=3  reads=60  batches: 12 train / 6 val
+note: each read is trained once on the linear index and once on the pangenome index
+ref-mode: both
+reads: 96 train / 24 val   batches: 12 train / 6 val
+note: each read is trained once on the linear index and once on the pangenome index
+
+==========================================================================
+Training
+==========================================================================
+host threads: torch=96 (cores=96)
+device: tier=triton | vendor=nvidia | device=cuda:0 | name=NVIDIA A100-SXM4-80GB | arch=Ampere/A100 (sm_80) | gpus=1 | cupy=False | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+training 15,130,857 parameters on 96 reads (24 held out) for up to 1 epochs
+
+epochs:   0%|          | 0/1 [00:00<?, ?epoch/s]
+train epoch 00:   0%|          | 0/12 [00:00<?, ?batch/s][Aicc: remark #10441: The Intel(R) C++ Compiler Classic (ICC) is deprecated and will be removed from product release in the second half of 2023. The Intel(R) oneAPI DPC++/C++ Compiler (ICX) is the recommended compiler moving forward. Please transition to use this compiler. Use '-diag-disable=10441' to disable this message.
+icc: command line warning #10148: option '-Wno-psabi' not supported
+
+train epoch 00:   8%|▊         | 1/12 [00:46<08:30, 46.42s/batch, loss=6.2265][A
+train epoch 00:  17%|█▋        | 2/12 [00:59<04:30, 27.07s/batch, loss=6.1593][A
+train epoch 00:  25%|██▌       | 3/12 [01:06<02:39, 17.78s/batch, loss=5.7367][A
+train epoch 00:  33%|███▎      | 4/12 [01:08<01:32, 11.56s/batch, loss=5.7880][A
+train epoch 00:  42%|████▏     | 5/12 [01:15<01:08,  9.74s/batch, loss=5.3413][A
+train epoch 00:  50%|█████     | 6/12 [01:17<00:42,  7.11s/batch, loss=5.3920][A
+train epoch 00:  58%|█████▊    | 7/12 [01:23<00:34,  6.98s/batch, loss=5.6032][A
+train epoch 00:  67%|██████▋   | 8/12 [01:27<00:23,  5.88s/batch, loss=5.5273][A
+train epoch 00:  75%|███████▌  | 9/12 [01:30<00:14,  4.88s/batch, loss=5.2556][A
+train epoch 00:  83%|████████▎ | 10/12 [01:31<00:07,  3.87s/batch, loss=5.2017][A
+train epoch 00:  92%|█████████▏| 11/12 [01:37<00:04,  4.59s/batch, loss=5.1019][A
+train epoch 00: 100%|██████████| 12/12 [01:39<00:00,  3.68s/batch, loss=5.2100][A
+                                                                               [A  train e00 s0000  loss=6.2265  (chain=0.000 mapq=0.569 position=0.483 router=0.007 seed=0.672 transition=0.808)  |g|=2.251  route=fast:0%,medium:0%,full:100%
+  train e00 s0001  loss=6.1593  (chain=0.000 mapq=0.373 position=0.342 router=0.005 seed=0.869 transition=0.760)
+  train e00 s0002  loss=5.7367  (chain=0.000 mapq=0.317 position=0.228 router=0.008 seed=0.616 transition=0.704)
+  train e00 s0003  loss=5.7880  (chain=0.000 mapq=0.436 position=0.194 router=0.006 seed=0.685 transition=0.617)
+  train e00 s0004  loss=5.3413  (chain=0.000 mapq=0.196 position=0.077 router=0.007 seed=0.458 transition=0.650)
+  train e00 s0005  loss=5.3920  (chain=0.000 mapq=0.295 position=0.033 router=0.007 seed=0.607 transition=0.443)
+  train e00 s0006  loss=5.6032  (chain=0.000 mapq=0.246 position=0.016 router=0.005 seed=0.677 transition=0.809)
+  train e00 s0007  loss=5.5273  (chain=0.000 mapq=0.220 position=0.011 router=0.004 seed=0.676 transition=0.697)
+  train e00 s0008  loss=5.2556  (chain=0.000 mapq=0.201 position=0.007 router=0.003 seed=0.587 transition=0.359)
+  train e00 s0009  loss=5.2017  (chain=0.000 mapq=0.194 position=0.005 router=0.003 seed=0.549 transition=0.338)
+  train e00 s0010  loss=5.1019  (chain=0.000 mapq=0.031 position=0.002 router=0.002 seed=0.422 transition=0.562)  |g|=2.459  route=fast:100%,medium:0%,full:0%
+  train e00 s0011  loss=5.2100  (chain=0.000 mapq=0.183 position=0.004 router=0.002 seed=0.569 transition=0.327)
+
+validate:   0%|          | 0/6 [00:00<?, ?batch/s][A
+validate:  17%|█▋        | 1/6 [00:03<00:18,  3.62s/batch][A
+validate:  33%|███▎      | 2/6 [00:06<00:11,  2.90s/batch][A
+validate:  50%|█████     | 3/6 [00:19<00:22,  7.64s/batch][A
+validate:  67%|██████▋   | 4/6 [00:20<00:10,  5.00s/batch][A
+validate:  83%|████████▎ | 5/6 [00:21<00:03,  3.54s/batch][A
+validate: 100%|██████████| 6/6 [00:22<00:00,  2.66s/batch][A
+                                                          [A
+locus report:   0%|          | 0/6 [00:00<?, ?batch/s][A
+
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s][A[A
+
+align[hybrid]: 100%|██████████| 1/1 [00:01<00:00,  1.97s/batch][A[A
+
+                                                               [A[A
+locus report:  17%|█▋        | 1/6 [00:01<00:09,  1.98s/batch][A
+
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s][A[A
+
+align[hybrid]: 100%|██████████| 1/1 [00:01<00:00,  1.99s/batch][A[A
+
+                                                               [A[A
+locus report:  33%|███▎      | 2/6 [00:03<00:07,  1.98s/batch][A
+
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s][A[A
+
+align[hybrid]: 100%|██████████| 1/1 [00:16<00:00, 16.55s/batch][A[A
+
+                                                               [A[A
+locus report:  50%|█████     | 3/6 [00:20<00:25,  8.64s/batch][A
+
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s][A[A
+
+align[hybrid]: 100%|██████████| 1/1 [00:16<00:00, 16.61s/batch][A[A
+
+                                                               [A[A
+locus report:  67%|██████▋   | 4/6 [00:37<00:23, 11.79s/batch][A
+
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s][A[A
+
+align[hybrid]: 100%|██████████| 1/1 [00:20<00:00, 20.29s/batch][A[A
+
+                                                               [A[A
+locus report:  83%|████████▎ | 5/6 [00:57<00:14, 14.85s/batch][A
+
+align[hybrid]:   0%|          | 0/1 [00:00<?, ?batch/s][A[A
+
+align[hybrid]: 100%|██████████| 1/1 [00:20<00:00, 20.15s/batch][A[A
+
+                                                               [A[A
+locus report: 100%|██████████| 6/6 [01:17<00:00, 16.65s/batch][A
+                                                              [Aepochs: 100%|██████████| 1/1 [03:20<00:00, 200.38s/epoch, monitor=1.0000, train=5.5453]epochs: 100%|██████████| 1/1 [03:20<00:00, 200.38s/epoch, monitor=1.0000, train=5.5453]
+epoch 00  train=5.5453  val loss=5.1089 locus=100.0% chain=n/a(<2 candidates) anchorAUC=0.647 mapqMAE=7.7 mapped=100.0%  (99.6s)
+  saved data/training_runs/smoke_osc/checkpoints/epoch_00.pt  (best)
+checkpoint -> data/training_runs/smoke_osc/checkpoint.pt
+
+best locus_accuracy=1.0000 at epoch 0
+
+history -> data/training_runs/smoke_osc/history.json
+run meta -> data/training_runs/smoke_osc/run_meta.json
+
+wrote 6 figures to data/training_runs/smoke_osc/plots
+   01_losses.png
+   02_loss_weights.png
+   03_validation.png
+   04_model_behavior.png
+   05_mapq_calibration.png
+   06_label_balance.png

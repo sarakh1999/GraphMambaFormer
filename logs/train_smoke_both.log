@@ -1,0 +1,125 @@
+==========================================================================
+Building dataset and model
+==========================================================================
+device: tier=triton | vendor=nvidia | device=cuda:0 | name=NVIDIA RTX A6000 | arch=Ampere/A6000 (sm_86) | gpus=1 | cupy=False | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+  gpu[0]: NVIDIA RTX A6000, sm_86, 47.4 GiB
+manifest: data/hprc/manifests/chr21_HG002_all_modalities_both.smoke.json  entries=3  ref-mode=both
+build manifest entries:   0%|          | 0/3 [00:00<?, ?entry/s]
+build indexes:   0%|          | 0/3 [00:00<?, ?read/s][A
+                                                      [A[ref linear] contig=chr21 len=50,001bp offset=19999999
+
+read GFA chr21.q.window.gfa: 0line [00:00, ?line/s][A
+                                                   [A
+build indexes:   0%|          | 0/3 [00:00<?, ?read/s][A
+                                                      [A[ref pangenome] contig=chr21 len=50,001bp offset=19999999  graph=1112n/1285e
+
+read BAM HG002.chr21.q.giab.sorted.bam: 0aln [00:00, ?aln/s][A
+read BAM HG002.chr21.q.giab.sorted.bam: 3677aln [00:00, 36764.95aln/s][A
+read BAM HG002.chr21.q.giab.sorted.bam: 7354aln [00:00, 24802.84aln/s][A
+read BAM HG002.chr21.q.giab.sorted.bam: 11309aln [00:00, 30137.45aln/s][A
+                                                                       [A
+shift reads into window:   0%|          | 0/12000 [00:00<?, ?read/s][A
+                                                                    [A
+dedupe read IDs:   0%|          | 0/40 [00:00<?, ?read/s][A
+                                                         [Abuild manifest entries:  33%|███▎      | 1/3 [00:00<00:01,  1.54entry/s]  [HG002/illumina] reads=40 labels=truth_bam (train 32 / val 8)
+
+read BAM HG002.chr21.pacbio_hifi.truth.sorted.bam: 0aln [00:00, ?aln/s][A
+read BAM HG002.chr21.pacbio_hifi.truth.sorted.bam: 156aln [00:00, 1559.27aln/s][A
+                                                                               [A
+shift reads into window:   0%|          | 0/300 [00:00<?, ?read/s][A
+                                                                  [A
+dedupe read IDs:   0%|          | 0/10 [00:00<?, ?read/s][A
+                                                         [Abuild manifest entries:  67%|██████▋   | 2/3 [00:00<00:00,  2.42entry/s]  [HG002/pacbio_hifi] reads=10 labels=truth_bam (train 8 / val 2)
+
+read BAM HG002.chr21.ont.truth.sorted.bam: 0aln [00:00, ?aln/s][A
+read BAM HG002.chr21.ont.truth.sorted.bam: 103aln [00:00, 1021.97aln/s][A
+read BAM HG002.chr21.ont.truth.sorted.bam: 206aln [00:00, 971.16aln/s] [A
+                                                                      [A
+shift reads into window:   0%|          | 0/300 [00:00<?, ?read/s][A
+                                                                  [A
+dedupe read IDs:   0%|          | 0/10 [00:00<?, ?read/s][A
+                                                         [Abuild manifest entries: 100%|██████████| 3/3 [00:01<00:00,  2.59entry/s]build manifest entries: 100%|██████████| 3/3 [00:01<00:00,  2.40entry/s]
+  [HG002/ont] reads=10 labels=truth_bam (train 8 / val 2)
+source: real  entries=3  reads=60  batches: 12 train / 6 val
+note: each read is trained once on the linear index and once on the pangenome index
+ref-mode: both
+reads: 96 train / 24 val   batches: 12 train / 6 val
+note: each read is trained once on the linear index and once on the pangenome index
+
+==========================================================================
+Training
+==========================================================================
+host threads: torch=12 (cores=12)
+device: tier=triton | vendor=nvidia | device=cuda:0 | name=NVIDIA RTX A6000 | arch=Ampere/A6000 (sm_86) | gpus=1 | cupy=False | triton=True | mamba_ssm=False | te=False | tensorrt=False | tf32=True | fp16=True | bf16=True | fp8=False | amp=torch.bfloat16 | cuda_graphs=True | fp8=False | tensorrt=False
+training 15,130,857 parameters on 96 reads (24 held out) for up to 1 epochs
+
+epochs:   0%|          | 0/1 [00:00<?, ?epoch/s]
+train epoch 00:   0%|          | 0/12 [00:00<?, ?batch/s][A
+train epoch 00:   8%|▊         | 1/12 [01:15<13:53, 75.77s/batch, loss=6.2265][A[W822 22:45:18.153228441 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2097152 bytes (free: 16777216, total: 50898862080).
+[W822 22:45:18.255126526 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 222298112 bytes (free: 157286400, total: 50898862080).
+[W822 22:45:18.255307109 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 222298112 bytes (free: 157286400, total: 50898862080).
+
+                                                                              [Aepochs:   0%|          | 0/1 [01:29<?, ?epoch/s]
+  train e00 s0000  loss=6.2265  (chain=0.000 mapq=0.569 position=0.483 router=0.007 seed=0.672 transition=0.808)  |g|=2.251  route=fast:0%,medium:0%,full:100%
+Traceback (most recent call last):
+  File "/home/ubuntu/mambaformer/scripts/train.py", line 646, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/ubuntu/mambaformer/scripts/train.py", line 609, in main
+    history = trainer.fit(train_batches, val_batches)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/training/trainer.py", line 500, in fit
+    summary = self.train_epoch(train_batches, epoch, total_steps)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/training/trainer.py", line 292, in train_epoch
+    outputs, seed_scores, chain_scores = self._forward(sup, reference)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/training/trainer.py", line 200, in _forward
+    outputs = self.model(
+              ^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/models/graph_mamba.py", line 370, in forward
+    read_hidden, read_mask = self.encode_read(
+                             ^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/models/graph_mamba.py", line 257, in encode_read
+    return self.mamba_tower(hidden, mask=mask), mask
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1884, in _call_impl
+    return inner()
+           ^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1832, in inner
+    result = forward_call(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/models/graph_mamba.py", line 194, in forward
+    x = x + block["mixer"](block["norm"](x), mask=mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/layers/bimamba.py", line 32, in forward
+    y_fwd = self.fwd(x, mask=mask)
+            ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/layers/mamba2.py", line 93, in forward
+    return self._forward_reference(x, mask)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/mambaformer/graphmambaformer/layers/mamba2.py", line 140, in _forward_reference
+    y = torch.stack(ys, dim=1)  # (B, L, H, headdim)
+        ^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 212.00 MiB. GPU 0 has a total capacity of 47.40 GiB of which 150.00 MiB is free. Including non-PyTorch memory, this process has 46.84 GiB memory in use. Of the allocated memory 46.47 GiB is allocated by PyTorch, and 41.29 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)

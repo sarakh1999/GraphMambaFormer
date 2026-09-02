@@ -1,0 +1,25 @@
+parsing data/chr21/HG002/chr21.gfa ...
+  nodes=934,112  walk_nodes=731,741
+  backbone nodes=731,741  walk_length=46,709,983
+  backbone nodes in region: 731,738
+  window 50: chr21:9813349-9817606  span=4,258bp  nodes=1798  edges=2085
+  window 100: chr21:13788472-13852525  span=64,054bp  nodes=1774  edges=2069
+  window 150: chr21:16948316-17020513  span=72,198bp  nodes=1798  edges=2113
+  window 200: chr21:20110503-20201676  span=91,174bp  nodes=1780  edges=2077
+  window 250: chr21:23277390-23348204  span=70,815bp  nodes=1807  edges=2134
+  window 300: chr21:26529728-26629531  span=99,804bp  nodes=1805  edges=2143
+  window 350: chr21:30004462-30086994  span=82,533bp  nodes=1692  edges=1897
+  window 400: chr21:33659729-33785462  span=125,734bp  nodes=1670  edges=1870
+  window 450: chr21:37308539-37366155  span=57,617bp  nodes=1711  edges=1922
+  window 500: chr21:40652141-40725042  span=72,902bp  nodes=1865  edges=2265
+  window 550: chr21:43639960-43728630  span=88,671bp  nodes=1775  edges=2072
+  window 600: chr21:46146888-46169133  span=22,246bp  nodes=1638  edges=1765
+held-out test region: chr21:40000001-46699983 (6,699,983 bp) -> data/hprc/manifests/chr21_HG002_pangenome_windows.test.json
+train windows with truth reads: 486/610  entries per modality: {'illumina': 476, 'pacbio_hifi': 467, 'ont': 485}
+test  windows with truth reads: 124  (371 entries)
+illumina depth target: 30.0x @ 250bp  -> ~4,655,982 illumina reads used (train)
+
+nodes/window: min=1040 median=1782 max=2089
+wrote 610 window GFAs -> data/chr21/HG002/pangenome_windows
+wrote train manifest (1428 entries) -> data/hprc/manifests/chr21_HG002_pangenome_windows.json
+wrote test  manifest (371 entries) -> data/hprc/manifests/chr21_HG002_pangenome_windows.test.json

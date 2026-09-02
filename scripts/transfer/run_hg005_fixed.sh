@@ -2,8 +2,11 @@
 # HG005 chr21 run with the FIXED loss stack (scripts/train_fixed.py).
 #
 # Identical to run_hg005_local.sh except:
-#   * it launches scripts/train_fixed.py (router load-balance + eager Kendall
-#     weights via graphmambaformer/losses/graph_mamba_loss_fixed.py), and
+#   * it launches scripts/train_fixed.py, which activates ALL fixes:
+#       - router load-balance + eager Kendall weights (graph_mamba_loss_fixed.py)
+#       - pinned chain decoys + local position target (targets_fixed.py)
+#     Targets are rebuilt every step from the cached (reads, reference), so these
+#     apply on the EXISTING cache with no rebuild needed.
 #   * it writes to a *_fixed OUT dir so it never collides with the currently
 #     running (unfixed) job's checkpoints.
 #

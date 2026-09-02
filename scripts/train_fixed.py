@@ -25,11 +25,18 @@ import runpy
 
 import graphmambaformer.training.trainer as _trainer
 from graphmambaformer.losses.graph_mamba_loss_fixed import FixedGraphMambaLoss
+from graphmambaformer.training.targets_fixed import FixedTargetBuilder
 
-# Swap the fixed loss in before any Trainer is constructed.
+# Swap the fixed loss AND target builder in before any Trainer is constructed.
+# The trainer looks both names up in its own module globals
+# (``GraphMambaLoss`` at criterion build, ``TargetBuilder`` at builder build),
+# so rebinding them here applies every fix with zero edits to trainer.py:
+#   * FixedGraphMambaLoss  -> router load-balance + eager Kendall weights
+#   * FixedTargetBuilder   -> pinned chain decoys + local position target
 _trainer.GraphMambaLoss = FixedGraphMambaLoss
-print(f"[train_fixed] using {FixedGraphMambaLoss.__module__}.{FixedGraphMambaLoss.__name__} "
-      "(router load-balance + eager Kendall weights)")
+_trainer.TargetBuilder = FixedTargetBuilder
+print("[train_fixed] fixes active: "
+      "FixedGraphMambaLoss (router+Kendall) + FixedTargetBuilder (chain+position)")
 
 # Run the real train.py main with the current argv/env, as if invoked directly.
 _train_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "train.py")

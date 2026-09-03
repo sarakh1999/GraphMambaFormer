@@ -385,6 +385,29 @@ def _save_ref_index_cache(cache_path, rr):
             pass
 
 
+def _load_cache_file(path, *, mmap: bool):
+    """Load a torch cache file, memory-mapping tensor storages when possible.
+
+    ``mmap=True`` maps the tensor storages straight from the file instead of
+    reading them into anonymous RAM. Every DDP rank on a node then shares one
+    physical copy through the OS page cache (file-backed, evictable) rather than
+    each unpickling its own ~26 GB copy -- which is what pushed the earlier job
+    past its cgroup RAM cap and triggered the OOM kill. Non-tensor Python
+    objects are still unpickled per process, but those are tiny next to the
+    tensor payload.
+
+    mmap requires the zip-format archive ``torch.save`` writes by default; if it
+    is unavailable (older layout / torch / platform) we fall back to a normal
+    in-RAM load so caching never becomes fatal.
+    """
+    if mmap:
+        try:
+            return torch.load(path, weights_only=False, mmap=True)
+        except (TypeError, RuntimeError, ValueError) as exc:
+            print(f"cache: mmap load failed ({exc}); falling back to in-RAM load")
+    return torch.load(path, weights_only=False)
+
+
 def _load_or_build_reference(args, pipeline, fasta, gfa, contig, region,
                              with_graph, kmer_size):
     """Return a RealReference, loading its index from disk when available.
@@ -400,7 +423,7 @@ def _load_or_build_reference(args, pipeline, fasta, gfa, contig, region,
             if use_cache else None)
     if path and os.path.exists(path) and not getattr(args, "rebuild_dataset_cache", False):
         try:
-            return torch.load(path, weights_only=False)
+            return _load_cache_file(path, mmap=getattr(args, "cache_mmap", True))
         except Exception as exc:  # noqa: BLE001 - fall back to rebuild
             print(f"ref-index cache: WARNING failed to load {path} ({exc}); rebuilding")
     rr = build_reference_from_files(
@@ -511,7 +534,9 @@ def build_real(args, pipeline, model_cfg):
             t0 = _time.time()
             print(f"dataset cache: loading prebuilt dataset -> {cache_path}")
             try:
-                payload = torch.load(cache_path, weights_only=False)
+                payload = _load_cache_file(
+                    cache_path, mmap=getattr(args, "cache_mmap", True)
+                )
                 all_train = payload["train"]
                 all_val = payload["val"]
                 data_info = payload["data_info"]
@@ -742,6 +767,14 @@ def main() -> int:
     p.add_argument("--rebuild-dataset-cache", action="store_true",
                    help="ignore any existing dataset cache and rebuild it "
                         "(overwrites the cache file)")
+    p.add_argument("--cache-mmap", dest="cache_mmap",
+                   action="store_true", default=True,
+                   help="memory-map the dataset/ref-index caches so DDP ranks "
+                        "on a node share one file-backed copy via the OS page "
+                        "cache instead of each loading its own ~26 GB into RAM "
+                        "(prevents the OOM kill seen with 2 ranks); default on")
+    p.add_argument("--no-cache-mmap", dest="cache_mmap", action="store_false",
+                   help="disable cache memory-mapping and load fully into RAM")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args()
 

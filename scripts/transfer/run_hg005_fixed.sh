@@ -82,6 +82,9 @@ else
 fi
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# Cap the per-epoch full validation (train_fixed.py reads this; default 200).
+# Set to 0 to run the full ~6194-batch pass (the ~5h/epoch behaviour).
+export EPOCH_VAL_MAX_BATCHES="${EPOCH_VAL_MAX_BATCHES:-200}"
 torchrun --standalone --nproc_per_node="$NGPU" scripts/train_fixed.py \
   --data real \
   --manifest "$MANIFEST" \

@@ -38,6 +38,27 @@ _trainer.TargetBuilder = FixedTargetBuilder
 print("[train_fixed] fixes active: "
       "FixedGraphMambaLoss (router+Kendall) + FixedTargetBuilder (chain+position)")
 
+# --------------------------------------------------------------------------- #
+# Efficiency fix: cap the per-epoch full validation.
+# The end-of-epoch validate() runs over ALL ~6194 val batches/rank (~5h), while
+# the intra-epoch check is already capped (intra_val_max_batches=12). Capping
+# validate() to EPOCH_VAL_MAX_BATCHES (default 200) keeps a solid held-out
+# estimate but reclaims hours per epoch. 12 < cap, so intra-epoch is unchanged.
+# Set EPOCH_VAL_MAX_BATCHES=0 to restore the full pass.
+# --------------------------------------------------------------------------- #
+_EPOCH_VAL_CAP = int(os.environ.get("EPOCH_VAL_MAX_BATCHES", "200"))
+if _EPOCH_VAL_CAP > 0:
+    _orig_validate = _trainer.Trainer.validate
+
+    def _capped_validate(self, batches):
+        if batches is not None and len(batches) > _EPOCH_VAL_CAP:
+            batches = list(batches)[:_EPOCH_VAL_CAP]
+        return _orig_validate(self, batches)
+
+    _trainer.Trainer.validate = _capped_validate
+    print(f"[train_fixed] epoch-end validation capped to {_EPOCH_VAL_CAP} batches "
+          "(set EPOCH_VAL_MAX_BATCHES=0 to run the full pass)")
+
 # Run the real train.py main with the current argv/env, as if invoked directly.
 _train_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "train.py")
 runpy.run_path(_train_py, run_name="__main__")

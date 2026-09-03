@@ -420,8 +420,20 @@ class TargetBuilder:
         n_valid = int(amask.sum())
         pos = float((labels * amask).sum())
         chain_t = sup.targets["chain_target"]
+        # Mean live candidate chains per read. The listwise chain-ranking loss is
+        # identically zero for any read with a single candidate (softmax of one
+        # element is 1.0, zero gradient); decoy injection pushes this above 1 so
+        # the term actually trains. Surfacing it here makes the chain fix visible
+        # in history/plot 06 rather than something to infer from the loss curve.
+        chain_mask = sup.targets.get("chain_mask")
+        cand_per_read = (
+            float(chain_mask.float().sum(dim=1).mean())
+            if chain_mask is not None and chain_mask.numel()
+            else 0.0
+        )
         return {
             "anchor_positive_rate": pos / max(n_valid, 1),
             "anchors_per_read": n_valid / max(sup.n_reads, 1),
             "reads_with_chain_label": float((chain_t >= 0).float().mean()),
+            "chain_candidates_per_read": cand_per_read,
         }

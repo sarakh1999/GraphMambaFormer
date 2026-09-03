@@ -35,6 +35,10 @@ _LOG_RE = re.compile(
     r"train e(?P<epoch>\d+) s(?P<step>\d+)\s+loss=(?P<loss>[0-9.]+)\s+\((?P<terms>[^)]*)\)"
 )
 
+# Matches the intra-epoch validation line, e.g.:
+#   [step 500] val loss=4.6925 locus=89.6% chain=n/a ... mapqMAE=30.5 ...
+_VAL_RE = re.compile(r"\[step (?P<step>\d+)\]\s*val loss=(?P<loss>[0-9.]+)")
+
 
 def load_history(run_dir: str) -> dict[int, dict]:
     """Return {step: record} parsed from history.json (empty if absent)."""
@@ -49,11 +53,7 @@ def load_history(run_dir: str) -> dict[int, dict]:
         if s.get("split") not in (None, "train"):
             continue
         step = int(s["step"])
-        out[step] = {
-            "total": float(s["total"]),
-            "terms": {k: float(s.get("terms", {}).get(k, float("nan")))
-                      for k in TERM_KEYS},
-        }
+        out[step] = {"total": float(s["total"])}
     return out
 
 
@@ -67,18 +67,20 @@ def scrape_log(log_path: str | None) -> dict[int, dict]:
             m = _LOG_RE.search(line)
             if not m:
                 continue
-            terms = {}
-            for kv in m.group("terms").split():
-                if "=" in kv:
-                    k, v = kv.split("=", 1)
-                    try:
-                        terms[k] = float(v)
-                    except ValueError:
-                        pass
-            out[int(m.group("step"))] = {
-                "total": float(m.group("loss")),
-                "terms": {k: terms.get(k, float("nan")) for k in TERM_KEYS},
-            }
+            out[int(m.group("step"))] = {"total": float(m.group("loss"))}
+    return out
+
+
+def scrape_val(log_path: str | None) -> dict[int, float]:
+    """Return {step: val_loss} from the intra-epoch validation log lines."""
+    out: dict[int, float] = {}
+    if not log_path or not os.path.exists(log_path):
+        return out
+    with open(log_path, errors="ignore") as fh:
+        for line in fh:
+            m = _VAL_RE.search(line)
+            if m:
+                out[int(m.group("step"))] = float(m.group("loss"))
     return out
 
 
@@ -93,10 +95,16 @@ def main() -> int:
     ap.add_argument("--out", default="logs/loss_curve.png",
                     help="output PNG path")
     ap.add_argument("--title", default=None, help="override the figure title")
+    ap.add_argument("--max-step", type=int, default=None,
+                    help="only plot steps <= this value")
     args = ap.parse_args()
 
     merged = load_history(args.run_dir)
     merged.update(scrape_log(args.log))  # log wins on overlapping steps
+    val = scrape_val(args.log)
+    if args.max_step is not None:
+        merged = {s: r for s, r in merged.items() if s <= args.max_step}
+        val = {s: v for s, v in val.items() if s <= args.max_step}
     if not merged:
         raise SystemExit("no loss data found in history.json or --log")
 
@@ -111,11 +119,16 @@ def main() -> int:
     fig, ax = plt.subplots(1, 1, figsize=(8, 5))
     fig.suptitle(title, fontsize=11, fontweight="bold")
 
-    ax.plot(steps, total, color="#1f77b4", lw=1.6)
-    ax.set_title("Total training loss")
+    ax.plot(steps, total, color="#1f77b4", lw=1.6, label="train (per step)")
+    if val:
+        vs = sorted(val)
+        ax.plot(vs, [val[s] for s in vs], color="#d62728", lw=1.8,
+                marker="o", ms=6, label="val (intra-epoch)")
+    ax.set_title("Training vs validation loss")
     ax.set_xlabel("optimizer step")
     ax.set_ylabel("loss")
     ax.grid(alpha=0.3)
+    ax.legend(fontsize=9)
 
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
@@ -123,6 +136,9 @@ def main() -> int:
     print(f"wrote {args.out}")
     print(f"steps {steps[0]}..{steps[-1]} ({len(steps)} points)  "
           f"total loss {total[0]:.3f} -> {total[-1]:.3f}  min {min(total):.3f}")
+    if val:
+        vs = sorted(val)
+        print("val loss: " + "  ".join(f"s{s}={val[s]:.3f}" for s in vs))
     return 0
 
 

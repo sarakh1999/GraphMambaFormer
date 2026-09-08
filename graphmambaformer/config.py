@@ -683,9 +683,26 @@ class SeedingConfig:
     # Merge anchors that lie on the same diagonal within this distance.
     merge_diagonal_slack: int = 4
 
+    # Anchor capping (``SeedingEngine._cap``) ranks anchors by diagonal-cluster
+    # *support*, not by raw length. A real alignment piles many anchors onto one
+    # diagonal (``ref_pos - read_pos``) while errors and repeats scatter as lonely
+    # hits, so for the fixed-length k-mer anchors that dominate the set length is a
+    # coin flip and capping by it can discard the true diagonal while keeping noise
+    # (see ``diagonal_example``). ``diagonal_band`` is the tolerance (in diagonal
+    # units == bp) for treating anchors as sharing a diagonal, which absorbs the
+    # small diagonal drift a short indel introduces. ``diagonal_support_gain``
+    # weights that support in the capping score ``length * (1 + gain * (support -
+    # 1))``; ``0.0`` restores the legacy pure-length behaviour.
+    diagonal_band: int = 12
+    diagonal_support_gain: float = 1.0
+
     def __post_init__(self) -> None:
         if self.fm_stride <= 0:
             raise ValueError("fm_stride must be positive")
+        if self.diagonal_band < 0:
+            raise ValueError("diagonal_band must be non-negative")
+        if self.diagonal_support_gain < 0:
+            raise ValueError("diagonal_support_gain must be non-negative")
         pattern = self.spaced_pattern
         if not pattern:
             raise ValueError("spaced_pattern must be non-empty")

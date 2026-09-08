@@ -24,6 +24,7 @@ from graphmambaformer.alignment.chaining import (
     GraphDistanceOracle,
     chain_dp_batched,
     chain_dp_numpy,
+    pack_node_haplotypes,
 )
 from graphmambaformer.alignment.extension import (
     WavefrontAligner,
@@ -315,6 +316,64 @@ def test_fuzzy_reverse_strand_and_default_modes():
     assert "fuzzy" in SeedingConfig().modes
 
 
+def test_cap_ranks_by_diagonal_support_not_length():
+    """A crowded true diagonal must survive capping; length-only capping drops it.
+
+    Every anchor here is the same length (the fixed-``k`` case from
+    ``diagonal_example``), so ranking by length is a coin flip: with the noise
+    listed first, a stable length-only cap keeps the noise and discards the true
+    diagonal entirely. Ranking by diagonal-cluster support keeps the true diagonal
+    and demotes the lonely noise.
+    """
+    from graphmambaformer.config import SeedingConfig
+    from graphmambaformer.alignment.seeding import SeedingEngine
+    from graphmambaformer.alignment.types import AnchorSet
+
+    true_diag = 1000
+    band = 12
+    k = 15
+
+    # Noise: 40 anchors, each alone on its own well-separated diagonal (support 1).
+    noise_diag = 5000 + np.arange(40, dtype=np.int64) * (band * 20)
+    noise_read = np.full(40, 5, dtype=np.int64)
+    noise_ref = noise_read + noise_diag
+
+    # Truth: 8 collinear anchors all sharing diagonal 1000 (support 8).
+    true_read = np.arange(8, dtype=np.int64) * 20
+    true_ref = true_read + true_diag
+
+    # Noise first, so a stable length-only argsort would keep it and drop the truth.
+    read_pos = np.concatenate([noise_read, true_read])
+    ref_pos = np.concatenate([noise_ref, true_ref])
+    anchors = AnchorSet.from_lists(
+        read_pos=read_pos,
+        ref_pos=ref_pos,
+        length=np.full(len(read_pos), k, dtype=np.int64),
+        strand=np.ones(len(read_pos), dtype=np.int8),
+        read_len=200,
+        ref_len=100_000,
+    )
+
+    def on_true_diag(a: AnchorSet) -> int:
+        if len(a) == 0:
+            return 0
+        return int(((a.strand == 1) & (np.abs(a.diagonal - true_diag) <= band)).sum())
+
+    kept = SeedingEngine(SeedingConfig(max_anchors=10, diagonal_band=band))._cap(anchors)
+    assert len(kept) == 10
+    assert on_true_diag(kept) == 8, on_true_diag(kept)
+
+    # Legacy pure-length ranking (gain = 0) drops the true diagonal here.
+    legacy = SeedingEngine(
+        SeedingConfig(max_anchors=10, diagonal_band=band, diagonal_support_gain=0.0)
+    )._cap(anchors)
+    assert on_true_diag(legacy) == 0, on_true_diag(legacy)
+    print(
+        f"diagonal-support cap kept {on_true_diag(kept)}/8 true anchors; "
+        f"length-only kept {on_true_diag(legacy)}/8"
+    )
+
+
 def test_fuzzy_end_to_end_pipeline_locus():
     from graphmambaformer.config import PipelineConfig
     from graphmambaformer.alignment import build_pipeline
@@ -497,6 +556,99 @@ def test_learned_transition_guidance_is_confidence_gated():
     assert guided[1, 3] > 0.0
     assert guided[2, 3] < 0.0
     assert fallback is None
+
+
+def test_pack_node_haplotypes_bitset():
+    """Per-node haplotype bitset: a node's word ORs the bits of every path on it."""
+    # Two haplotypes: A visits nodes {0,1,2}, B visits nodes {0,3,2}.
+    packed = pack_node_haplotypes(4, [[0, 1, 2], [0, 3, 2]])
+    assert packed is not None
+    assert packed.shape == (4, 1) and packed.dtype == np.uint64
+    assert int(packed[0, 0]) == 0b11  # node 0 on A(bit0) and B(bit1)
+    assert int(packed[1, 0]) == 0b01  # node 1 on A only
+    assert int(packed[3, 0]) == 0b10  # node 3 on B only
+    assert int(packed[2, 0]) == 0b11  # node 2 on both
+    # Two nodes share a haplotype iff their word-AND is non-zero.
+    assert int(packed[1, 0] & packed[3, 0]) == 0  # A-only vs B-only: disjoint
+
+    # More than 64 haplotypes spill into a second 64-bit word.
+    wide = pack_node_haplotypes(1, [[0]] * 70)
+    assert wide is not None and wide.shape == (1, 2)
+    # Empty / degenerate inputs disable the term.
+    assert pack_node_haplotypes(0, [[0]]) is None
+    assert pack_node_haplotypes(4, []) is None
+    assert pack_node_haplotypes(4, [[]]) is None  # a path that marks nothing
+
+
+def test_recombination_penalty_charged_only_on_haplotype_switch():
+    """The DP edge term subtracts the penalty exactly on disjoint-haplotype steps."""
+    cfg = ChainingConfig(max_lookback=4, graph_bonus=0.0, recombination_penalty=5.0)
+    # Haplotype A covers nodes {0,1}; haplotype B covers {1,2}. So node 1 is
+    # shared, node 0 is A-only, node 2 is B-only.
+    hap = pack_node_haplotypes(3, [[0, 1], [1, 2]])
+    anchors = AnchorSet.from_lists(
+        read_pos=[0, 20, 40],
+        ref_pos=[0, 20, 40],
+        length=[10, 10, 10],
+        strand=[1, 1, 1],
+        node_id=[0, 1, 2],
+        read_len=60,
+        ref_len=60,
+    )
+    chainer = AffineChainer(cfg)
+    bonus = chainer._graph_bonus(anchors, ChainingContext(node_haplotypes=hap))
+    assert bonus is not None
+    # For anchor i=2 the columns map predecessor 0 -> slot 2, predecessor 1 -> slot 3.
+    assert np.isclose(bonus[2, 2], -5.0)  # 0->2 : {A} vs {B}, disjoint -> penalty
+    assert np.isclose(bonus[2, 3], 0.0)   # 1->2 : shares B -> no penalty
+    assert np.isclose(bonus[1, 3], 0.0)   # 0->1 : shares A -> no penalty
+
+    # Off by default: penalty 0 and no other term -> no bonus at all.
+    off = AffineChainer(ChainingConfig(max_lookback=4, graph_bonus=0.0))
+    assert off._graph_bonus(anchors, ChainingContext(node_haplotypes=hap)) is None
+
+    # An unknown node (node_id < 0) carries no haplotype info -> never penalised.
+    unknown = anchors.take(np.array([0, 1, 2]))
+    unknown.node_id[2] = -1
+    b2 = chainer._graph_bonus(unknown, ChainingContext(node_haplotypes=hap))
+    assert b2 is None or np.isclose(b2[2, 2], 0.0)
+
+
+def test_recombination_penalty_changes_primary_chain():
+    """End to end: the penalty flips the primary onto the haplotype-consistent path.
+
+    A read has two candidate middle anchors at the same locus: one on node 2
+    (same haplotype A as its neighbours) and a slightly *longer* one on node 4
+    (haplotype B, so using it forces two haplotype switches). Without a penalty
+    the longer B anchor wins on raw weight; with a penalty the A-consistent chain
+    must win instead.
+    """
+    # Backbone nodes 0,1,2,3 are haplotype A; node 4 is a B-only alternate allele.
+    hap = pack_node_haplotypes(5, [[0, 1, 2, 3], [4]])
+    anchors = AnchorSet.from_lists(
+        #        a0   a1   a2_A  a2_B  a3
+        read_pos=[0,   20,  40,   40,   60],
+        ref_pos=[0,    20,  40,   40,   60],
+        length=[15,    15,  15,   18,   15],  # a2_B is longer (higher raw weight)
+        strand=[1,     1,   1,    1,    1],
+        node_id=[0,    1,   2,    4,    3],
+        read_len=80,
+        ref_len=80,
+    )
+
+    def primary_nodes(penalty: float) -> set[int]:
+        cfg = ChainingConfig(graph_bonus=0.0, recombination_penalty=penalty)
+        chains = AffineChainer(cfg).chain(
+            anchors, ChainingContext(node_haplotypes=hap)
+        )
+        assert chains, "expected at least one chain"
+        return {int(n) for n in anchors.node_id[chains[0].anchor_idx]}
+
+    # No penalty: the longer node-4 (haplotype-switch) anchor wins on weight.
+    assert 4 in primary_nodes(0.0)
+    # With a penalty: the haplotype-consistent node-2 path wins, node 4 dropped.
+    consistent = primary_nodes(10.0)
+    assert 2 in consistent and 4 not in consistent
 
 
 def test_batched_chaining_matches_numpy_with_ragged_rows():

@@ -23,7 +23,9 @@ from __future__ import annotations
 import os
 import runpy
 
+import graphmambaformer.alignment.pipeline as _pipeline
 import graphmambaformer.training.trainer as _trainer
+from graphmambaformer.alignment.seeding_fixed import FixedSeedingEngine
 from graphmambaformer.losses.graph_mamba_loss_fixed import FixedGraphMambaLoss
 from graphmambaformer.training.targets_fixed import FixedTargetBuilder
 
@@ -35,8 +37,18 @@ from graphmambaformer.training.targets_fixed import FixedTargetBuilder
 #   * FixedTargetBuilder   -> pinned chain decoys + local position target
 _trainer.GraphMambaLoss = FixedGraphMambaLoss
 _trainer.TargetBuilder = FixedTargetBuilder
+
+# Swap the fixed Stage-1 seeder in before any AlignmentPipeline is built. The
+# pipeline constructs ``self.seeder = SeedingEngine(...)`` from its own module
+# global (pipeline.py:219), so rebinding that global here makes every pipeline
+# -- the trainer's and the target builder's -- use the support-aware anchor cap
+# that keeps the true collinear run (fixes seed labels being ~all-negative, i.e.
+# anchor AUC ~ 0.5, and gives chaining a real run to assemble). Zero edits to
+# pipeline.py or seeding.py.
+_pipeline.SeedingEngine = FixedSeedingEngine
 print("[train_fixed] fixes active: "
-      "FixedGraphMambaLoss (router+Kendall) + FixedTargetBuilder (chain+position)")
+      "FixedGraphMambaLoss (router+Kendall) + FixedTargetBuilder (chain+position) "
+      "+ FixedSeedingEngine (support-aware anchor cap)")
 
 # --------------------------------------------------------------------------- #
 # Efficiency fix: cap the per-epoch full validation.

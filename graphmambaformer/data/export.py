@@ -221,6 +221,24 @@ def read_gfa(path: str) -> "PangenomeGraph":
     node_ref_start: list[int] = []
     edge_index: list[tuple[int, int]] = []
     edge_type: list[int] = []
+    # Raw path/walk lines, resolved to node ids after every S line is known
+    # (a P/W line may reference a segment defined later in the file).
+    raw_paths: list[list[str]] = []
+
+    def _walk_segments(walk: str) -> list[str]:
+        """Segment names from a GFA1.1 W-line walk like ``>s1>s2<s3``."""
+        names: list[str] = []
+        cur: list[str] = []
+        for ch in walk:
+            if ch in "><":
+                if cur:
+                    names.append("".join(cur))
+                    cur = []
+            else:
+                cur.append(ch)
+        if cur:
+            names.append("".join(cur))
+        return names
 
     def _tags(fields: list[str]) -> dict[str, str]:
         out: dict[str, str] = {}
@@ -256,6 +274,24 @@ def read_gfa(path: str) -> "PangenomeGraph":
                 et_name = tags.get("zt", "ref_link")
                 edge_index.append((node_index[a], node_index[b]))
                 edge_type.append(EDGE_TYPES.get(et_name, EDGE_TYPES["ref_link"]))
+            elif line.startswith("P\t"):
+                # P<tab>name<tab>seg1+,seg2-,...<tab>overlaps
+                f = line.rstrip("\n").split("\t")
+                if len(f) >= 3 and f[2] and f[2] != "*":
+                    raw_paths.append([s[:-1] if s[-1:] in "+-" else s
+                                      for s in f[2].split(",")])
+            elif line.startswith("W\t"):
+                # W<tab>sample<tab>hap<tab>seq<tab>start<tab>end<tab>walk
+                f = line.rstrip("\n").split("\t")
+                if len(f) >= 7 and f[6] and f[6] != "*":
+                    raw_paths.append(_walk_segments(f[6]))
+
+    # Resolve segment names to node ids now that node_index is complete.
+    haplotype_paths: list[list[int]] = []
+    for segs in raw_paths:
+        nodes = [node_index[s] for s in segs if s in node_index]
+        if nodes:
+            haplotype_paths.append(nodes)
 
     backbone = [i for i, s in enumerate(node_ref_start) if s >= 0]
     return PangenomeGraph(
@@ -264,6 +300,7 @@ def read_gfa(path: str) -> "PangenomeGraph":
         edge_type=edge_type,
         backbone_path=backbone,
         node_ref_start=node_ref_start,
+        haplotype_paths=haplotype_paths,
     )
 
 

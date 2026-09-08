@@ -117,6 +117,59 @@ class ReadCorrector:
         return CorrectionResult(sequence, tuple(edits), applied, reason)
 
 
+@dataclass(frozen=True)
+class ConsensusResult:
+    """A POA consensus over a cluster of reads, plus provenance."""
+
+    consensus: str
+    depth: int  # number of reads that contributed
+    backend: str  # GenomeWorks tier used ("pyclaragenomics"/"cuda_rawkernel"/"portable")
+
+    @property
+    def length(self) -> int:
+        return len(self.consensus)
+
+
+class ConsensusPolisher:
+    """Partial-order-alignment consensus over reads covering one locus.
+
+    This is the GenomeWorks ``cudapoa`` use case lifted into Stage 5: several
+    noisy reads spanning the same region are collapsed into a single corrected
+    sequence via partial-order alignment. It is the natural building block for
+    polishing a hard-read cluster (e.g. the ``two_pass`` rescue tail) or for
+    forming a locus consensus to re-align against.
+
+    The POA runs on the fastest available GenomeWorks tier (real bindings → CuPy
+    kernels → the portable NumPy reference), all numerically identical, so this
+    accelerates on a GPU host and still works on CPU.
+    """
+
+    def __init__(
+        self,
+        match: float = 2.0,
+        mismatch: float = 4.0,
+        gap: float = 4.0,
+        min_depth: int = 2,
+    ):
+        self.match = float(match)
+        self.mismatch = float(mismatch)
+        self.gap = float(gap)
+        self.min_depth = int(min_depth)
+
+    def consensus(self, reads: Sequence[str]) -> ConsensusResult:
+        """POA consensus of ``reads``; empty when fewer than ``min_depth`` reads."""
+        seqs = [r for r in reads if r]
+        if len(seqs) < self.min_depth:
+            # Not enough depth for a consensus; echo a single read unchanged.
+            return ConsensusResult(seqs[0] if seqs else "", len(seqs), "none")
+        from ..accel.genomeworks_ops import genomeworks_backend, poa_consensus
+
+        cons = poa_consensus(
+            seqs, match=self.match, mismatch=self.mismatch, gap=self.gap
+        )
+        return ConsensusResult(cons, len(seqs), genomeworks_backend())
+
+
 class PopulationAwareMAPQ:
     """Bayesian MAPQ adjustment using a bounded population prior ratio.
 

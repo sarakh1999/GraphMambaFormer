@@ -17,6 +17,14 @@ RawKernels and Triton fused ops behind portable PyTorch fallbacks.
 multi-task heads, balanced by Kendall uncertainty weighting.
 """
 
+# Must run before anything imports ``mamba_ssm`` (via ``.accel`` / ``.layers``):
+# ``mamba_ssm`` eagerly imports Mamba-3 -> TileLang, whose libcudart stub
+# ``abort()``s when torch (imported first) has already made libcudart global.
+# Disabling TileLang here lets Mamba-3 fall back to Triton. See ``_tilelang_guard``.
+from ._tilelang_guard import disable_broken_tilelang as _disable_broken_tilelang
+
+_disable_broken_tilelang()
+
 from .accel import AccelCapabilities, AccelContext, detect_capabilities
 from .alignment import (
     AffineChainer,

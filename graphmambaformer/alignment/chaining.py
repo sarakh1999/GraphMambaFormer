@@ -22,6 +22,14 @@ bubble is not penalised for the reference-coordinate jump the bubble causes.
 **Reference-path bias** — anchors on the graph's backbone path get extra weight,
 which breaks ties toward the reference allele when evidence is balanced.
 
+**Haplotype-aware chaining** — when the graph carries haplotype paths (GFA
+P- / W-lines), a step between two anchors that share no common haplotype implies
+a recombination, so it is charged ``recombination_penalty`` (Chandra & Jain,
+Genome Research 2024). This is a pairwise relaxation of the Li-Stephens copying
+model: rather than carrying the active haplotype through the DP state, we penalise
+disjoint-haplotype edges, which keeps the DP at ``O(N * lookback)`` while still
+steering chains onto self-consistent mosaics of the known panel.
+
 **Adaptive seed scoring** — following AGNES (Arafat et al., 2025), when the
 Stage 4 seed head has scored the anchors, the DP does not blindly trust those
 scores. It measures how decisively the read's seed-score distribution separates
@@ -112,6 +120,43 @@ class GraphDistanceOracle:
                 if col is not None:
                     hops[row, col] = depth
         return hops, index
+
+
+# --------------------------------------------------------------------------- #
+# Haplotype membership
+# --------------------------------------------------------------------------- #
+def pack_node_haplotypes(
+    num_nodes: int, haplotype_paths: Optional[Sequence[Sequence[int]]]
+) -> Optional[np.ndarray]:
+    """Pack a list of haplotype paths into a per-node bitset.
+
+    Each entry of ``haplotype_paths`` is the ordered list of node ids visited by
+    one haplotype (a GFA P- or W-line). The result is a ``(num_nodes, W)`` array
+    of ``uint64`` words where bit ``h`` (word ``h // 64``, bit ``h % 64``) is set
+    for every node on haplotype ``h``. Two nodes share a haplotype iff the
+    bitwise AND of their word rows is non-zero, which is what the chaining DP uses
+    to detect a recombination between consecutive anchors.
+
+    Returns ``None`` when there is nothing to pack (no nodes or no paths), so a
+    linear reference or a graph without stored paths transparently disables the
+    haplotype-aware term.
+    """
+    if num_nodes <= 0 or not haplotype_paths:
+        return None
+    paths = list(haplotype_paths)
+    n_hap = len(paths)
+    words = (n_hap + 63) // 64
+    packed = np.zeros((int(num_nodes), words), dtype=np.uint64)
+    for h, path in enumerate(paths):
+        word = h >> 6
+        bit = np.uint64(1) << np.uint64(h & 63)
+        for node in path:
+            node = int(node)
+            if 0 <= node < num_nodes:
+                packed[node, word] |= bit
+    # A graph can carry an empty <path> list per line; drop the term if nothing
+    # was actually marked so downstream checks can stay a cheap ``is not None``.
+    return packed if packed.any() else None
 
 
 # --------------------------------------------------------------------------- #
@@ -268,6 +313,12 @@ class ChainingContext:
     Attributes:
         oracle: hop-distance source for the graph bonus.
         backbone: per-node flag marking the graph's reference path.
+        node_haplotypes: optional ``(num_nodes, W)`` uint64 bitset marking which
+            haplotype paths pass through each node (bit ``h`` of the packed words
+            set when haplotype ``h`` visits the node). ``W = ceil(|H| / 64)``.
+            When present and ``recombination_penalty > 0`` the DP charges a
+            recombination cost for chaining steps between anchors whose nodes
+            share no haplotype (see :meth:`AffineChainer._graph_bonus`).
         trust_neural: AGNES confidence decision for this read.
             ``None`` — decide from the scores present on the anchors (auto).
             ``True`` — apply the logit gate; confidence was already cleared on the
@@ -283,6 +334,7 @@ class ChainingContext:
 
     oracle: Optional[GraphDistanceOracle] = None
     backbone: Optional[np.ndarray] = None
+    node_haplotypes: Optional[np.ndarray] = None
     trust_neural: Optional[bool] = None
     learned_transitions: Optional[
         dict[tuple[tuple[int, int, int, int], tuple[int, int, int, int]], float]
@@ -414,7 +466,21 @@ class AffineChainer:
     def _graph_bonus(
         self, anchors: AnchorSet, ctx: Optional[ChainingContext]
     ) -> Optional[np.ndarray]:
-        """Reference-topology and learned ``(n, lookback)`` transition terms."""
+        """Additive ``(n, lookback)`` per-edge DP terms from the pangenome.
+
+        Combines up to three signals on the step from predecessor ``j`` to anchor
+        ``i`` (column ``t`` holds predecessor ``i - lookback + t``):
+
+        * **graph proximity** — a positive bonus decaying with the hop distance
+          between the anchors' nodes (``graph_bonus`` / ``graph_max_hops``);
+        * **recombination penalty** — a negative term charged when the two
+          anchors share no haplotype, i.e. the step implies a haplotype switch
+          (``recombination_penalty``, haplotype-aware chaining);
+        * **learned transitions** — the AGNES GNN edge logits, only when this
+          read's neural guidance is trusted.
+
+        Returns ``None`` when no term fires, so the DP skips the bonus entirely.
+        """
         if ctx is None:
             return None
 
@@ -478,6 +544,34 @@ class AffineChainer:
                     bonus[dst, slot] += self.cfg.gnn_transition_bonus * logit
                     has_bonus = True
 
+        # Haplotype-switch (recombination) penalty. A step between two anchors
+        # whose nodes share no haplotype path implies a recombination in the
+        # Li-Stephens sense, so it is charged ``recombination_penalty``. Unknown
+        # nodes (node_id < 0) carry an empty bitset and never trigger the penalty,
+        # so the term only fires when *both* endpoints have a known, non-empty
+        # haplotype set that turns out to be disjoint.
+        if (
+            ctx.node_haplotypes is not None
+            and self.cfg.recombination_penalty != 0.0
+            and (anchors.node_id >= 0).any()
+        ):
+            hap = ctx.node_haplotypes  # (num_nodes, W) uint64
+            n_nodes, n_words = hap.shape
+            node_id = anchors.node_id
+            valid_node = node_id >= 0
+            words = np.zeros((n, n_words), dtype=np.uint64)
+            safe = np.clip(node_id, 0, n_nodes - 1)
+            words[valid_node] = hap[safe[valid_node]]
+            known = valid_node & (words != 0).any(axis=1)
+
+            in_cols = cols >= 0
+            col_idx = np.clip(cols, 0, n - 1)
+            shared = ((words[:, None, :] & words[col_idx]) != 0).any(axis=2)
+            switch = in_cols & known[:, None] & known[col_idx] & (~shared)
+            if switch.any():
+                bonus -= np.where(switch, float(self.cfg.recombination_penalty), 0.0)
+                has_bonus = True
+
         return bonus if has_bonus else None
 
     # ---- DP + traceback ----------------------------------------------------- #
@@ -491,10 +585,14 @@ class AffineChainer:
         if len(anchors) == 0:
             return np.zeros(0), np.zeros(0, dtype=np.int64)
 
-        if self.backend == "cuda_rawkernel":
+        # The CuPy kernel only runs on CUDA tensors, so honour the requested
+        # device: a CPU device (used to force the portable tier on a GPU host)
+        # must skip straight to the NumPy path rather than feed CPU arrays to
+        # ``_as_cupy`` (which raises ``TypeError`` for host memory).
+        dev = torch.device(device) if device is not None else torch.device("cuda")
+        if self.backend in ("cuda_rawkernel", "genomeworks") and dev.type == "cuda":
             from ..accel.cuda_kernels import chain_dp as cuda_chain_dp
 
-            dev = torch.device(device or "cuda")
             stacked = torch.stack(
                 [
                     torch.as_tensor(anchors.read_end, device=dev),
@@ -520,8 +618,8 @@ class AffineChainer:
                     weights=torch.as_tensor(weight, dtype=torch.float32, device=dev)[None],
                 )
                 return f[0].cpu().numpy().astype(np.float64), parent[0].cpu().numpy()
-            except RuntimeError:
-                pass  # kernel unavailable; fall through to the portable path
+            except (RuntimeError, TypeError):
+                pass  # kernel unavailable / host tensors; fall through to portable
 
         return chain_dp_numpy(
             anchors.read_end, anchors.ref_end, weight, self.cfg, bonus=bonus
@@ -705,7 +803,7 @@ class AffineChainer:
 
             n_anchors = torch.tensor(counts, dtype=torch.long, device=dev)
             f = parent = None
-            if self.backend == "cuda_rawkernel":
+            if self.backend in ("cuda_rawkernel", "genomeworks") and dev.type == "cuda":
                 from ..accel.cuda_kernels import chain_dp as cuda_chain_dp
 
                 packed = torch.stack(
@@ -723,7 +821,7 @@ class AffineChainer:
                         bonus=bonus_batch,
                         weights=weight,
                     )
-                except RuntimeError:
+                except (RuntimeError, TypeError):
                     f = parent = None
             if f is None or parent is None:
                 f, parent = chain_dp_batched(

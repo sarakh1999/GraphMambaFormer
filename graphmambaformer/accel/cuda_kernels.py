@@ -30,6 +30,7 @@ from __future__ import annotations
 import functools
 from typing import Any
 
+import numpy as np
 import torch
 
 from .backend import cupy_module
@@ -357,6 +358,74 @@ void wfa_distance(const signed char* __restrict__ query,
 """
 
 
+_UNGAPPED_EXTEND_SRC = r"""
+// GenomeWorks-style ungapped seed extension with the X-drop stop rule.
+//
+// One thread per seed. Starting from the seed position the thread walks right
+// (inclusive of the seed) and left (from the base before the seed) along the
+// seed's diagonal, with no gaps, accumulating +match / -mismatch. Each walk
+// stops as soon as the running score falls more than `x_drop` below the best
+// score seen so far, and reports the offset at which that best was reached.
+// Bases in 1..4 are A/C/G/T; 5 (N), 0 (sentinel) and negatives never match.
+extern "C" __global__
+void ungapped_extend(const signed char* __restrict__ query,   // (M,)
+                     const signed char* __restrict__ target,  // (N,)
+                     const int* __restrict__ seed_q,          // (B,)
+                     const int* __restrict__ seed_r,          // (B,)
+                     const int batch_size,
+                     const int m,
+                     const int n,
+                     const float match_score,
+                     const float mismatch_penalty,
+                     const float x_drop,
+                     int* __restrict__ out_q_start,
+                     int* __restrict__ out_q_end,
+                     int* __restrict__ out_t_start,
+                     int* __restrict__ out_t_end,
+                     float* __restrict__ out_score) {
+    const int b = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= batch_size) return;
+    const int sq = seed_q[b];
+    const int sr = seed_r[b];
+
+    // Right extension (seed inclusive).
+    float score = 0.0f, best_r = 0.0f;
+    int best_off_r = 0;
+    for (int i = 0; ; ++i) {
+        const int qi = sq + i;
+        const int ri = sr + i;
+        if (qi >= m || ri >= n) break;
+        const signed char a = query[qi];
+        const signed char c = target[ri];
+        score += (a == c && a >= 1 && a <= 4) ? match_score : -mismatch_penalty;
+        if (score > best_r) { best_r = score; best_off_r = i + 1; }
+        else if (best_r - score > x_drop) break;
+    }
+
+    // Left extension (strictly before the seed).
+    score = 0.0f;
+    float best_l = 0.0f;
+    int best_off_l = 0;
+    for (int i = 1; ; ++i) {
+        const int qi = sq - i;
+        const int ri = sr - i;
+        if (qi < 0 || ri < 0) break;
+        const signed char a = query[qi];
+        const signed char c = target[ri];
+        score += (a == c && a >= 1 && a <= 4) ? match_score : -mismatch_penalty;
+        if (score > best_l) { best_l = score; best_off_l = i; }
+        else if (best_l - score > x_drop) break;
+    }
+
+    out_q_start[b] = sq - best_off_l;
+    out_q_end[b]   = sq + best_off_r;
+    out_t_start[b] = sr - best_off_l;
+    out_t_end[b]   = sr + best_off_r;
+    out_score[b]   = best_l + best_r;
+}
+"""
+
+
 # --------------------------------------------------------------------------- #
 # Lazy compilation
 # --------------------------------------------------------------------------- #
@@ -371,6 +440,7 @@ def _kernel(name: str) -> Any | None:
         "chain_dp": _CHAIN_DP_SRC,
         "banded_sw": _BANDED_SW_SRC,
         "wfa_distance": _WFA_DISTANCE_SRC,
+        "ungapped_extend": _UNGAPPED_EXTEND_SRC,
     }[name]
     try:
         return cp.RawKernel(source, name, options=("--use_fast_math",))
@@ -382,7 +452,8 @@ def kernels_available() -> bool:
     """True when the CuPy tier compiled successfully on this host."""
     return all(
         _kernel(n) is not None
-        for n in ("kmer_lookup", "chain_dp", "banded_sw", "wfa_distance")
+        for n in ("kmer_lookup", "chain_dp", "banded_sw", "wfa_distance",
+                  "ungapped_extend")
     )
 
 
@@ -443,6 +514,9 @@ def kmer_lookup(
 
     threads = 256
     blocks = (n_q + threads - 1) // threads
+    # Scalars MUST be typed NumPy values, not Python int/float: CuPy marshals a
+    # bare Python ``float`` as a C ``double``, so a kernel ``float`` param silently
+    # reads 0 (and Python ``int`` sizing is not guaranteed to match ``int``).
     kernel(
         (blocks,),
         (threads,),
@@ -450,8 +524,8 @@ def kmer_lookup(
             _as_cupy(table),
             _as_cupy(offsets),
             _as_cupy(queries),
-            int(table.numel()),
-            n_q,
+            np.int32(table.numel()),
+            np.int32(n_q),
             _as_cupy(start),
             _as_cupy(count),
         ),
@@ -508,13 +582,13 @@ def chain_dp(
             _as_cupy(weights.to(torch.float32)),
             _as_cupy(n_anchors.to(torch.int32)),
             _as_cupy(bonus),
-            int(A),
-            int(lookback),
-            int(max_gap),
-            float(gap_open),
-            float(gap_extend),
-            float(log_coeff),
-            int(use_bonus),
+            np.int32(A),
+            np.int32(lookback),
+            np.int32(max_gap),
+            np.float32(gap_open),
+            np.float32(gap_extend),
+            np.float32(log_coeff),
+            np.int32(use_bonus),
             _as_cupy(f),
             _as_cupy(p),
         ),
@@ -571,14 +645,14 @@ def banded_sw(
             _as_cupy(query_len.to(torch.int32)),
             _as_cupy(target_len.to(torch.int32)),
             _as_cupy(band_offset.to(torch.int32)),
-            int(M),
-            int(N),
-            int(half_band),
-            int(band),
-            float(match_score),
-            float(mismatch_penalty),
-            float(gap_open),
-            float(gap_extend),
+            np.int32(M),
+            np.int32(N),
+            np.int32(half_band),
+            np.int32(band),
+            np.float32(match_score),
+            np.float32(mismatch_penalty),
+            np.float32(gap_open),
+            np.float32(gap_extend),
             _as_cupy(score),
             _as_cupy(q_end),
             _as_cupy(t_end),
@@ -616,13 +690,79 @@ def wfa_distance(
             _as_cupy(target.to(torch.int8)),
             _as_cupy(query_len.to(torch.int32)),
             _as_cupy(target_len.to(torch.int32)),
-            int(B),
-            int(M),
-            int(N),
-            int(max_distance),
+            np.int32(B),
+            np.int32(M),
+            np.int32(N),
+            np.int32(max_distance),
             _as_cupy(previous),
             _as_cupy(current),
             _as_cupy(distance),
         ),
     )
     return distance
+
+
+def ungapped_extend(
+    query: torch.Tensor,
+    target: torch.Tensor,
+    seed_query: torch.Tensor,
+    seed_target: torch.Tensor,
+    *,
+    match: float = 2.0,
+    mismatch: float = 4.0,
+    x_drop: float = 600.0,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Batched ungapped X-drop seed extension (GenomeWorks ``cudaextender``).
+
+    Args:
+        query / target: 1-D int8 base-code tensors (``A C G T`` -> ``1..4``,
+            ``N`` -> 5, negatives = padding; only ``1..4`` can match).
+        seed_query / seed_target: ``(B,)`` int32 seed positions, one per seed.
+
+    Returns ``(query_start, query_end, target_start, target_end, score)``, each
+    ``(B,)``, describing the maximal-scoring gap-free segment through each seed.
+    """
+    kernel = _kernel("ungapped_extend")
+    if kernel is None:
+        raise RuntimeError("CuPy ungapped-extend kernel unavailable")
+
+    B = int(seed_query.numel())
+    M = int(query.numel())
+    N = int(target.numel())
+    dev = query.device
+    q_start = torch.empty(B, dtype=torch.int32, device=dev)
+    q_end = torch.empty(B, dtype=torch.int32, device=dev)
+    t_start = torch.empty(B, dtype=torch.int32, device=dev)
+    t_end = torch.empty(B, dtype=torch.int32, device=dev)
+    score = torch.empty(B, dtype=torch.float32, device=dev)
+
+    threads = 128
+    blocks = (B + threads - 1) // threads
+    kernel(
+        (blocks,),
+        (threads,),
+        (
+            _as_cupy(query.to(torch.int8)),
+            _as_cupy(target.to(torch.int8)),
+            _as_cupy(seed_query.to(torch.int32)),
+            _as_cupy(seed_target.to(torch.int32)),
+            np.int32(B),
+            np.int32(M),
+            np.int32(N),
+            np.float32(match),
+            np.float32(mismatch),
+            np.float32(x_drop),
+            _as_cupy(q_start),
+            _as_cupy(q_end),
+            _as_cupy(t_start),
+            _as_cupy(t_end),
+            _as_cupy(score),
+        ),
+    )
+    return (
+        q_start.to(torch.long),
+        q_end.to(torch.long),
+        t_start.to(torch.long),
+        t_end.to(torch.long),
+        score,
+    )

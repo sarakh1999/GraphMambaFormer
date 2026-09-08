@@ -67,3 +67,13 @@ architecture/*.pptx
 # --- os / editor ------------------------------------------------------------
 .DS_Store
 *.swp
+
+# --- agent scratch / transient build & review artifacts ---------------------
+# Cursor agent scratch files, local build output, throwaway review logs, and
+# manifest backups. All transient and re-derivable.
+.cursor_tmp_*
+build/
+tmp_agnes_review/
+*.bak
+# WFA-GPU is cloned on demand by scripts/build_wfa_gpu.sh (nested git repo).
+third_party/

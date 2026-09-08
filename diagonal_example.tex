@@ -1,0 +1,120 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=0.85in]{geometry}
+\usepackage{amsmath}
+\usepackage[table]{xcolor}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{parskip}
+
+% colours for the dot-plot
+\definecolor{cTrue}{RGB}{198,239,206}    % green  : the true alignment
+\definecolor{cRepeat}{RGB}{255,214,153}  % orange : the repeat
+\definecolor{cJunk}{RGB}{224,224,224}    % grey   : random noise
+
+\newcommand{\B}{\textbullet}
+\setlength{\parskip}{4pt}
+
+\begin{document}
+\pagestyle{empty}
+
+\begin{center}
+{\Large\bfseries The Diagonal: a Worked Example}\\[2pt]
+{\small How a read finds its place in the genome}
+\end{center}
+
+Every match between a read and the reference is called an anchor: a pair
+\emph{(position in the read, position in the reference)}. Its diagonal is simply
+
+\[
+\text{diagonal} \;=\; (\text{position in reference}) \;-\; (\text{position in read}).
+\]
+
+The idea is intuitive: when a read really comes from one spot in the genome, each true match
+advances the read \emph{and} the reference by the same amount, so all its anchors land on
+one shared diagonal. Errors and repeats match random places, so they scatter across
+many different diagonals.
+
+\textbf{Setup.} We align the read \texttt{GATTACA} (positions $0$ to $6$), which truly comes from
+reference position $10$, and we cut it into $3$-mers:
+
+\begin{center}
+\small
+Read \texttt{= G A T T A C A}\\[3pt]
+Reference \texttt{= C A T G A T C C A A G A T T A C A G G T A C A T T}\quad(pos.\ $0$ to $24$)
+\end{center}
+
+The read's five $3$-mers are \texttt{GAT}, \texttt{ATT}, \texttt{TTA}, \texttt{TAC}, \texttt{ACA}.
+We look up where each one occurs in the reference; every hit is an anchor, and we compute its diagonal.
+
+\begin{center}
+\begin{minipage}[t]{0.52\textwidth}
+\centering
+\small
+\textbf{All anchors (k-mer hits)}\\[3pt]
+\begin{tabular}{@{}llccl@{}}
+\toprule
+k-mer & read & ref & diag. & kind \\
+\midrule
+\rowcolor{cJunk}\texttt{GAT} & 0 & 3  & 3  & noise \\
+\rowcolor{cTrue}\texttt{GAT} & 0 & 10 & 10 & true \\
+\rowcolor{cTrue}\texttt{ATT} & 1 & 11 & 10 & true \\
+\rowcolor{cJunk}\texttt{ATT} & 1 & 22 & 21 & noise \\
+\rowcolor{cTrue}\texttt{TTA} & 2 & 12 & 10 & true \\
+\rowcolor{cTrue}\texttt{TAC} & 3 & 13 & 10 & true \\
+\rowcolor{cRepeat}\texttt{TAC} & 3 & 19 & 16 & repeat \\
+\rowcolor{cTrue}\texttt{ACA} & 4 & 14 & 10 & true \\
+\rowcolor{cRepeat}\texttt{ACA} & 4 & 20 & 16 & repeat \\
+\bottomrule
+\end{tabular}
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.44\textwidth}
+\centering
+\small
+\textbf{Group by diagonal $=$ ``support''}\\[3pt]
+\begin{tabular}{@{}ccl@{}}
+\toprule
+diagonal & anchors & meaning \\
+\midrule
+\rowcolor{cTrue}\textbf{10} & \textbf{5} & the alignment \\
+\rowcolor{cRepeat}16 & 2 & repeat run \\
+\rowcolor{cJunk}3  & 1 & noise \\
+\rowcolor{cJunk}21 & 1 & noise \\
+\bottomrule
+\end{tabular}\\[6pt]
+\footnotesize
+A real alignment piles \emph{many} anchors onto \emph{one} diagonal;
+junk scatters as lonely hits (support $=1$).
+\end{minipage}
+\end{center}
+
+\textbf{The picture (a dot-plot).} Rows are read positions, columns are reference positions; each
+\B{} is a match. The true alignment is the long green line stepping down-right (all on diagonal $10$).
+The repeat makes a short orange segment (diagonal $16$); the grey hits are isolated noise.
+
+\begin{center}
+\resizebox{\textwidth}{!}{%
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{r|*{23}{c}}
+ & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 & 16 & 17 & 18 & 19 & 20 & 21 & 22 \\
+\hline
+read 0 & & & & \cellcolor{cJunk}\B & & & & & & & \cellcolor{cTrue}\B & & & & & & & & & & & & \\
+read 1 & & & & & & & & & & & & \cellcolor{cTrue}\B & & & & & & & & & & & \cellcolor{cJunk}\B \\
+read 2 & & & & & & & & & & & & & \cellcolor{cTrue}\B & & & & & & & & & & \\
+read 3 & & & & & & & & & & & & & & \cellcolor{cTrue}\B & & & & & & \cellcolor{cRepeat}\B & & & \\
+read 4 & & & & & & & & & & & & & & & \cellcolor{cTrue}\B & & & & & & \cellcolor{cRepeat}\B & & \\
+\end{tabular}%
+}
+\end{center}
+
+\textbf{Why it matters.} The alignment stage only wants that green diagonal. Since every k-mer anchor
+has the same length, ranking anchors by length is a coin flip and can throw the true run away, keeping
+grey noise instead. Ranking by diagonal support (how many anchors share a diagonal) keeps the
+crowded green diagonal and drops the lonely noise, so the real alignment always survives.
+
+\end{document}

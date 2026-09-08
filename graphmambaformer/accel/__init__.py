@@ -23,6 +23,22 @@ from .backend import (
 )
 from .cuda_kernels import kernels_available
 from .cuda_graphs import GraphCapturedForward, wrap_model_forward
+from .genomeworks_ops import (
+    GlobalAlignment,
+    MapperOverlap,
+    UngappedExtension,
+    genomeworks_available,
+    genomeworks_backend,
+    genomeworks_bindings_available,
+    genomeworks_summary,
+    global_align,
+    global_align_batch,
+    map_to_reference,
+    poa_consensus,
+    poa_msa,
+    ungapped_extend,
+    ungapped_extend_batch,
+)
 from .parallel import (
     ENV_WORKERS,
     Prefetcher,
@@ -84,4 +100,19 @@ __all__ = [
     "precision_context",
     "te_summary",
     "transformer_engine_available",
+    # GenomeWorks primitives (cudamapper / cudaaligner / cudaextender / cudapoa).
+    "GlobalAlignment",
+    "MapperOverlap",
+    "UngappedExtension",
+    "genomeworks_available",
+    "genomeworks_backend",
+    "genomeworks_bindings_available",
+    "genomeworks_summary",
+    "global_align",
+    "global_align_batch",
+    "map_to_reference",
+    "poa_consensus",
+    "poa_msa",
+    "ungapped_extend",
+    "ungapped_extend_batch",
 ]

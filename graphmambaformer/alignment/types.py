@@ -215,6 +215,7 @@ SEEDING_SOURCES: tuple[str, ...] = (
     "fuzzy",
     "multiplex_dbg",
     "gpu_kmer",
+    "cudamapper",
 )
 
 

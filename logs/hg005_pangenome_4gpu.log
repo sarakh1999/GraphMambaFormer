@@ -1,0 +1,106 @@
+=== node: a0015.ten.osc.edu | Mon Sep  7 04:17:34 EDT 2026 | cores=58 | GPUs=4 ===
+Mon Sep  7 04:17:34 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.95.05              Driver Version: 580.95.05      CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-80GB          On  |   00000000:01:00.0 Off |                    0 |
+| N/A   21C    P0             59W /  500W |       0MiB /  81920MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA A100-SXM4-80GB          On  |   00000000:41:00.0 Off |                    0 |
+| N/A   22C    P0             61W /  500W |       0MiB /  81920MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   2  NVIDIA A100-SXM4-80GB          On  |   00000000:81:00.0 Off |                    0 |
+| N/A   22C    P0             60W /  500W |       0MiB /  81920MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   3  NVIDIA A100-SXM4-80GB          On  |   00000000:C1:00.0 Off |                    0 |
+| N/A   20C    P0             60W /  500W |       0MiB /  81920MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+=== entry=scripts/train_fixed.py | manifest=data/hprc/manifests/chr21_HG005_pangenome_windows.bal.json | d_model=256 | bs=4 | accum=2 ===
+=== cache=/fs/ess/PCS0289/mambaformer_cache/chr21_HG005_pangenome_windows.bal.282558c1eed56996.pt ===
+=== out=/fs/ess/PCS0289/mambaformer_runs/chr21_hg005_pangenome_4gpu | workers/rank=14 prefetch=6 ===
+=== starting fresh 4-GPU DDP pangenome training (bs=4, d_model=256) ===
+Traceback (most recent call last):
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train_fixed.py", line 26, in <module>
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train_fixed.py", line 26, in <module>
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train_fixed.py", line 26, in <module>
+  File "/users/PCS0289/sarakhosravi/mambaformer/scripts/train_fixed.py", line 26, in <module>
+    import graphmambaformer.alignment.pipeline as _pipeline
+    import graphmambaformer.alignment.pipeline as _pipeline
+    import graphmambaformer.alignment.pipeline as _pipelineModuleNotFoundError
+: No module named 'graphmambaformer'ModuleNotFoundError
+: No module named 'graphmambaformer'
+ModuleNotFoundError: No module named 'graphmambaformer'
+    import graphmambaformer.alignment.pipeline as _pipeline
+ModuleNotFoundError: No module named 'graphmambaformer'
+E0907 04:17:48.202000 1817026 torch/distributed/elastic/multiprocessing/api.py:1002] failed (exitcode: 1) local_rank: 0 (pid: 1817067) of binary: /users/PCS0289/sarakhosravi/mambaformer/.venv/bin/python
+Traceback (most recent call last):
+  File "/users/PCS0289/sarakhosravi/mambaformer/.venv/bin/torchrun", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/.venv/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 367, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1028, in main
+    run(args)
+  File "/users/PCS0289/sarakhosravi/mambaformer/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1019, in run
+    elastic_launch(
+  File "/users/PCS0289/sarakhosravi/mambaformer/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 194, in __call__
+    return launch_agent(
+           ^^^^^^^^^^^^^
+  File "/users/PCS0289/sarakhosravi/mambaformer/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 383, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+scripts/train_fixed.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-09-07_04:17:48
+  host      : a0015.ten.osc.edu
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 1817068) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[2]:
+  time      : 2026-09-07_04:17:48
+  host      : a0015.ten.osc.edu
+  rank      : 2 (local_rank: 2)
+  exitcode  : 1 (pid: 1817069) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[3]:
+  time      : 2026-09-07_04:17:48
+  host      : a0015.ten.osc.edu
+  rank      : 3 (local_rank: 3)
+  exitcode  : 1 (pid: 1817070) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-09-07_04:17:48
+  host      : a0015.ten.osc.edu
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 1817067) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

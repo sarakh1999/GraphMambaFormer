@@ -219,6 +219,7 @@ def _build_pangenome(
         node_ref_start=graph.node_ref_start,
         backbone_path=graph.backbone_path,
         edge_index=edge_index,
+        haplotype_paths=getattr(graph, "haplotype_paths", None) or None,
         graph=batch,
     )
     return RealReference(

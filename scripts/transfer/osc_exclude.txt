@@ -26,5 +26,6 @@ scripts/plot_loss.py
 graphmambaformer/training/run_fixes.py
 graphmambaformer/losses/graph_mamba_loss_fixed.py
 graphmambaformer/training/targets_fixed.py
+graphmambaformer/alignment/seeding_fixed.py
 scripts/train_fixed.py
 scripts/transfer/run_hg005_fixed.sh

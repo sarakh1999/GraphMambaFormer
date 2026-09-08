@@ -120,6 +120,9 @@ class PangenomeGraph:
     edge_type: list[int]               # EDGE_TYPES id per edge
     backbone_path: list[int]           # node ids forming the linear reference
     node_ref_start: list[int]          # reference start coord for each node (-1 for alt)
+    #: One node-id walk per haplotype (GFA P- / W-lines). Empty when the graph
+    #: carries no phased paths; consumed by haplotype-aware chaining.
+    haplotype_paths: list[list[int]] = field(default_factory=list)
 
 
 @dataclass

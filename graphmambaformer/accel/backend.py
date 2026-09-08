@@ -205,6 +205,13 @@ class AccelCapabilities:
     has_transformer_engine: bool = False
     #: ``torch_tensorrt`` or native ``tensorrt`` importable.
     has_tensorrt: bool = False
+    #: GenomeWorks (cudamapper/cudaaligner/cudaextender/cudapoa) *accelerated*
+    #: tier available (real bindings or the CuPy-kernel reimplementations). The
+    #: portable NumPy tier is always available regardless of this flag.
+    has_genomeworks: bool = False
+    #: Which GenomeWorks tier is active: ``"pyclaragenomics"`` (real bindings),
+    #: ``"cuda_rawkernel"`` (CuPy kernels), or ``"portable"`` (NumPy reference).
+    genomeworks_backend: str = "portable"
 
     @property
     def is_nvidia(self) -> bool:
@@ -301,6 +308,7 @@ class AccelCapabilities:
             f"mamba_ssm={self.has_mamba_ssm}",
             f"te={self.has_transformer_engine}",
             f"tensorrt={self.has_tensorrt}",
+            f"genomeworks={self.genomeworks_backend}",
             f"tf32={self.supports_tf32}",
             f"fp16={self.supports_fp16}",
             f"bf16={self.supports_bf16}",
@@ -406,6 +414,19 @@ def detect_capabilities(device: torch.device | str | None = None) -> AccelCapabi
         has_te = transformer_engine_available()
         has_trt = tensorrt_available()
 
+    # GenomeWorks tier: the real bindings win when present; otherwise the CuPy
+    # reimplementations back the accelerated path on an NVIDIA CUDA host. This is
+    # a cheap probe on purpose — no NVRTC compile — so it is safe at import time.
+    from .genomeworks_ops import genomeworks_bindings_available
+
+    has_cupy_here = is_nvidia and cupy_module() is not None
+    if genomeworks_bindings_available():
+        gw_backend = "pyclaragenomics"
+    elif has_cupy_here and resolved.type == "cuda":
+        gw_backend = "cuda_rawkernel"
+    else:
+        gw_backend = "portable"
+
     return AccelCapabilities(
         device=resolved,
         has_cuda=has_cuda and resolved.type == "cuda",
@@ -421,6 +442,8 @@ def detect_capabilities(device: torch.device | str | None = None) -> AccelCapabi
         device_count=device_count,
         has_transformer_engine=has_te,
         has_tensorrt=has_trt,
+        has_genomeworks=gw_backend != "portable",
+        genomeworks_backend=gw_backend,
     )
 
 

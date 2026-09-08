@@ -418,16 +418,26 @@ pure PyTorch.
 
 ### Seven alignment stages
 
-| Stage | Module | What it does |
-| --- | --- | --- |
-| 1 Seeding | `alignment/seeding.py` | minimizer / SMEM / DBG / fuzzy / multiplex-DBG / GPU k-mer → anchors |
-| 2 Chaining | `alignment/chaining.py` | affine-gap DP + graph-hop bonus |
-| 3 Extension | `alignment/extension.py` | banded affine SW or WFA → CIGAR |
-| 4 Scoring | `alignment/scoring.py` | neural prune / re-rank / MAPQ / rescue |
-| 5 Post | `alignment/postprocessing.py` | correction, population MAPQ, liftover, concordance |
-| 6 Specialized | `alignment/specialized.py` | repeats, paralogs, HLA/MHC |
-| 7 Predictions | `alignment/predictions.py` | genotype, phase, ancestry, clinical, PGx |
-| Orchestration | `alignment/end_to_end.py`, `pipeline.py` | `SevenStagePipeline` + hybrid/fast/two_pass |
+| Stage | Module | What it does | GenomeWorks accel |
+| --- | --- | --- | --- |
+| 1 Seeding | `alignment/seeding.py` | minimizer / SMEM / DBG / fuzzy / multiplex-DBG / GPU k-mer → anchors | `cudamapper` (GPU minimizer index) |
+| 2 Chaining | `alignment/chaining.py` | affine-gap DP + graph-hop bonus | `cudamapper` (GPU anchor chaining) |
+| 3 Extension | `alignment/extension.py` | banded affine SW or WFA → CIGAR | `cudaextender` (ungapped X-drop prefilter), `cudaaligner` (global affine + CIGAR) |
+| 4 Scoring | `alignment/scoring.py` | neural prune / re-rank / MAPQ / rescue | — |
+| 5 Post | `alignment/postprocessing.py` | correction, population MAPQ, liftover, concordance, POA consensus | `cudapoa` (`ConsensusPolisher`) |
+| 6 Specialized | `alignment/specialized.py` | repeats, paralogs, HLA/MHC | — |
+| 7 Predictions | `alignment/predictions.py` | genotype, phase, ancestry, clinical, PGx | — |
+| Orchestration | `alignment/end_to_end.py`, `pipeline.py` | `SevenStagePipeline` + hybrid/fast/two_pass | — |
+
+**GenomeWorks acceleration** — the four NVIDIA
+[GenomeWorks](https://github.com/NVIDIA-Genomics-Research/GenomeWorks) modules
+(`cudamapper`, `cudaaligner`, `cudaextender`, `cudapoa`) are exposed through
+`graphmambaformer.accel.genomeworks_ops` and wired into the classical stages
+above. Each primitive resolves to the fastest of three numerically-identical
+tiers: the real `pyclaragenomics` bindings when importable → CuPy `RawKernel`
+reimplementations on a CUDA host → a portable NumPy reference (also what the
+CUDA tiers are verified against, so correctness holds without a GPU). See
+[§6.3](#63-gpu-flags--accel).
 
 Default Stage-1 modes `("smem","minimizer","fuzzy")`, spaced pattern `111010010100110111`. Fuzzy-only:
 
@@ -659,7 +669,51 @@ TARGET=gpu docker/build.sh               # → graphmambaformer:gpu
 
 **Accel tiers** (auto fallback): CuPy RawKernel → PyTorch · Triton → eager ·
 `mamba_ssm` → pure-PyTorch SSD · CUDA Graphs → eager · TE FP8 → BF16 · TensorRT → eager.
+GenomeWorks: `pyclaragenomics` bindings → CuPy RawKernel → portable NumPy.
 Vendors NVIDIA / AMD / Intel / Apple / CPU are capability-gated at runtime.
+
+### GenomeWorks primitives
+
+The `cudamapper` / `cudaaligner` / `cudaextender` / `cudapoa` modules live in
+`graphmambaformer.accel.genomeworks_ops` and are opt-in on the classical stages:
+
+```python
+from graphmambaformer import PipelineConfig, build_pipeline
+
+cfg = PipelineConfig(mode="fast")
+cfg.extension.algorithm = "cudaaligner"        # global affine align + CIGAR
+cfg.extension.ungapped_prefilter = True        # cudaextender X-drop gate before the DP
+cfg.seeding.modes = ("cudamapper",)            # GPU minimizer index
+pipeline = build_pipeline(cfg)                 # runs on GPU if present, else CPU-identical
+```
+
+Direct use of any primitive (all fall back to a portable NumPy reference):
+
+```python
+from graphmambaformer.accel import (
+    ungapped_extend,   # cudaextender: ungapped X-drop seed extension
+    global_align,      # cudaaligner:  global affine alignment (+CIGAR)
+    poa_consensus,     # cudapoa:      partial-order-alignment consensus
+    map_to_reference,  # cudamapper:   GPU minimizer seeding + chaining
+    genomeworks_summary,
+)
+print(genomeworks_summary())                   # which tier is active on this host
+consensus = poa_consensus(reads_over_one_locus)
+overlaps  = map_to_reference(reads, reference)
+```
+
+`ConsensusPolisher` (Stage 5, `graphmambaformer.alignment`) wraps `cudapoa` for
+polishing a hard-read cluster. Doctor / micro-benchmark all four primitives:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/bench_genomeworks.py                 # CPU (portable tier)
+PYTHONPATH=. .venv/bin/python scripts/bench_genomeworks.py --device cuda   # GPU (CuPy / bindings)
+```
+
+> **Note.** Upstream GenomeWorks is archived (its wheels target CUDA 10/11 and it
+> is not on PyPI), so on a modern CUDA box the real bindings are usually absent
+> and the CuPy-kernel tier is what accelerates these calls; the portable tier
+> keeps them working — and testable — everywhere.
 
 ---
 

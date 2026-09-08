@@ -10,6 +10,7 @@ from ..progress import progress
 from .pipeline import AlignmentPipeline, ReferenceIndex
 from .postprocessing import (
     ConcordanceResult,
+    ConsensusPolisher,
     CoordinateLiftover,
     CorrectionResult,
     MultiReferenceIntegrator,
@@ -83,6 +84,13 @@ class SevenStageResources:
     ancestry_painter: AncestryPainter | None = None
     clinical_flagger: ClinicalRegionFlagger | None = None
     pgx_caller: PGxStarAlleleCaller | None = None
+    #: Optional GenomeWorks ``cudapoa`` consensus polisher (Stage 5). When set,
+    #: reads whose primary alignments cluster at the same locus are collapsed
+    #: into a POA consensus. ``None`` (default) skips POA entirely, so behaviour
+    #: is unchanged unless a polisher is supplied.
+    consensus_polisher: ConsensusPolisher | None = None
+    #: Locus bucket (bp) for grouping reads before POA polishing.
+    consensus_locus_bucket: int = 50
 
 
 @dataclass
@@ -102,12 +110,27 @@ class ReadStageResult:
 
 
 @dataclass
+class LocusConsensus:
+    """A GenomeWorks ``cudapoa`` consensus over the reads clustered at a locus."""
+
+    reference: str
+    ref_start: int
+    depth: int
+    consensus: str
+    backend: str
+    read_ids: tuple[str, ...] = ()
+
+
+@dataclass
 class SevenStageResult:
     reads: list[ReadStageResult]
     hla_types: list[DiploidHLAType]
     predictions: PredictionReport
     stage_counts: dict[int, int]
     resource_versions: dict[str, str]
+    #: Per-locus POA consensus from the optional ``cudapoa`` polisher (empty
+    #: unless ``SevenStageResources.consensus_polisher`` was supplied).
+    locus_consensus: list["LocusConsensus"] = field(default_factory=list)
 
 
 class SevenStagePipeline:
@@ -308,6 +331,8 @@ class SevenStagePipeline:
             for gene in sorted({row.gene for row in hla_rows}):
                 hla_types.append(self.resources.hla_typer.type_gene(gene, hla_rows))
 
+        locus_consensus = self._polish_loci(reads, list(read_ids), stage_reads)
+
         predictions = self._predict(evidence or PredictionEvidence())
         stage7_complete = all(
             (
@@ -330,7 +355,62 @@ class SevenStagePipeline:
             predictions,
             stage_counts,
             dict(self.resources.versions),
+            locus_consensus=locus_consensus,
         )
+
+    def _polish_loci(
+        self,
+        reads: Sequence[str],
+        read_ids: Sequence[str],
+        stage_reads: Sequence[ReadStageResult],
+    ) -> list["LocusConsensus"]:
+        """Stage-5 GenomeWorks ``cudapoa`` polishing of per-locus read clusters.
+
+        Reads whose primary alignment lands in the same reference locus bucket
+        are collapsed into one POA consensus — the canonical ``cudapoa`` use for
+        correcting a noisy pile-up. No-op unless a polisher resource is supplied
+        and the ``AccelConfig.genomeworks`` master switch is on, so the default
+        pipeline is unchanged.
+        """
+        polisher = self.resources.consensus_polisher
+        if polisher is None:
+            return []
+        if not getattr(getattr(self.aligner, "accel", None), "cfg", None) or not getattr(
+            self.aligner.accel.cfg, "genomeworks", True
+        ):
+            return []
+
+        bucket = max(1, int(self.resources.consensus_locus_bucket))
+        clusters: dict[tuple[str, int], list[int]] = {}
+        for row, result in enumerate(stage_reads):
+            primary = result.concordance.primary
+            if primary is None or not primary.record.is_mapped:
+                continue
+            key = (primary.reference, int(primary.record.ref_start) // bucket)
+            clusters.setdefault(key, []).append(row)
+
+        out: list[LocusConsensus] = []
+        for (reference, _bucket_idx), rows in sorted(clusters.items()):
+            if len(rows) < polisher.min_depth:
+                continue
+            seqs = [reads[r] for r in rows]
+            polished = polisher.consensus(seqs)
+            if not polished.consensus:
+                continue
+            out.append(
+                LocusConsensus(
+                    reference=reference,
+                    ref_start=min(
+                        int(stage_reads[r].concordance.primary.record.ref_start)
+                        for r in rows
+                    ),
+                    depth=polished.depth,
+                    consensus=polished.consensus,
+                    backend=polished.backend,
+                    read_ids=tuple(read_ids[r] for r in rows),
+                )
+            )
+        return out
 
     def _predict(self, evidence: PredictionEvidence) -> PredictionReport:
         report = PredictionReport()

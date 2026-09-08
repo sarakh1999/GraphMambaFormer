@@ -13,10 +13,62 @@ orchestrates all stages while the individual algorithms remain independently
 testable.
 """
 
+# ``agnes.py`` holds the opt-in AGNES seed-graph chainer (used only when
+# ``chaining.chainer="agnes"``). It is currently *uncommitted* work that the
+# recurring sync/"local push" wipe removed from the tree, so guard the import:
+# the default/fast/hybrid pipelines and the WFA-GPU path do not need it, and
+# this restores itself automatically once ``agnes.py`` is back. We only swallow
+# the error when the file is genuinely absent, so real bugs in a restored
+# ``agnes.py`` still surface.
+try:
+    from .agnes import (
+        AgnesChainer,
+        AgnesConfig,
+        AgnesResult,
+        AgnesSeedClassifier,
+        EdgeConv,
+        SeedGraph,
+        build_seed_graph,
+        chain_dynamic_program,
+        confidence_metric,
+        node_features_from_anchors,
+    )
+except ImportError as _agnes_exc:
+    import os as _os
+    import warnings as _warnings
+
+    if _os.path.exists(_os.path.join(_os.path.dirname(__file__), "agnes.py")):
+        raise  # agnes.py exists -> this is a genuine import error, do not mask it
+
+    _warnings.warn(
+        f"graphmambaformer.alignment.agnes is unavailable ({_agnes_exc}); the "
+        "AGNES chainer is disabled. Restore agnes.py to re-enable it "
+        "(default/fast/hybrid pipelines and WFA-GPU do not require it).",
+        stacklevel=2,
+    )
+
+    class _AgnesUnavailable:
+        """Bound to every AGNES symbol while ``agnes.py`` is missing.
+
+        Instantiating or calling any of them raises a clear error instead of a
+        cryptic ``NoneType`` failure downstream.
+        """
+
+        def __init__(self, *_a, **_k):
+            raise RuntimeError(
+                "AGNES is unavailable: graphmambaformer/alignment/agnes.py was "
+                "wiped (uncommitted work). Restore it to use the AGNES chainer."
+            )
+
+    AgnesChainer = AgnesConfig = AgnesResult = AgnesSeedClassifier = _AgnesUnavailable
+    EdgeConv = SeedGraph = _AgnesUnavailable
+    build_seed_graph = chain_dynamic_program = _AgnesUnavailable
+    confidence_metric = node_features_from_anchors = _AgnesUnavailable
 from .chaining import AffineChainer, ChainingContext, GraphDistanceOracle
 from .dual_reference import DualAlignmentResult, DualReferenceAligner
 from .extension import ExtensionEngine, WavefrontAligner, banded_affine_sw_batch
 from .end_to_end import (
+    LocusConsensus,
     PredictionEvidence,
     ReadStageResult,
     SevenStagePipeline,
@@ -36,6 +88,8 @@ from .pipeline import (
 )
 from .scoring import NeuralScorer, ScoredBatch, chain_features, encode_read_batch
 from .postprocessing import (
+    ConsensusPolisher,
+    ConsensusResult,
     CoordinateLiftover,
     LiftoverBlock,
     MultiReferenceIntegrator,
@@ -107,6 +161,17 @@ __all__ = [
     "AffineChainer",
     "ChainingContext",
     "GraphDistanceOracle",
+    # stage 2 — standalone AGNES hybrid chainer (Arafat et al., 2025)
+    "AgnesChainer",
+    "AgnesConfig",
+    "AgnesResult",
+    "AgnesSeedClassifier",
+    "EdgeConv",
+    "SeedGraph",
+    "build_seed_graph",
+    "chain_dynamic_program",
+    "confidence_metric",
+    "node_features_from_anchors",
     # stage 3
     "ExtensionEngine",
     "WavefrontAligner",
@@ -118,6 +183,8 @@ __all__ = [
     "encode_read_batch",
     # stage 5
     "ReadCorrector",
+    "ConsensusPolisher",
+    "ConsensusResult",
     "PopulationAwareMAPQ",
     "LiftoverBlock",
     "CoordinateLiftover",
@@ -142,6 +209,7 @@ __all__ = [
     # seven-stage orchestration
     "PredictionEvidence",
     "SpecializedEvidence",
+    "LocusConsensus",
     "SevenStageResources",
     "ReadStageResult",
     "SevenStageResult",

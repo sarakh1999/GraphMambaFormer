@@ -61,36 +61,58 @@ class Supervision:
     n_reads: int = 0
 
     def to(self, device: torch.device | str) -> "Supervision":
+        """Return a *copy* on ``device`` — ``self`` is left untouched.
+
+        Non-mutating on purpose: the trainer caches the (deterministic, model-
+        independent) supervision on the host and moves it to the GPU afresh every
+        epoch, so mutating in place would clobber the cached CPU copy (turning it
+        into GPU tensors and re-pinning the whole dataset). Building a new object
+        instead keeps the cache pageable and reusable.
+
+        The H2D transfer still overlaps compute: each CPU source is staged
+        through a *fresh* pinned buffer and copied ``non_blocking`` when the
+        target is CUDA (``non_blocking`` only helps from pinned memory). The
+        cached tensors themselves are never page-locked, so the whole dataset is
+        not permanently pinned. Off CUDA (or if pinning is unavailable) this is a
+        plain blocking copy.
+        """
         dev = torch.device(device)
-        # Page-lock the CPU source and copy asynchronously so the H2D transfer
-        # overlaps with the previous step's compute instead of blocking on it.
-        # ``non_blocking`` only helps from pinned memory, hence the pin; both
-        # degrade to a plain blocking copy off CUDA or if pinning is unavailable.
         use_async = dev.type == "cuda"
 
         def move(t):
             if t is None:
                 return None
+            if t.device == dev:
+                return t
             if use_async and not t.is_cuda:
+                src = t
                 try:
-                    t = t.pin_memory()
+                    src = t.pin_memory()  # a new pinned tensor; does not touch t
                 except (RuntimeError, NotImplementedError):
-                    pass
-                return t.to(dev, non_blocking=True)
+                    src = t
+                return src.to(dev, non_blocking=True)
             return t.to(dev)
 
-        self.base_codes = move(self.base_codes)
-        self.mask = move(self.mask)
-        self.qualities = move(self.qualities)
-        for key, value in list(self.targets.items()):
-            self.targets[key] = move(value)
-        for name in (
-            "seed_features", "anchor_read_pos", "anchor_node", "anchor_mask",
-            "seed_edge_index", "seed_edge_features", "seed_edge_mask",
-            "seed_gnn_active", "chain_feats", "chain_mask",
-        ):
-            setattr(self, name, move(getattr(self, name)))
-        return self
+        return Supervision(
+            base_codes=move(self.base_codes),
+            mask=move(self.mask),
+            qualities=move(self.qualities),
+            modality=self.modality,
+            targets={key: move(value) for key, value in self.targets.items()},
+            seed_features=move(self.seed_features),
+            anchor_read_pos=move(self.anchor_read_pos),
+            anchor_node=move(self.anchor_node),
+            anchor_mask=move(self.anchor_mask),
+            seed_edge_index=move(self.seed_edge_index),
+            seed_edge_features=move(self.seed_edge_features),
+            seed_edge_mask=move(self.seed_edge_mask),
+            seed_gnn_active=move(self.seed_gnn_active),
+            chain_feats=move(self.chain_feats),
+            chain_mask=move(self.chain_mask),
+            member_states_shape=self.member_states_shape,
+            supervised=self.supervised,
+            n_reads=self.n_reads,
+        )
 
 
 def _pad(rows: Sequence[np.ndarray], width: int, dtype) -> np.ndarray:

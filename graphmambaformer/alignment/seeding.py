@@ -30,6 +30,7 @@ each anchor onto a pangenome graph node.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
@@ -98,27 +99,33 @@ def hash64(values: np.ndarray) -> np.ndarray:
     return x
 
 
-def pack_kmers(codes: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+def pack_kmers(codes: np.ndarray, k: int, xp: object | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Pack every ``k``-mer of ``codes`` into a 2-bit integer.
 
     A Horner sweep over ``k`` offsets: ``O(k)`` passes and ``O(n)`` memory, so it
     scales to chromosome-sized inputs where a ``(n, k)`` sliding-window matrix
     would not.
 
+    ``xp`` is the array namespace (``numpy`` by default, ``cupy`` on a CUDA host);
+    with the default it is byte-for-byte the original NumPy path. Every op used
+    here (elementwise math, boolean masks) exists identically in both, so the
+    same code lifts onto the GPU by swapping the namespace.
+
     Returns ``(packed, valid)``, both length ``len(codes) - k + 1``. ``valid`` is
     False wherever the window contains a non-ACGT base.
     """
+    xp = xp if xp is not None else np
     if not 1 <= k <= _MAX_K:
         raise ValueError(f"k must be in [1, {_MAX_K}], got {k}")
     m = len(codes) - k + 1
     if m <= 0:
-        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=bool)
+        return xp.zeros(0, dtype=xp.int64), xp.zeros(0, dtype=bool)
 
-    digits = (codes.astype(np.int64) - 1)  # A C G T -> 0..3, N -> 4
+    digits = (codes.astype(xp.int64) - 1)  # A C G T -> 0..3, N -> 4
     bad = digits > 3
 
-    packed = np.zeros(m, dtype=np.int64)
-    invalid = np.zeros(m, dtype=bool)
+    packed = xp.zeros(m, dtype=xp.int64)
+    invalid = xp.zeros(m, dtype=bool)
     for offset in range(k):
         packed = packed * 4 + digits[offset : offset + m]
         invalid |= bad[offset : offset + m]
@@ -141,27 +148,33 @@ def validate_spaced_pattern(pattern: str) -> None:
 
 
 def pack_spaced_kmers(
-    codes: np.ndarray, pattern: str
+    codes: np.ndarray, pattern: str, xp: object | None = None
 ) -> tuple[np.ndarray, np.ndarray]:
     """Pack spaced seeds: only the ``'1'`` positions of ``pattern`` are compared.
 
     A spaced seed of span ``len(pattern)`` and weight ``pattern.count('1')``
     tolerates mismatches at the ``'0'`` (don't-care) positions, which recovers
     seeds in the noisy long reads where every contiguous k-mer is broken.
+
+    ``xp`` selects the array namespace (``numpy`` by default, ``cupy`` on a CUDA
+    host); with the default it is byte-for-byte the original NumPy path. Every op
+    used here exists identically in both, so the fuzzy index lifts onto the GPU
+    by swapping the namespace.
     """
+    xp = xp if xp is not None else np
     validate_spaced_pattern(pattern)
     kept = [i for i, ch in enumerate(pattern) if ch == "1"]
 
     span = len(pattern)
     m = len(codes) - span + 1
     if m <= 0:
-        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=bool)
+        return xp.zeros(0, dtype=xp.int64), xp.zeros(0, dtype=bool)
 
-    digits = codes.astype(np.int64) - 1
+    digits = codes.astype(xp.int64) - 1
     bad = digits > 3
 
-    packed = np.zeros(m, dtype=np.int64)
-    invalid = np.zeros(m, dtype=bool)
+    packed = xp.zeros(m, dtype=xp.int64)
+    invalid = xp.zeros(m, dtype=bool)
     for offset in kept:
         packed = packed * 4 + digits[offset : offset + m]
         invalid |= bad[offset : offset + m]
@@ -169,25 +182,27 @@ def pack_spaced_kmers(
     return packed, ~invalid
 
 
-def minimizer_mask(hashes: np.ndarray, window: int) -> np.ndarray:
+def minimizer_mask(hashes: np.ndarray, window: int, xp: object | None = None) -> np.ndarray:
     """Boolean mask of the ``(window, k)`` minimizers among ``hashes``.
 
     A k-mer is a minimizer when it attains the minimum hash of at least one
     window of ``window`` consecutive k-mers. Computed as ``window`` vectorized
     comparisons — ``O(window)`` passes, ``O(n)`` memory — and ties are all kept,
-    matching the standard sketch.
+    matching the standard sketch. ``xp`` selects the array namespace (NumPy by
+    default; CuPy on a CUDA host).
     """
+    xp = xp if xp is not None else np
     m = len(hashes)
     if m == 0:
-        return np.zeros(0, dtype=bool)
+        return xp.zeros(0, dtype=bool)
     w = max(1, min(window, m))
     n_windows = m - w + 1
 
     window_min = hashes[:n_windows].copy()
     for offset in range(1, w):
-        np.minimum(window_min, hashes[offset : offset + n_windows], out=window_min)
+        xp.minimum(window_min, hashes[offset : offset + n_windows], out=window_min)
 
-    selected = np.zeros(m, dtype=bool)
+    selected = xp.zeros(m, dtype=bool)
     for offset in range(w):
         selected[offset : offset + n_windows] |= (
             hashes[offset : offset + n_windows] == window_min
@@ -221,33 +236,47 @@ class KmerTable:
         k: int,
         span: Optional[int] = None,
         max_occ: int = 0,
+        xp: object | None = None,
     ) -> "KmerTable":
         """Build from packed k-mers; ``max_occ > 0`` drops over-represented keys.
 
         Discarding high-occurrence k-mers is what keeps repetitive regions from
         producing an anchor blow-up — the same role ``max_occ`` plays in BWA-MEM.
+
+        ``xp`` is the array namespace (``numpy`` default, ``cupy`` on CUDA). With
+        the default this is the original NumPy path unchanged; on CuPy the sort /
+        ``unique`` / ``cumsum`` all run on the GPU. CuPy's ``argsort`` has no
+        stable-sort option, but the table is a set of ``key -> positions`` groups
+        and only the within-group position order can differ, which the order-
+        insensitive downstream (diagonal merge, length cap) absorbs.
         """
-        pos = np.flatnonzero(valid).astype(np.int64)
+        xp = xp if xp is not None else np
+        pos = xp.flatnonzero(valid).astype(xp.int64)
         codes = packed[pos]
 
-        order = np.argsort(codes, kind="stable")
+        order = np.argsort(codes, kind="stable") if xp is np else xp.argsort(codes)
         codes, pos = codes[order], pos[order]
 
-        keys, counts = np.unique(codes, return_counts=True)
-        offsets = np.zeros(len(keys) + 1, dtype=np.int64)
-        np.cumsum(counts, out=offsets[1:])
+        keys, counts = xp.unique(codes, return_counts=True)
+        offsets = xp.zeros(len(keys) + 1, dtype=xp.int64)
+        xp.cumsum(counts, out=offsets[1:])
 
-        if max_occ > 0 and len(keys) and counts.max() > max_occ:
+        if max_occ > 0 and len(keys) and int(counts.max()) > max_occ:
             keep = counts <= max_occ
             # Rebuild the flat position list without the dropped keys.
-            starts, ends = offsets[:-1][keep], offsets[1:][keep]
-            pos = np.concatenate(
-                [pos[s:e] for s, e in zip(starts, ends)]
-                or [np.zeros(0, dtype=np.int64)]
-            )
+            if xp is np:
+                starts, ends = offsets[:-1][keep], offsets[1:][keep]
+                pos = np.concatenate(
+                    [pos[s:e] for s, e in zip(starts, ends)]
+                    or [np.zeros(0, dtype=np.int64)]
+                )
+            else:
+                # Vectorized equivalent: mark each position by its key's keep flag
+                # (positions are grouped by key in offset order).
+                pos = pos[xp.repeat(keep, counts)]
             keys, counts = keys[keep], counts[keep]
-            offsets = np.zeros(len(keys) + 1, dtype=np.int64)
-            np.cumsum(counts, out=offsets[1:])
+            offsets = xp.zeros(len(keys) + 1, dtype=xp.int64)
+            xp.cumsum(counts, out=offsets[1:])
 
         return cls(keys=keys, offsets=offsets, positions=pos, k=k, span=span or k)
 
@@ -289,37 +318,140 @@ class KmerTable:
 
 
 # --------------------------------------------------------------------------- #
+# GPU build lift: construct the Stage-1 indices on CuPy, materialize on host.
+#
+# The whole sketch (pack -> hash -> minimizer -> sort/unique) and the FM-index
+# suffix array are array programs, so they lift onto CuPy by swapping the array
+# namespace. Only the *build* runs on the device; the result is copied back to
+# host memory so the per-read query path and the on-disk index cache stay NumPy
+# (pickling a CuPy array would fail, and a per-read device round-trip would cost
+# more than the query itself). A missing/broken CuPy or a small reference falls
+# back to the portable NumPy build, which is what the CPU tiers verify.
+# --------------------------------------------------------------------------- #
+#: GPU-build floors in reference bases. Two knobs because the crossovers differ.
+#: The FM-index suffix array is O(n log n) heavy sorts the GPU wins on early
+#: (measured ~16x at 1M and ~49x at 10M on an H100), so it uses the low floor.
+#: The minimizer / fuzzy / DBG sketches are much lighter (a couple of passes plus
+#: one sort), so their crossover sits higher (~1-2M; below it the device
+#: round-trip and one-time allocator/JIT cost dominate and the host build wins).
+#: Both are env-overridable; ``GMF_GPU_SEED_BUILD_MIN=0`` disables the GPU build
+#: path entirely and keeps every index on NumPy.
+_GPU_BUILD_MIN_SYMBOLS = int(os.environ.get("GMF_GPU_SEED_BUILD_MIN", "250000"))
+_GPU_TABLE_BUILD_MIN_SYMBOLS = int(
+    os.environ.get("GMF_GPU_SEED_TABLE_BUILD_MIN", "2000000")
+)
+
+
+def _seed_build_namespace(
+    device: "torch.device | str | None",
+    n_symbols: int,
+    min_symbols: int = _GPU_BUILD_MIN_SYMBOLS,
+) -> object:
+    """Return CuPy when building an index of ``n_symbols`` on ``device`` is worth
+    it, else NumPy (GPU build disabled, non-CUDA device, reference below the
+    per-kind floor ``min_symbols``, or CuPy unavailable)."""
+    if (
+        device is None
+        or _GPU_BUILD_MIN_SYMBOLS <= 0  # global kill-switch
+        or n_symbols < min_symbols
+    ):
+        return np
+    if torch.device(device).type != "cuda":
+        return np
+    from ..accel.backend import array_namespace
+
+    return array_namespace(device)
+
+
+def _host_table(table: "KmerTable") -> "KmerTable":
+    """Copy a (possibly CuPy-built) table back to host NumPy memory."""
+    if isinstance(table.keys, np.ndarray):
+        return table
+    from ..accel.backend import to_numpy
+
+    return KmerTable(
+        keys=to_numpy(table.keys),
+        offsets=to_numpy(table.offsets),
+        positions=to_numpy(table.positions),
+        k=table.k,
+        span=table.span,
+    )
+
+
+def _build_table_on(
+    device: "torch.device | str | None",
+    ref_codes: np.ndarray,
+    k: int,
+    max_occ: int,
+    sketch,
+    span: Optional[int] = None,
+) -> "KmerTable":
+    """Build a :class:`KmerTable` on the GPU when available, else NumPy.
+
+    ``sketch(codes, xp)`` returns ``(packed, selected)`` — the packed k-mers and
+    the boolean keep-mask — for the given array namespace. The table is always
+    materialized on the host, so callers get a NumPy-backed index regardless of
+    where it was built.
+    """
+    xp = _seed_build_namespace(device, len(ref_codes), _GPU_TABLE_BUILD_MIN_SYMBOLS)
+    if xp is not np:
+        try:
+            codes = xp.asarray(ref_codes)
+            packed, selected = sketch(codes, xp)
+            table = KmerTable.build(packed, selected, k, span=span, max_occ=max_occ, xp=xp)
+            return _host_table(table)
+        except Exception:
+            pass  # any CuPy problem -> portable NumPy build
+    packed, selected = sketch(np.asarray(ref_codes), np)
+    return KmerTable.build(packed, selected, k, span=span, max_occ=max_occ)
+
+
+# --------------------------------------------------------------------------- #
 # FM-index (BWT + sampled suffix array)
 # --------------------------------------------------------------------------- #
-def suffix_array(codes: np.ndarray) -> np.ndarray:
+def suffix_array(codes: np.ndarray, xp: object | None = None) -> np.ndarray:
     """Suffix array of ``codes`` by prefix doubling.
 
-    ``O(n log n)`` NumPy sorts. ``codes`` must end with the unique
-    :data:`SENTINEL` so every suffix gets a distinct rank.
+    ``O(n log n)`` sorts. ``codes`` must end with the unique :data:`SENTINEL` so
+    every suffix gets a distinct rank.
+
+    ``xp`` selects the array namespace (``numpy`` by default, ``cupy`` on a CUDA
+    host). The doubling recurrence is a sequence of ``lexsort`` / ``unique`` /
+    ``cumsum`` calls that exist in both, so a chromosome-scale suffix array is
+    built with GPU radix sorts instead of host NumPy simply by swapping the
+    namespace. CuPy's ``argsort`` has no stable-sort option, but the only place
+    order matters here is ``lexsort`` (stable in both), and the initial
+    ``argsort`` result is overwritten before use, so the SA is identical.
     """
+    xp = xp if xp is not None else np
     n = len(codes)
     if n == 0:
-        return np.zeros(0, dtype=np.int64)
+        return xp.zeros(0, dtype=xp.int64)
 
-    _, rank = np.unique(codes, return_inverse=True)
-    rank = rank.astype(np.int64).ravel()
+    _, rank = xp.unique(codes, return_inverse=True)
+    rank = rank.astype(xp.int64).ravel()
 
     shift = 1
-    order = np.argsort(rank, kind="stable")
+    order = np.argsort(rank, kind="stable") if xp is np else xp.argsort(rank)
     while shift < n:
-        second = np.full(n, -1, dtype=np.int64)
+        second = xp.full(n, -1, dtype=xp.int64)
         second[: n - shift] = rank[shift:]
-        order = np.lexsort((second, rank))
+        order = (
+            np.lexsort((second, rank))
+            if xp is np
+            else xp.lexsort(xp.stack((second, rank)))
+        )
 
         first_sorted, second_sorted = rank[order], second[order]
-        new_rank = np.zeros(n, dtype=np.int64)
-        np.cumsum(
-            (first_sorted[1:] != first_sorted[:-1])
-            | (second_sorted[1:] != second_sorted[:-1]),
-            out=new_rank[1:],
+        new_rank = xp.zeros(n, dtype=xp.int64)
+        new_rank[1:] = xp.cumsum(
+            (
+                (first_sorted[1:] != first_sorted[:-1])
+                | (second_sorted[1:] != second_sorted[:-1])
+            ).astype(xp.int64)
         )
         rank[order] = new_rank
-        if new_rank[-1] == n - 1:  # all ranks distinct -> `order` is the SA
+        if int(new_rank[-1]) == n - 1:  # all ranks distinct -> `order` is the SA
             return order
         shift <<= 1
     return order
@@ -341,47 +473,116 @@ class FMIndex:
         codes: np.ndarray,
         sa_sample: int = 8,
         occ_sample: int = 64,
+        device: torch.device | str | None = None,
     ):
         if len(codes) and codes.min() <= SENTINEL:
             raise ValueError("reference codes must not contain the sentinel value 0")
-        self.text = np.concatenate([codes.astype(np.int8), [SENTINEL]])
-        self.n = len(self.text)
         self.sa_sample = max(1, sa_sample)
         self.occ_sample = max(1, occ_sample)
 
-        # Suffix-array construction dominates index build time on long contigs.
-        if not progress_disabled() and self.n >= 100_000:
-            print(f"  FM-index: building suffix array over {self.n:,} symbols ...",
+        # Suffix-array construction dominates index build time on long contigs, so
+        # lift it onto CuPy (radix sorts) when a CUDA device and a big enough
+        # reference make the device round-trip worthwhile. The BWT / occ / sampled
+        # SA are copied back to the host, so the per-read query below is unchanged.
+        # Because the accelerator path is not exercised by the CPU test tiers, a
+        # cheap functional self-check confirms the GPU-built index actually locates
+        # known substrings before it is trusted; any failure or CuPy problem falls
+        # back to the portable NumPy build.
+        xp = _seed_build_namespace(device, len(codes) + 1)
+        if xp is not np:
+            try:
+                self._construct(codes, xp)
+                if self._self_check():
+                    return
+            except Exception:
+                pass  # fall through to the portable NumPy build
+        self._construct(codes, np)
+
+    def _construct(self, codes: np.ndarray, xp: object) -> None:
+        """Build the BWT / rank checkpoints / sampled SA in the ``xp`` namespace.
+
+        All arrays are materialized on the host so the query methods (which are
+        NumPy) and the on-disk index cache are agnostic to where the build ran.
+        """
+        from ..accel.backend import to_numpy
+
+        text = xp.concatenate(
+            [xp.asarray(codes).astype(xp.int64), xp.asarray([SENTINEL], dtype=xp.int64)]
+        )
+        n = int(len(text))
+
+        if xp is np and not progress_disabled() and n >= 100_000:
+            print(f"  FM-index: building suffix array over {n:,} symbols ...",
                   flush=True)
-        sa = suffix_array(self.text)
-        self.bwt = self.text[sa - 1]  # sa == 0 wraps to the sentinel, as intended
+        sa = suffix_array(text, xp=xp)
+        bwt = text[sa - 1]  # sa == 0 wraps to the sentinel, as intended
 
         # C[c] = number of symbols in the text strictly less than c.
-        counts = np.bincount(self.text, minlength=ALPHABET_SIZE).astype(np.int64)
-        self.C = np.zeros(ALPHABET_SIZE + 1, dtype=np.int64)
-        np.cumsum(counts, out=self.C[1:])
+        counts = xp.bincount(text, minlength=ALPHABET_SIZE).astype(xp.int64)
+        C = xp.zeros(ALPHABET_SIZE + 1, dtype=xp.int64)
+        C[1:] = xp.cumsum(counts)
 
         # Rank checkpoints: occ[j, c] = count of c in bwt[: j * occ_sample].
-        n_checkpoints = self.n // self.occ_sample + 1
-        self.occ = np.zeros((n_checkpoints + 1, ALPHABET_SIZE), dtype=np.int64)
+        n_checkpoints = n // self.occ_sample + 1
+        occ = xp.zeros((n_checkpoints + 1, ALPHABET_SIZE), dtype=xp.int64)
+        idx = xp.minimum(xp.arange(n_checkpoints + 1) * self.occ_sample, n)
         for c in progress(
             range(ALPHABET_SIZE),
             desc="  FM-index occ",
             unit="sym",
             leave=False,
-            disable=self.n < 100_000,
+            disable=(xp is not np) or n < 100_000,
         ):
-            cumulative = np.concatenate([[0], np.cumsum(self.bwt == c)])
-            idx = np.minimum(
-                np.arange(n_checkpoints + 1) * self.occ_sample, self.n
+            cumulative = xp.concatenate(
+                [xp.zeros(1, dtype=xp.int64), xp.cumsum((bwt == c).astype(xp.int64))]
             )
-            self.occ[:, c] = cumulative[idx]
+            occ[:, c] = cumulative[idx]
 
         # Sampled suffix array: keep sa[i] only where it is a multiple of the
         # sampling rate; everything else is recovered by walking LF.
-        self.sa_mask = (sa % self.sa_sample) == 0
-        self.sa_values = sa[self.sa_mask]
-        self.sa_rank = np.cumsum(self.sa_mask) - 1  # index into sa_values
+        sa_mask = (sa % self.sa_sample) == 0
+        sa_values = sa[sa_mask]
+        sa_rank = xp.cumsum(sa_mask.astype(xp.int64)) - 1  # index into sa_values
+
+        self.text = to_numpy(text)
+        self.n = n
+        self.bwt = to_numpy(bwt)
+        self.C = to_numpy(C)
+        self.occ = to_numpy(occ)
+        self.sa_mask = to_numpy(sa_mask)
+        self.sa_values = to_numpy(sa_values)
+        self.sa_rank = to_numpy(sa_rank)
+
+    def _self_check(self, samples: int = 6, klen: int = 12) -> bool:
+        """Confirm the freshly-built index locates a few known substrings.
+
+        A wrong suffix array (e.g. from a namespace whose ``lexsort`` disagreed)
+        would fail to find a substring at a position it is known to occupy, so
+        this is a strong, cheap guard on the accelerator build. Runs entirely on
+        the host arrays set by :meth:`_construct`.
+        """
+        n = self.n
+        if n <= klen + 1:
+            return True
+        rng = np.random.default_rng(0)
+        checks = 0
+        for p in rng.integers(0, n - klen, size=min(4 * samples, n)):
+            p = int(p)
+            pattern = self.text[p : p + klen]
+            if pattern.size < klen or bool((pattern <= SENTINEL).any()) or bool(
+                (pattern == N_CODE).any()
+            ):
+                continue
+            lo, hi = self.count(pattern)
+            if hi <= lo:
+                return False
+            locations = self.locate(np.arange(lo, hi, dtype=np.int64))
+            if p not in {int(x) for x in locations}:
+                return False
+            checks += 1
+            if checks >= samples:
+                break
+        return True
 
     # ---- rank / LF --------------------------------------------------------- #
     def rank(self, indices: np.ndarray, chars: np.ndarray) -> np.ndarray:
@@ -531,11 +732,21 @@ class MinimizerIndex:
 
     name = "minimizer"
 
-    def __init__(self, ref_codes: np.ndarray, k: int = 15, window: int = 10, max_occ: int = 0):
+    def __init__(
+        self,
+        ref_codes: np.ndarray,
+        k: int = 15,
+        window: int = 10,
+        max_occ: int = 0,
+        device: torch.device | str | None = None,
+    ):
         self.k, self.window = k, window
-        packed, valid = pack_kmers(ref_codes, k)
-        selected = valid & minimizer_mask(hash64(packed), window)
-        self.table = KmerTable.build(packed, selected, k, max_occ=max_occ)
+
+        def sketch(codes, xp):
+            packed, valid = pack_kmers(codes, k, xp=xp)
+            return packed, valid & minimizer_mask(hash64(packed), window, xp=xp)
+
+        self.table = _build_table_on(device, ref_codes, k, max_occ, sketch)
 
     def query(self, read_codes: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         packed, valid = pack_kmers(read_codes, self.k)
@@ -562,6 +773,7 @@ class DeBruijnIndex:
         k: int = 21,
         max_occ: int = 0,
         node_ref_start: Optional[Sequence[int]] = None,
+        device: torch.device | str | None = None,
     ):
         self.k = k
         self.node_lengths = np.array([len(c) for c in node_codes], dtype=np.int64)
@@ -575,22 +787,35 @@ class DeBruijnIndex:
         if self.node_ref_start is not None and len(self.node_ref_start) != len(node_codes):
             raise ValueError("node_ref_start length must match node_codes")
 
-        packed_parts, valid_parts = [], []
-        for codes in node_codes:
-            packed, valid = pack_kmers(codes, k)
-            # Pad each node to its full length so offsets stay aligned with the
-            # concatenated coordinate space (the last k-1 starts are invalid).
-            pad = len(codes) - len(packed)
-            packed_parts.append(np.concatenate([packed, np.zeros(max(pad, 0), dtype=np.int64)]))
-            valid_parts.append(np.concatenate([valid, np.zeros(max(pad, 0), dtype=bool)]))
+        def build(xp):
+            packed_parts, valid_parts = [], []
+            for codes in node_codes:
+                packed, valid = pack_kmers(xp.asarray(codes), k, xp=xp)
+                # Pad each node to its full length so offsets stay aligned with
+                # the concatenated coordinate space (the last k-1 starts invalid).
+                pad = max(len(codes) - len(packed), 0)
+                if pad:
+                    packed = xp.concatenate([packed, xp.zeros(pad, dtype=xp.int64)])
+                    valid = xp.concatenate([valid, xp.zeros(pad, dtype=bool)])
+                packed_parts.append(packed)
+                valid_parts.append(valid)
+            concat_packed = (
+                xp.concatenate(packed_parts) if packed_parts else xp.zeros(0, dtype=xp.int64)
+            )
+            concat_valid = (
+                xp.concatenate(valid_parts) if valid_parts else xp.zeros(0, dtype=bool)
+            )
+            return KmerTable.build(concat_packed, concat_valid, k, max_occ=max_occ, xp=xp)
 
-        concat_packed = (
-            np.concatenate(packed_parts) if packed_parts else np.zeros(0, dtype=np.int64)
-        )
-        concat_valid = (
-            np.concatenate(valid_parts) if valid_parts else np.zeros(0, dtype=bool)
-        )
-        self.table = KmerTable.build(concat_packed, concat_valid, k, max_occ=max_occ)
+        total = int(self.node_starts[-1]) if len(self.node_starts) else 0
+        xp = _seed_build_namespace(device, total, _GPU_TABLE_BUILD_MIN_SYMBOLS)
+        if xp is not np:
+            try:
+                self.table = _host_table(build(xp))
+                return
+            except Exception:
+                pass  # any CuPy problem -> portable NumPy build
+        self.table = build(np)
 
     def node_of(self, offsets: np.ndarray) -> np.ndarray:
         """Map concatenated-space offsets back to node ids."""
@@ -645,13 +870,24 @@ class FuzzySeedIndex:
 
     name = "fuzzy"
 
-    def __init__(self, ref_codes: np.ndarray, pattern: str, max_occ: int = 0):
+    def __init__(
+        self,
+        ref_codes: np.ndarray,
+        pattern: str,
+        max_occ: int = 0,
+        device: torch.device | str | None = None,
+    ):
         validate_spaced_pattern(pattern)
         self.pattern = pattern
         self.span = len(pattern)
         self.weight = pattern.count("1")
-        packed, valid = pack_spaced_kmers(ref_codes, pattern)
-        self.table = KmerTable.build(packed, valid, self.weight, span=self.span, max_occ=max_occ)
+
+        def sketch(codes, xp):
+            return pack_spaced_kmers(codes, pattern, xp=xp)
+
+        self.table = _build_table_on(
+            device, ref_codes, self.weight, max_occ, sketch, span=self.span
+        )
 
     def query(self, read_codes: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         packed, valid = pack_spaced_kmers(read_codes, self.pattern)
@@ -672,12 +908,21 @@ class MultiplexDBG:
 
     name = "multiplex_dbg"
 
-    def __init__(self, ref_codes: np.ndarray, kmers: Sequence[int] = (15, 21, 31), max_occ: int = 0):
+    def __init__(
+        self,
+        ref_codes: np.ndarray,
+        kmers: Sequence[int] = (15, 21, 31),
+        max_occ: int = 0,
+        device: torch.device | str | None = None,
+    ):
         self.kmers = tuple(sorted(kmers, reverse=True))
         self.tables: dict[int, KmerTable] = {}
         for k in self.kmers:
-            packed, valid = pack_kmers(ref_codes, k)
-            self.tables[k] = KmerTable.build(packed, valid, k, max_occ=max_occ)
+
+            def sketch(codes, xp, _k=k):
+                return pack_kmers(codes, _k, xp=xp)
+
+            self.tables[k] = _build_table_on(device, ref_codes, k, max_occ, sketch)
 
     def query(
         self, read_codes: np.ndarray, stride: int = 1
@@ -739,14 +984,48 @@ class GPUKmerIndex:
         self.k, self.window = k, window
         self.device = torch.device(device) if device is not None else torch.device("cpu")
 
+        table = self._build_table(ref_codes, k, window, max_occ)
+
+        self.keys = self._to_device(table.keys)
+        self.offsets = self._to_device(table.offsets).to(torch.int32)
+        self.positions = self._to_device(table.positions)
+        self._table = table
+
+    def _build_table(self, ref_codes, k, window, max_occ):
+        """Build the sorted k-mer table, on the GPU via CuPy when available.
+
+        On a CUDA host the whole sketch (pack -> hash -> minimizer -> sort/unique)
+        runs on the device through the array-namespace lift, so a chromosome-sized
+        reference is indexed with GPU sorts instead of host NumPy. Any CuPy problem
+        (or no GPU) degrades to the portable NumPy build, which is what the CPU
+        tiers verify.
+        """
+        if self.device.type == "cuda":
+            from ..accel.backend import array_namespace
+
+            xp = array_namespace(self.device)
+            if xp is not np:
+                try:
+                    codes = xp.asarray(ref_codes)
+                    packed, valid = pack_kmers(codes, k, xp=xp)
+                    selected = valid & minimizer_mask(hash64(packed), window, xp=xp)
+                    return KmerTable.build(packed, selected, k, max_occ=max_occ, xp=xp)
+                except Exception:
+                    pass  # fall through to the portable NumPy build
+
         packed, valid = pack_kmers(ref_codes, k)
         selected = valid & minimizer_mask(hash64(packed), window)
-        table = KmerTable.build(packed, selected, k, max_occ=max_occ)
+        return KmerTable.build(packed, selected, k, max_occ=max_occ)
 
-        self.keys = torch.as_tensor(table.keys, device=self.device)
-        self.offsets = torch.as_tensor(table.offsets, device=self.device, dtype=torch.int32)
-        self.positions = torch.as_tensor(table.positions, device=self.device)
-        self._table = table
+    def _to_device(self, array) -> torch.Tensor:
+        """Move a NumPy *or* CuPy table array onto ``self.device``.
+
+        CuPy arrays already live on the GPU, so they cross into torch through
+        DLPack with no host round-trip; NumPy arrays are copied over as usual.
+        """
+        if isinstance(array, np.ndarray):
+            return torch.as_tensor(array, device=self.device)
+        return torch.from_dlpack(array).to(self.device)  # cupy.ndarray, zero-copy
 
     def lookup(self, queries: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Batched ``(start, count)`` lookup for a flat tensor of k-mer codes."""
@@ -782,20 +1061,29 @@ class GPUKmerIndex:
             z = np.zeros(0, dtype=np.int64)
             return z, z.copy(), z.copy()
 
-        start, count = self.lookup(torch.as_tensor(packed[pos]))
-        start_np = start.cpu().numpy().astype(np.int64)
-        count_np = count.cpu().numpy().astype(np.int64)
+        start, count = self.lookup(torch.as_tensor(packed[pos], device=self.device))
 
-        total = int(count_np.sum())
+        # Expand the (start, count) slices into (read_pos, ref_pos) pairs on the
+        # device: the position gather stays on the GPU (where ``positions`` lives)
+        # instead of copying counts to the host and gathering in NumPy.
+        count_l = count.to(torch.long)
+        total = int(count_l.sum().item())
         if total == 0:
             z = np.zeros(0, dtype=np.int64)
             return z, z.copy(), z.copy()
 
-        read_pos = np.repeat(pos, count_np)
-        group_base = np.repeat(np.concatenate([[0], np.cumsum(count_np)[:-1]]), count_np)
-        within = np.arange(total, dtype=np.int64) - group_base
-        ref_pos = self._table.positions[np.repeat(start_np, count_np) + within]
-        return read_pos, ref_pos, np.full(total, self.k, dtype=np.int64)
+        pos_t = torch.as_tensor(pos, device=self.device)
+        read_pos = torch.repeat_interleave(pos_t, count_l)
+        group_base = torch.repeat_interleave(torch.cumsum(count_l, 0) - count_l, count_l)
+        within = torch.arange(total, device=self.device) - group_base
+        flat = torch.repeat_interleave(start.to(torch.long), count_l) + within
+        ref_pos = self.positions[flat]
+        length = torch.full((total,), self.k, dtype=torch.long, device=self.device)
+        return (
+            read_pos.cpu().numpy().astype(np.int64),
+            ref_pos.cpu().numpy().astype(np.int64),
+            length.cpu().numpy().astype(np.int64),
+        )
 
 
 class SMEMIndex:
@@ -816,8 +1104,11 @@ class SMEMIndex:
         sa_sample: int = 8,
         occ_sample: int = 64,
         fm: Optional[FMIndex] = None,
+        device: torch.device | str | None = None,
     ):
-        self.fm = fm or FMIndex(ref_codes, sa_sample=sa_sample, occ_sample=occ_sample)
+        self.fm = fm or FMIndex(
+            ref_codes, sa_sample=sa_sample, occ_sample=occ_sample, device=device
+        )
         self.min_seed_len = min_seed_len
         self.max_occ = max_occ
 
@@ -872,8 +1163,11 @@ class ExactKmerIndex:
         fm: Optional[FMIndex] = None,
         sa_sample: int = 8,
         occ_sample: int = 64,
+        device: torch.device | str | None = None,
     ):
-        self.fm = fm or FMIndex(ref_codes, sa_sample=sa_sample, occ_sample=occ_sample)
+        self.fm = fm or FMIndex(
+            ref_codes, sa_sample=sa_sample, occ_sample=occ_sample, device=device
+        )
         self.k, self.stride, self.max_occ = k, stride, max_occ
 
     def query(self, read_codes: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -962,15 +1256,23 @@ class SeedingEngine:
         shared_fm: Optional[FMIndex] = None
         if {"smem", "fmindex"} & set(cfg.modes):
             shared_fm = FMIndex(
-                ref_codes, sa_sample=cfg.fm_sa_sample, occ_sample=cfg.fm_occ_sample
+                ref_codes,
+                sa_sample=cfg.fm_sa_sample,
+                occ_sample=cfg.fm_occ_sample,
+                device=self.device,
             )
 
         def build_mode(mode: str):
             """Construct one index. Independent per mode (the shared FM-index is
-            built once above and only *read* here), so these run concurrently."""
+            built once above and only *read* here), so these run concurrently.
+
+            ``device`` is threaded through so a CUDA host builds each index's
+            sort/suffix-array on the GPU (then materializes it on the host); on
+            CPU it is a no-op and the portable NumPy build runs."""
             if mode == "minimizer":
                 return MinimizerIndex(
-                    ref_codes, k=cfg.kmer, window=cfg.window, max_occ=cfg.max_occ
+                    ref_codes, k=cfg.kmer, window=cfg.window, max_occ=cfg.max_occ,
+                    device=self.device,
                 )
             if mode == "smem":
                 return SMEMIndex(
@@ -978,6 +1280,7 @@ class SeedingEngine:
                     min_seed_len=cfg.min_seed_len,
                     max_occ=cfg.max_occ,
                     fm=shared_fm,
+                    device=self.device,
                 )
             if mode == "fmindex":
                 return ExactKmerIndex(
@@ -986,6 +1289,7 @@ class SeedingEngine:
                     stride=cfg.fm_stride,
                     max_occ=cfg.max_occ,
                     fm=shared_fm,
+                    device=self.device,
                 )
             if mode == "dbg":
                 seqs = node_seqs if node_seqs is not None else [ref_seq]
@@ -994,16 +1298,21 @@ class SeedingEngine:
                     k=cfg.dbg_kmer,
                     max_occ=cfg.max_occ,
                     node_ref_start=node_ref_start,
+                    device=self.device,
                 )
             if mode == "fuzzy":
                 return FuzzySeedIndex(
-                    ref_codes, cfg.spaced_pattern, max_occ=cfg.max_occ
+                    ref_codes, cfg.spaced_pattern, max_occ=cfg.max_occ,
+                    device=self.device,
                 )
             if mode == "multiplex_dbg":
                 return MultiplexDBG(
-                    ref_codes, kmers=cfg.multiplex_kmers, max_occ=cfg.max_occ
+                    ref_codes, kmers=cfg.multiplex_kmers, max_occ=cfg.max_occ,
+                    device=self.device,
                 )
-            if mode == "gpu_kmer":
+            if mode in ("gpu_kmer", "cudamapper"):
+                # ``cudamapper`` is the GenomeWorks name for the same GPU-resident
+                # minimizer index + batched device lookup.
                 return GPUKmerIndex(
                     ref_codes,
                     k=cfg.kmer,
@@ -1160,14 +1469,61 @@ class SeedingEngine:
         merged.length = length[np.asarray(keep, dtype=np.int64)]
         return merged
 
-    def _cap(self, anchors: AnchorSet) -> AnchorSet:
-        """Keep only the ``max_anchors`` longest anchors.
+    def _diagonal_support(self, anchors: AnchorSet) -> np.ndarray:
+        """Per-anchor diagonal-cluster support: how many anchors share its diagonal.
 
-        Length is the best label-free proxy for anchor reliability, so trimming
-        by length keeps the informative seeds when a repeat floods the set.
+        A read that truly comes from one locus lands many anchors on a single
+        diagonal (``ref_pos - read_pos``), while sequencing errors and repeats
+        scatter as lonely hits — so, for the fixed-length k-mer anchors that
+        dominate the set, the count of same-strand anchors whose diagonal is within
+        ``cfg.diagonal_band`` of this one is a far better label-free reliability
+        signal than raw length. The band absorbs the small diagonal drift a short
+        indel introduces.
+
+        Computed per strand as two ``searchsorted`` bounds over the sorted
+        diagonals, so it is ``O(n log n)`` and fully vectorized. The count is
+        inclusive of the anchor itself, so an isolated hit has support ``1``.
+        """
+        n = len(anchors)
+        if n == 0:
+            return np.zeros(0, dtype=np.float64)
+        band = max(0, int(self.cfg.diagonal_band))
+        diag = anchors.diagonal
+        strand = anchors.strand
+        support = np.ones(n, dtype=np.float64)
+        for s in np.unique(strand):
+            idx = np.flatnonzero(strand == s)
+            if idx.size <= 1:
+                continue
+            d = diag[idx]
+            order = np.argsort(d, kind="stable")
+            ds = d[order]
+            lo = np.searchsorted(ds, ds - band, side="left")
+            hi = np.searchsorted(ds, ds + band, side="right")
+            support[idx[order]] = (hi - lo).astype(np.float64)
+        return support
+
+    def _cap(self, anchors: AnchorSet) -> AnchorSet:
+        """Keep only the ``max_anchors`` most reliable anchors.
+
+        Ranking is by diagonal-cluster support rather than raw length: for the
+        fixed-length k-mer anchors that dominate the set, length is a coin flip and
+        capping by it can throw away the true alignment's diagonal while keeping
+        scattered noise (the failure mode worked through in ``diagonal_example``).
+        Each anchor's score is ``length * (1 + gain * (support - 1))``, so a crowded
+        true diagonal is promoted, an isolated noise hit is demoted, and a lone but
+        genuinely long SMEM still scores on its length. ``diagonal_support_gain ==
+        0`` restores the legacy pure-length ranking.
         """
         limit = self.cfg.max_anchors
         if limit <= 0 or len(anchors) <= limit:
             return anchors
-        keep = np.argsort(-anchors.length, kind="stable")[:limit]
+        length = anchors.length.astype(np.float64)
+        gain = float(self.cfg.diagonal_support_gain)
+        if gain > 0.0:
+            support = self._diagonal_support(anchors)
+            score = length * (1.0 + gain * (support - 1.0))
+        else:
+            score = length
+        keep = np.argsort(-score, kind="stable")[:limit]
         return anchors.take(np.sort(keep))

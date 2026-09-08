@@ -43,6 +43,7 @@ arithmetic per cell.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
@@ -51,9 +52,71 @@ import torch
 
 from ..config import ExtensionConfig
 from .seeding import N_CODE, decode_bases, encode_bases, reverse_complement_codes
-from .types import AnchorSet, Chain, ExtensionResult, merge_cigar, run_length_encode
+from .types import (
+    AnchorSet,
+    Chain,
+    ExtensionResult,
+    cigar_ref_length,
+    merge_cigar,
+    run_length_encode,
+)
 
 _NEG_INF = -1e30
+
+
+def _wfa_gpu_cigar_to_pipeline(
+    cigar_str: str, read_codes: np.ndarray, ref_codes: np.ndarray
+) -> Optional[list[tuple[str, int]]]:
+    """Convert a WFA-GPU run-length CIGAR to this pipeline's ``=/X/I/D`` ops.
+
+    WFA-GPU emits run-length ``{M, X, I, D}`` for ``add_sequences(query=read,
+    target=ref)``; per its own checker ``I`` consumes a target(ref) base and
+    ``D`` a pattern(read) base — the opposite of this pipeline's ``I`` (read) /
+    ``D`` (ref). Aligned columns are re-classified as ``=`` / ``X`` by comparing
+    the base codes with the pipeline rule (equal and in ``1..4``), so ``N``
+    behaves as everywhere else. Returns ``None`` if the CIGAR does not walk both
+    sequences exactly end-to-end, so the caller falls back to the CPU path.
+    """
+    ops: list[str] = []
+    i = j = 0
+    m, n = len(read_codes), len(ref_codes)
+    num = 0
+    have_num = False
+    for ch in cigar_str:
+        if ch.isdigit():
+            num = num * 10 + (ord(ch) - 48)
+            have_num = True
+            continue
+        if ch.isspace():
+            continue
+        reps = num if have_num else 1
+        num = 0
+        have_num = False
+        if ch in ("M", "X"):
+            for _ in range(reps):
+                if i >= m or j >= n:
+                    return None
+                a, b = int(read_codes[i]), int(ref_codes[j])
+                ops.append("=" if (a == b and 1 <= a <= 4) else "X")
+                i += 1
+                j += 1
+        elif ch == "I":  # WFA insertion consumes the ref -> pipeline deletion
+            for _ in range(reps):
+                if j >= n:
+                    return None
+                ops.append("D")
+                j += 1
+        elif ch == "D":  # WFA deletion consumes the read -> pipeline insertion
+            for _ in range(reps):
+                if i >= m:
+                    return None
+                ops.append("I")
+                i += 1
+        else:
+            return None
+    if i != m or j != n:
+        return None
+    return run_length_encode(ops)
 
 
 @dataclass
@@ -480,11 +543,49 @@ class ExtensionEngine:
         cfg: ExtensionConfig | None = None,
         device: torch.device | str | None = None,
         backend: str = "torch",
+        genomeworks: bool = True,
     ):
         self.cfg = cfg or ExtensionConfig()
         self.device = torch.device(device) if device is not None else torch.device("cpu")
         self.backend = backend
+        # Master GenomeWorks switch (``AccelConfig.genomeworks``). When off, the
+        # cudaextender X-drop prefilter and the cudaaligner CIGAR path are both
+        # bypassed for the built-in banded-SW / WFA path, whatever the per-stage
+        # ``ExtensionConfig`` asks for — a single kill switch for the GW paths.
+        self.genomeworks = bool(genomeworks)
         self.wfa = WavefrontAligner(self.cfg)
+
+    # ---- GenomeWorks routing ---------------------------------------------- #
+    def _use_genomeworks(self) -> bool:
+        """Whether the GenomeWorks extension paths may run on this engine.
+
+        On when the master switch is set *and* either the stage was explicitly
+        routed to the GenomeWorks backend or an individual GW knob is enabled.
+        """
+        return self.genomeworks
+
+    def _effective_algorithm(self) -> str:
+        """Extension algorithm after applying the GenomeWorks switch/route.
+
+        ``stage_backends={"extension": "genomeworks"}`` forces the cudaaligner
+        CIGAR path; the master switch being off downgrades a requested
+        ``cudaaligner`` back to the built-in banded SW so results are unchanged.
+        """
+        if not self.genomeworks:
+            return "banded_sw" if self.cfg.algorithm == "cudaaligner" else self.cfg.algorithm
+        if self.backend == "genomeworks":
+            return "cudaaligner"
+        return self.cfg.algorithm
+
+    def _prefilter_enabled(self) -> bool:
+        """Whether the cudaextender ungapped X-drop prefilter runs.
+
+        The stage-level GenomeWorks route turns it on; the master switch can veto
+        it. Otherwise it follows the explicit ``ungapped_prefilter`` knob.
+        """
+        if not self.genomeworks:
+            return False
+        return self.cfg.ungapped_prefilter or self.backend == "genomeworks"
 
     def _window(
         self, chain: Chain, anchors: AnchorSet, read_len: int, ref_len: int
@@ -515,7 +616,113 @@ class ExtensionEngine:
         anchors: AnchorSet,
         ref_seq: str,
     ) -> list[ExtensionResult]:
-        """Extend every chain of one read; returns one result per chain."""
+        """Extend every chain of one read; returns one result per chain.
+
+        When :attr:`ExtensionConfig.ungapped_prefilter` is on, each chain is
+        first gated by a cheap GenomeWorks ``cudaextender`` ungapped X-drop
+        extension of its seed; chains that cannot clear ``ungapped_min_score``
+        skip the expensive gapped DP entirely and keep only the gapless core
+        alignment. Otherwise this is exactly :meth:`_extend_chains_full`.
+        """
+        chains = list(chains)
+        if not chains:
+            return []
+        if not self._prefilter_enabled():
+            return self._extend_chains_full(read_seq, chains, anchors, ref_seq)
+
+        forward = encode_bases(read_seq)
+        reverse = reverse_complement_codes(forward)
+        ref_codes = encode_bases(ref_seq)
+        read_len = len(forward)
+
+        survivors, results = self._ungapped_prefilter(
+            chains, anchors, forward, reverse, ref_codes, read_len
+        )
+
+        if survivors:
+            kept = self._extend_chains_full(
+                read_seq, [chains[i] for i in survivors], anchors, ref_seq
+            )
+            for slot, i in enumerate(survivors):
+                results[i] = kept[slot]
+        return [r for r in results if r is not None]
+
+    def _ungapped_prefilter(
+        self,
+        chains: Sequence[Chain],
+        anchors: AnchorSet,
+        forward: np.ndarray,
+        reverse: np.ndarray,
+        ref_codes: np.ndarray,
+        read_len: int,
+    ) -> tuple[list[int], list[Optional[ExtensionResult]]]:
+        """Batched cudaextender X-drop prefilter over all chains of a read.
+
+        Chains are grouped by strand so each group shares one query sequence,
+        then a single batched ungapped extension runs per group. On the CUDA
+        backend this dispatches to the batched CuPy ``ungapped_extend`` kernel
+        via :func:`ungapped_extend_batch` (verify-then-trust against the portable
+        walk); on every other backend the same call stays on the portable tier,
+        so the survivor set and gapless results are identical either way.
+
+        A chain with no usable seed always survives (routed to the gapped DP),
+        matching the previous per-chain behaviour.
+        """
+        from ..accel.genomeworks_ops import ungapped_extend_batch
+
+        results: list[Optional[ExtensionResult]] = [None] * len(chains)
+
+        # Only offload to the GPU kernel when the engine is configured for CUDA
+        # (either the cuda_rawkernel tier or an explicit GenomeWorks route);
+        # otherwise pin the batch to CPU so host worker threads never touch the
+        # device (identical results, no cross-thread GPU contention).
+        pin = self.device if (self.backend in ("cuda_rawkernel", "genomeworks")
+                              and self.device.type == "cuda") else torch.device("cpu")
+
+        # Bucket chains by strand, resolving each chain's seed once.
+        grouped: dict[int, list[tuple[int, tuple[int, int]]]] = {1: [], -1: []}
+        survivors: list[int] = []
+        for i, chain in enumerate(chains):
+            strand = 1 if chain.strand > 0 else -1
+            codes = forward if strand > 0 else reverse
+            seed = self._chain_seed(chain, anchors)
+            if seed is None or not (
+                0 <= seed[0] < len(codes) and 0 <= seed[1] < len(ref_codes)
+            ):
+                survivors.append(i)  # no seed -> defer to gapped DP
+                continue
+            grouped[strand].append((i, seed))
+
+        for strand, items in grouped.items():
+            if not items:
+                continue
+            codes = forward if strand > 0 else reverse
+            exts = ungapped_extend_batch(
+                codes,
+                ref_codes,
+                [seed for _, seed in items],
+                match=self.cfg.match_score,
+                mismatch=self.cfg.mismatch_penalty,
+                x_drop=self.cfg.ungapped_x_drop,
+                device=pin,
+            )
+            for (i, _seed), ext in zip(items, exts):
+                if ext.score >= self.cfg.ungapped_min_score:
+                    survivors.append(i)
+                else:
+                    results[i] = self._ungapped_result(ext, codes, ref_codes, read_len)
+
+        survivors.sort()
+        return survivors, results
+
+    def _extend_chains_full(
+        self,
+        read_seq: str,
+        chains: Sequence[Chain],
+        anchors: AnchorSet,
+        ref_seq: str,
+    ) -> list[ExtensionResult]:
+        """Extend every chain with the configured DP (no prefilter)."""
         if not chains:
             return []
 
@@ -524,9 +731,22 @@ class ExtensionEngine:
         ref_codes = encode_bases(ref_seq)
         read_len, ref_len = len(forward), len(ref_codes)
 
-        if self.cfg.algorithm == "wfa":
+        algorithm = self._effective_algorithm()
+        if algorithm == "wfa":
+            if self._wfa_gpu_enabled():
+                return self._extend_wfa_gpu_batch(
+                    chains, anchors, forward, reverse, ref_codes, read_len, ref_len
+                )
             return [
                 self._extend_wfa(chain, anchors, forward, reverse, ref_codes, read_len, ref_len)
+                for chain in chains
+            ]
+
+        if algorithm == "cudaaligner":
+            return [
+                self._extend_cudaaligner(
+                    chain, forward, reverse, ref_codes, read_len, ref_len
+                )
                 for chain in chains
             ]
 
@@ -687,9 +907,10 @@ class ExtensionEngine:
             distance, cigar = self.wfa.align(codes, window)
         except RuntimeError:
             # Too divergent for the wavefront bound: fall back to banded DP.
+            # Route to the full path so the ungapped prefilter is not re-applied.
             saved, self.cfg.algorithm = self.cfg.algorithm, "banded_sw"
             try:
-                return self.extend_chains(
+                return self._extend_chains_full(
                     decode_bases(forward),
                     [chain],
                     anchors,
@@ -702,6 +923,21 @@ class ExtensionEngine:
             # The portable WFA is independently checked against Levenshtein.
             gpu_distance = None
 
+        return self._wfa_result_from_cigar(cigar, read_len, start, len(window))
+
+    def _wfa_result_from_cigar(
+        self,
+        cigar: list[tuple[str, int]],
+        read_len: int,
+        start: int,
+        window_len: int,
+    ) -> ExtensionResult:
+        """Build an :class:`ExtensionResult` from a global-WFA pipeline CIGAR.
+
+        Shared by the CPU wavefront path and the WFA-GPU batch so both score the
+        alignment identically (affine gap costs over the ``=/X/I/D`` counts) and
+        report the same soft-clip-free global span.
+        """
         counts = {op: 0 for op in ("=", "X", "I", "D")}
         for op, n in cigar:
             counts[op] = counts.get(op, 0) + n
@@ -717,13 +953,192 @@ class ExtensionEngine:
         )
         return ExtensionResult(
             score=float(score),
-            cigar=cigar,
+            cigar=list(cigar),
             read_start=0,
             read_end=read_len,
             ref_start=start,
-            ref_end=start + len(window),
+            ref_end=start + window_len,
             n_match=counts["="],
             n_mismatch=counts["X"],
             n_insertion=counts["I"],
             n_deletion=counts["D"],
+        )
+
+    # ---- WFA-GPU (maintained cudaaligner replacement) --------------------- #
+    def _wfa_gpu_enabled(self) -> bool:
+        """Whether the optional WFA-GPU CIGAR backend should serve the wfa path.
+
+        Opt-in (``GMF_WFA_GPU=1``) and only on a CUDA engine with the shim built
+        (see ``scripts/build_wfa_gpu.sh``), so default runs are byte-for-byte
+        unchanged until it is explicitly enabled.
+        """
+        if os.environ.get("GMF_WFA_GPU", "0") != "1":
+            return False
+        if self.device.type != "cuda":
+            return False
+        try:
+            from ..accel import wfa_gpu_ops
+        except Exception:
+            return False
+        return wfa_gpu_ops.available()
+
+    def _extend_wfa_gpu_batch(
+        self,
+        chains: Sequence[Chain],
+        anchors: AnchorSet,
+        forward: np.ndarray,
+        reverse: np.ndarray,
+        ref_codes: np.ndarray,
+        read_len: int,
+        ref_len: int,
+    ) -> list[ExtensionResult]:
+        """Extend a read's chains with one batched WFA-GPU gap-affine call.
+
+        Unit-cost penalties (``x=1, o=0, e=1``) reproduce the CPU
+        :class:`WavefrontAligner`'s Levenshtein objective, so the GPU CIGAR feeds
+        the *identical* affine rescoring via :meth:`_wfa_result_from_cigar`. Any
+        pair whose GPU CIGAR is structurally invalid, disagrees with the reported
+        edit distance, or exceeds ``wfa_max_distance`` falls back to the exact
+        CPU path (which itself routes to banded DP when too divergent). The
+        windows here match :meth:`_extend_wfa` exactly.
+        """
+        from ..accel import wfa_gpu_ops
+
+        codes_list = [forward if c.strand > 0 else reverse for c in chains]
+        windows: list[tuple[int, int]] = []
+        for chain in chains:
+            start = int(np.clip(chain.ref_start - chain.read_start, 0, max(ref_len - 1, 0)))
+            net_indel = chain.ref_span - chain.read_span
+            end = min(ref_len, start + max(1, read_len + net_indel))
+            windows.append((start, end))
+
+        pairs = [
+            (decode_bases(codes_list[k]), decode_bases(ref_codes[s:e]))
+            for k, (s, e) in enumerate(windows)
+        ]
+        res = wfa_gpu_ops.align_batch(
+            pairs,
+            x=1,
+            o=0,
+            e=1,
+            compute_cigar=True,
+            max_error=max(int(self.cfg.wfa_max_distance), 0),
+        )
+        if res is None:
+            # Library vanished / call failed: exact CPU path for every chain.
+            return [
+                self._extend_wfa(c, anchors, forward, reverse, ref_codes, read_len, ref_len)
+                for c in chains
+            ]
+
+        out: list[ExtensionResult] = []
+        for k, chain in enumerate(chains):
+            err, cig = res[k]
+            start, end = windows[k]
+            codes = codes_list[k]
+            window = ref_codes[start:end]
+            pipeline_cigar = None
+            within_bound = self.cfg.wfa_max_distance <= 0 or err <= self.cfg.wfa_max_distance
+            if cig and within_bound:
+                pipeline_cigar = _wfa_gpu_cigar_to_pipeline(cig, codes, window)
+                if pipeline_cigar is not None:
+                    # Trust only when the converted CIGAR's implied unit edit
+                    # distance matches WFA-GPU's reported error.
+                    unit = sum(n for op, n in pipeline_cigar if op in ("X", "I", "D"))
+                    if unit != err:
+                        pipeline_cigar = None
+            if pipeline_cigar is None:
+                out.append(
+                    self._extend_wfa(chain, anchors, forward, reverse, ref_codes, read_len, ref_len)
+                )
+            else:
+                out.append(
+                    self._wfa_result_from_cigar(pipeline_cigar, read_len, start, len(window))
+                )
+        return out
+
+    # ---- GenomeWorks cudaaligner / cudaextender helpers -------------------- #
+    def _extend_cudaaligner(
+        self,
+        chain: Chain,
+        forward: np.ndarray,
+        reverse: np.ndarray,
+        ref_codes: np.ndarray,
+        read_len: int,
+        ref_len: int,
+    ) -> ExtensionResult:
+        """Global affine alignment of the chain window (GenomeWorks cudaaligner).
+
+        Like the WFA path this aligns end-to-end within a window sized to the
+        read plus the chain's net indel, but it emits a full ``=``/``X``/``I``/
+        ``D`` CIGAR directly (Gotoh traceback) instead of an edit distance.
+        """
+        from ..accel.genomeworks_ops import global_align
+
+        codes = forward if chain.strand > 0 else reverse
+        start = int(np.clip(chain.ref_start - chain.read_start, 0, max(ref_len - 1, 0)))
+        net_indel = chain.ref_span - chain.read_span
+        target_length = max(1, read_len + net_indel)
+        end = min(ref_len, start + target_length)
+        window = ref_codes[start:end]
+
+        aln = global_align(
+            codes,
+            window,
+            match=self.cfg.match_score,
+            mismatch=self.cfg.mismatch_penalty,
+            gap_open=self.cfg.gap_open,
+            gap_extend=self.cfg.gap_extend,
+        )
+        return ExtensionResult(
+            score=float(aln.score),
+            cigar=list(aln.cigar),
+            read_start=0,
+            read_end=read_len,
+            ref_start=start,
+            ref_end=start + cigar_ref_length(aln.cigar),
+            n_match=aln.n_match,
+            n_mismatch=aln.n_mismatch,
+            n_insertion=aln.n_insertion,
+            n_deletion=aln.n_deletion,
+        )
+
+    def _chain_seed(
+        self, chain: Chain, anchors: AnchorSet
+    ) -> Optional[tuple[int, int]]:
+        """``(read_pos, ref_pos)`` of the chain's most reliable (longest) anchor."""
+        idx = chain.anchor_idx
+        if idx is None or len(idx) == 0:
+            return None
+        best = int(idx[int(np.argmax(anchors.length[idx]))])
+        return int(anchors.read_pos[best]), int(anchors.ref_pos[best])
+
+    def _ungapped_result(
+        self, ext, codes: np.ndarray, ref_codes: np.ndarray, read_len: int
+    ) -> ExtensionResult:
+        """Gapless :class:`ExtensionResult` from an ungapped extension.
+
+        For chains the prefilter rejects, the gapped DP is skipped and only the
+        gap-free core (``=``/``X`` ops with soft-clipped flanks) is reported —
+        far cheaper than a full banded alignment.
+        """
+        q0, q1 = int(ext.query_start), int(ext.query_end)
+        r0, r1 = int(ext.target_start), int(ext.target_end)
+        seg_q = codes[q0:q1]
+        seg_r = ref_codes[r0:r1]
+        match = (seg_q == seg_r) & (seg_q >= 1) & (seg_q <= 4)
+        ops = ["=" if bool(m) else "X" for m in match]
+        n_match = int(match.sum())
+        cigar = [("S", q0)] + run_length_encode(ops) + [("S", read_len - q1)]
+        return ExtensionResult(
+            score=float(ext.score),
+            cigar=merge_cigar(cigar),
+            read_start=q0,
+            read_end=q1,
+            ref_start=r0,
+            ref_end=r1,
+            n_match=n_match,
+            n_mismatch=len(ops) - n_match,
+            n_insertion=0,
+            n_deletion=0,
         )

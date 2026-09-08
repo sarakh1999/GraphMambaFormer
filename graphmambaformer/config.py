@@ -436,16 +436,21 @@ class GraphMambaConfig:
 
     Forward pass::
 
-        SequenceEncoder ---> BiMamba2 x 6 ----.
-                                              +--> CrossAttentionFusion
-        GraphEncoder ------> GATv2Conv x 3 ---'          |
-                                                         v
-                                          ComplexityRouter -> MappingHead
-                                                         |
-                                                         +-> multi-task heads
+        SequenceEncoder --> [BiMamba2 + WindowedSelfAttn + FFN] x 6 --.
+                                                                       +--> CrossAttentionFusion
+        GraphEncoder ----> GATv2Conv x 3 ------------------------------'          |
+                                                                                  v
+                                                   ComplexityRouter -> MappingHead
+                                                                                  |
+                                                                                  +-> multi-task heads
 
-    Defaults reproduce the reference configuration: ``d_model=256``, 6 BiMamba2
-    layers, 3 GATv2 layers, ~14.2M parameters.
+    The read tower now interleaves all three of the figure's orthogonal inductive
+    biases: Mamba (sequence-state / seed chaining), windowed self-attention
+    (context-dependent substitution / indel scoring, ``use_read_attention``), and
+    GATv2 on the graph branch (topological reasoning), fused by cross-attention.
+
+    Defaults: ``d_model=256``, 6 BiMamba2 layers (+ windowed self-attn), 3 GATv2
+    layers, ~16M parameters.
     """
 
     d_model: int = 256
@@ -459,6 +464,14 @@ class GraphMambaConfig:
     sequence_encoder: SequenceEncoderConfig = field(default_factory=SequenceEncoderConfig)
     graph_encoder: GraphEncoderConfig = field(default_factory=GraphEncoderConfig)
     mamba: Mamba2Config = field(default_factory=Mamba2Config)
+    # Figure 1B, Layer 2: windowed multi-head self-attention interleaved into the
+    # read tower (Mamba -> attention -> FFN per layer). This is the second of the
+    # three orthogonal inductive biases -- context-dependent substitution / indel
+    # scoring -- which the parallel-tower model was missing. Windowed (O(n*w)) so
+    # it scales to long reads (ONT/HiFi up to 65k bp); ``window`` is the local span.
+    read_attention: AttentionConfig = field(
+        default_factory=lambda: AttentionConfig(window=256)
+    )
     gat: GATConfig = field(default_factory=GATConfig)
     cross_attention: CrossAttentionConfig = field(default_factory=CrossAttentionConfig)
     router: RouterConfig = field(default_factory=RouterConfig)
@@ -468,6 +481,16 @@ class GraphMambaConfig:
 
     # Turn the router off to always run the full path (useful for ablations).
     use_router: bool = True
+    #: Enable the read-tower windowed self-attention sublayer (Figure 1B Layer 2).
+    #: On by default so training gets all three inductive biases; set False to
+    #: recover the Mamba-only read tower (e.g. for an ablation or a tight budget).
+    use_read_attention: bool = True
+    #: Swin-style shifted windows: alternate the block phase by half a window on
+    #: odd layers so a base at a block boundary in one layer is mid-block in the
+    #: next, letting information cross boundaries across the stack. Only affects
+    #: reads longer than the window (shorter reads take the exact full-attention
+    #: path), and adds no parameters. Set False to use fixed (aligned) windows.
+    read_attention_shift: bool = True
 
     def __post_init__(self) -> None:
         d = self.d_model
@@ -494,6 +517,16 @@ class GraphMambaConfig:
             heads //= 2
         self.cross_attention.n_heads = heads
         self.cross_attention.d_head = d // heads
+
+        # Read-tower self-attention (Figure 1B, Layer 2): keep its inner width at
+        # exactly d_model (aligned with the residual stream) by deriving d_head
+        # from a head count that divides d_model.
+        self.read_attention.d_model = d
+        rheads = self.read_attention.n_heads
+        while rheads > 1 and d % rheads != 0:
+            rheads //= 2
+        self.read_attention.n_heads = rheads
+        self.read_attention.d_head = d // rheads
 
 
 @dataclass
@@ -551,6 +584,10 @@ class AccelConfig:
     cudnn_benchmark: bool = True
     cuda_rawkernels: bool = True  # CuPy RawKernel tier for the DP stages
     triton_kernels: bool = True  # fused LN+Linear+GELU
+    #: GenomeWorks primitives (cudamapper/cudaaligner/cudaextender/cudapoa). When
+    #: off, the classical stages skip the GenomeWorks paths (ungapped X-drop
+    #: prefilter, POA consensus, …) and use their built-in torch/NumPy path.
+    genomeworks: bool = True
     cuda_graphs: bool = True  # static capture for fixed-shape inference
     cuda_graph_warmup: int = 3  # eager steps before first capture
 
@@ -582,7 +619,8 @@ class AccelConfig:
     #: Size torch's intra-op / BLAS thread pools to the host core count.
     set_threads: bool = True
 
-    # Per-stage kernel override: "auto" | "torch" | "cuda_rawkernel".
+    # Per-stage kernel override: "auto" | "torch" | "cuda_rawkernel" |
+    # "genomeworks" (route the stage through the GenomeWorks primitives).
     stage_backends: dict[str, str] = field(
         default_factory=lambda: {"seeding": "auto", "chaining": "auto", "extension": "auto"}
     )
@@ -599,6 +637,9 @@ SEEDING_MODES: tuple[str, ...] = (
     "fuzzy",
     "multiplex_dbg",
     "gpu_kmer",
+    # GenomeWorks cudamapper: GPU-resident minimizer index; identical anchors to
+    # ``gpu_kmer`` but named so a run can opt into the cudamapper mapping path.
+    "cudamapper",
 )
 
 
@@ -670,13 +711,24 @@ class ChainingConfig:
 
     ``graph_bonus`` rewards pairs whose reference nodes are close in the
     pangenome graph, and ``ref_path_bias`` additionally rewards anchors sitting
-    on the graph's backbone (reference) path.
+    on the graph's backbone (reference) path. ``recombination_penalty`` makes the
+    DP haplotype-aware: a step between anchors with disjoint haplotype sets is
+    charged a recombination cost (Li-Stephens), off by default.
 
     On top of the DP, ``adaptive_seed_scoring`` adds an AGNES-style confidence
     gate: when a neural seed score is available it steers the anchor weights only
     for reads whose seed-score distribution is confidently separated, and
     otherwise falls back to pure length-based chaining.
     """
+
+    #: Stage-2 backend: ``"affine"`` (the minimap2-style DP described below, the
+    #: default) or ``"agnes"`` (the standalone paper-faithful AGNES hybrid chainer
+    #: in :mod:`graphmambaformer.alignment.agnes` — classical seeding, an EdgeConv
+    #: GNN on pure 12-D/8-D seed-graph features, and a confidence-gated DP). With
+    #: ``"agnes"`` set ``agnes_checkpoint`` to a trained classifier; left unset the
+    #: AGNES chainer runs its PureDP baseline.
+    chainer: str = "affine"
+    agnes_checkpoint: str | None = None
 
     max_lookback: int = 64  # predecessors considered per anchor
     max_gap: int = 5_000  # reject anchor pairs separated by more than this
@@ -688,6 +740,28 @@ class ChainingConfig:
     graph_bonus: float = 4.0
     graph_max_hops: int = 3  # bonus decays over this many hops
     ref_path_bias: float = 1.5  # extra weight for backbone-path anchors
+
+    # Haplotype-aware chaining (Chandra & Jain, "Haplotype-aware sequence
+    # alignment to pangenome graphs", Genome Research 2024 / Minichain). When the
+    # pangenome graph carries haplotype paths (GFA P- / W-lines), a step between
+    # two anchors that share *no* common haplotype implies a recombination, so a
+    # chain that keeps switching haplotypes is an unlikely mosaic of the known
+    # panel. Following the Li-Stephens copying model, we subtract a fixed cost per
+    # such switch from the chaining DP, steering chains onto self-consistent
+    # haplotype mosaics and away from spurious recombinant paths.
+    #
+    # This is a *pairwise* relaxation of Minichain's per-anchor (anchor, haplotype)
+    # state: instead of carrying the active haplotype through the DP, we penalise
+    # any j -> i edge whose two anchors have disjoint haplotype sets. It captures
+    # the dominant effect (reject cross-haplotype jumps) without expanding the DP
+    # state by |H|, so it stays O(N * lookback) and drops straight into the
+    # existing additive ``bonus`` term used by every DP backend.
+    #
+    # ``0.0`` = off (haplotype-agnostic, the previous behaviour); a large value
+    # approaches haplotype-restricted chaining (switches effectively forbidden).
+    # Only active when the reference was built with haplotype paths; on a linear
+    # reference or a graph without paths it is a no-op.
+    recombination_penalty: float = 0.0
 
     # AGNES-style adaptive (confidence-gated) seed scoring
     # (Arafat et al., 2025, "AGNES", Algorithm 1). When the Stage 4 seed head has
@@ -738,15 +812,18 @@ class ChainingConfig:
 
 @dataclass
 class ExtensionConfig:
-    """Stage 3 — Extension (banded affine Smith-Waterman / WFA).
+    """Stage 3 — Extension (banded affine Smith-Waterman / WFA / cudaaligner).
 
     Defaults follow the architecture's WFA settings (``mismatch=4``,
     ``gap_open=6``, ``x_drop=600``). ``algorithm`` selects the DP kernel:
       - ``"banded_sw"``: banded affine Smith-Waterman with traceback (default).
       - ``"wfa"``: wavefront alignment, O(n·s) in the edit distance ``s``.
+      - ``"cudaaligner"``: GenomeWorks-style global affine (Gotoh) alignment of
+        the chain window, emitting a full CIGAR
+        (:func:`graphmambaformer.accel.genomeworks_ops.global_align`).
     """
 
-    algorithm: str = "banded_sw"  # "banded_sw" | "wfa"
+    algorithm: str = "banded_sw"  # "banded_sw" | "wfa" | "cudaaligner"
 
     match_score: float = 2.0
     mismatch_penalty: float = 4.0
@@ -765,6 +842,20 @@ class ExtensionConfig:
     max_window: int = 32_768
     # WFA only: abandon a wavefront past this edit distance.
     wfa_max_distance: int = 4_096
+
+    # ---- GenomeWorks cudaextender: ungapped X-drop seed prefilter ---------- #
+    #: Run a fast ungapped X-drop extension of each chain's seed *before* the
+    #: gapped DP. Chains whose ungapped score cannot clear ``ungapped_min_score``
+    #: are dropped cheaply, so the expensive banded DP only runs on candidates
+    #: that already show a strong gap-free core (BLAST/cudaextender two-hit
+    #: philosophy). Off by default so the classical result is unchanged unless
+    #: explicitly enabled.
+    ungapped_prefilter: bool = False
+    #: X-drop threshold for the ungapped extension (kept distinct from the DP
+    #: ``x_drop`` so the prefilter can be tuned independently).
+    ungapped_x_drop: float = 40.0
+    #: Minimum ungapped-extension score for a chain to survive the prefilter.
+    ungapped_min_score: float = 20.0
 
 
 @dataclass

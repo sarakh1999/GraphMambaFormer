@@ -42,6 +42,7 @@ from ..layers.bimamba import BiMamba2
 from ..layers.common import FeedForward, RMSNorm
 from ..layers.cross_attention import CrossAttentionFusion
 from ..layers.gat import GATv2Layer
+from ..layers.windowed_attention import WindowedSelfAttention
 
 
 # --------------------------------------------------------------------------- #
@@ -171,27 +172,47 @@ class GraphMambaOutput:
 # Towers
 # --------------------------------------------------------------------------- #
 class BiMambaTower(nn.Module):
-    """``n`` bidirectional Mamba-2 layers, each a pre-norm residual (+ optional FFN)."""
+    """Read tower: ``n`` layers, each Mamba-2 -> (windowed self-attn) -> FFN.
+
+    Each sublayer is a pre-norm residual (``x + sublayer(norm(x))``). The optional
+    windowed self-attention (Figure 1B, Layer 2; ``cfg.use_read_attention``) sits
+    between the Mamba mixer and the FFN so the layer carries all of the figure's
+    read-side inductive biases: sequence-state mixing (Mamba) followed by
+    context-dependent pairwise scoring (attention).
+    """
 
     def __init__(self, cfg: GraphMambaConfig):
         super().__init__()
         self.layers = nn.ModuleList()
-        for _ in range(cfg.n_mamba_layers):
+        # Swin-style shifted windows: even layers use aligned blocks, odd layers
+        # are offset by half a window. Recorded per layer (no parameters) and
+        # forwarded to the attention sublayer. Ignored by short reads, which take
+        # the exact full-attention path inside WindowedSelfAttention.
+        window = cfg.read_attention.window
+        half = (window // 2) if window else 0
+        self._attn_shift: list[int] = []
+        for i in range(cfg.n_mamba_layers):
             block = nn.ModuleDict(
                 {
                     "norm": RMSNorm(cfg.d_model),
                     "mixer": BiMamba2(cfg.mamba),
                 }
             )
+            if cfg.use_read_attention:
+                block["attn_norm"] = RMSNorm(cfg.d_model)
+                block["attn"] = WindowedSelfAttention(cfg.read_attention)
             if cfg.mamba_ffn:
                 block["ffn_norm"] = RMSNorm(cfg.d_model)
                 block["ffn"] = FeedForward(cfg.d_model, cfg.d_ff, cfg.dropout)
             self.layers.append(block)
+            self._attn_shift.append(half if (cfg.read_attention_shift and i % 2 == 1) else 0)
         self.final_norm = RMSNorm(cfg.d_model)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
-        for block in self.layers:
+        for i, block in enumerate(self.layers):
             x = x + block["mixer"](block["norm"](x), mask=mask)
+            if "attn" in block:
+                x = x + block["attn"](block["attn_norm"](x), mask=mask, shift=self._attn_shift[i])
             if "ffn" in block:
                 x = x + block["ffn"](block["ffn_norm"](x))
         return self.final_norm(x)

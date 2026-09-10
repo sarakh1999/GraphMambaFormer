@@ -31,7 +31,12 @@ import torch
 from ..accel import AccelContext, default_worker_count, parallel_map
 from ..config import PIPELINE_MODES, PipelineConfig
 from ..progress import progress
-from .chaining import AffineChainer, ChainingContext, GraphDistanceOracle
+from .chaining import (
+    AffineChainer,
+    ChainingContext,
+    GraphDistanceOracle,
+    pack_node_haplotypes,
+)
 from .extension import ExtensionEngine
 from .scoring import NeuralScorer
 from .seeding import SeedIndexBundle, SeedingEngine
@@ -138,10 +143,17 @@ class ReferenceIndex:
     backbone: Optional[np.ndarray] = None
     #: Encoded graph for the core model, shared across reads.
     graph: object | None = None
+    #: ``(num_nodes, W)`` uint64 haplotype bitset for haplotype-aware chaining
+    #: (packed from the graph's P-/W-line paths); ``None`` disables the term.
+    node_haplotypes: Optional[np.ndarray] = None
 
     @property
     def chaining_context(self) -> ChainingContext:
-        return ChainingContext(oracle=self.oracle, backbone=self.backbone)
+        return ChainingContext(
+            oracle=self.oracle,
+            backbone=self.backbone,
+            node_haplotypes=self.node_haplotypes,
+        )
 
 
 @dataclass
@@ -276,6 +288,7 @@ class AlignmentPipeline:
         node_ref_start: Optional[Sequence[int]] = None,
         backbone_path: Optional[Sequence[int]] = None,
         edge_index: Optional[np.ndarray] = None,
+        haplotype_paths: Optional[Sequence[Sequence[int]]] = None,
         graph=None,
     ) -> ReferenceIndex:
         """Build the Stage 1 indices and graph context for one reference."""
@@ -287,10 +300,13 @@ class AlignmentPipeline:
             backbone_path=backbone_path,
         )
         oracle = None
+        node_haplotypes = None
         if edge_index is not None and node_seqs is not None:
             oracle = GraphDistanceOracle(
                 edge_index, len(node_seqs), max_hops=self.cfg.chaining.graph_max_hops
             )
+        if node_seqs is not None:
+            node_haplotypes = pack_node_haplotypes(len(node_seqs), haplotype_paths)
         return ReferenceIndex(
             bundle=bundle,
             ref_seq=ref_seq,
@@ -298,6 +314,7 @@ class AlignmentPipeline:
             oracle=oracle,
             backbone=bundle.backbone,
             graph=graph,
+            node_haplotypes=node_haplotypes,
         )
 
     # ---- stages ------------------------------------------------------------- #
@@ -335,6 +352,7 @@ class AlignmentPipeline:
                 ChainingContext(
                     oracle=base.oracle,
                     backbone=base.backbone,
+                    node_haplotypes=base.node_haplotypes,
                     trust_neural=flag,
                     learned_transitions=edge_scores,
                 )

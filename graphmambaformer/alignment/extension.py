@@ -715,6 +715,57 @@ class ExtensionEngine:
         survivors.sort()
         return survivors, results
 
+    def _banded_dp_numba(
+        self,
+        query: torch.Tensor,
+        target: torch.Tensor,
+        query_len: torch.Tensor,
+        target_len: torch.Tensor,
+        half_band: int,
+        band_offset: torch.Tensor,
+    ) -> Optional[BandedDPResult]:
+        """Fill the banded affine-SW matrices with the Numba CPU kernel.
+
+        Produces the *same* band-relative ``H``/``E``/``F`` matrices as
+        :func:`banded_affine_sw_batch` (``return_matrices=True``), so
+        :func:`traceback_banded` recovers an identical CIGAR — at a fraction of
+        the per-op dispatch cost of the torch row loop on CPU. Returns ``None``
+        (so the caller keeps the portable torch DP) off CPU, without Numba, or on
+        any JIT error.
+        """
+        if self.device.type != "cpu":
+            return None
+        try:
+            from ..accel.numba_sw import banded_affine_sw_fill, numba_available
+
+            if not numba_available():
+                return None
+            H, E, F, score, best_i, best_j = banded_affine_sw_fill(
+                query.cpu().numpy(),
+                target.cpu().numpy(),
+                query_len.cpu().numpy(),
+                target_len.cpu().numpy(),
+                band_offset.cpu().numpy(),
+                int(half_band),
+                match_score=self.cfg.match_score,
+                mismatch_penalty=self.cfg.mismatch_penalty,
+                gap_open=self.cfg.gap_open,
+                gap_extend=self.cfg.gap_extend,
+                x_drop=self.cfg.x_drop,
+            )
+        except Exception:
+            return None  # import/JIT/runtime problem -> portable torch DP
+        return BandedDPResult(
+            score=torch.from_numpy(score),
+            query_end=torch.from_numpy(best_i),
+            target_end=torch.from_numpy(best_j),
+            half_band=int(half_band),
+            band_offset=band_offset.to(torch.long),
+            H=torch.from_numpy(H),
+            E=torch.from_numpy(E),
+            F=torch.from_numpy(F),
+        )
+
     def _extend_chains_full(
         self,
         read_seq: str,
@@ -772,73 +823,82 @@ class ExtensionEngine:
             # window that is `diagonal - start`, which is where the band goes.
             band_offset[b] = (chain.ref_start - chain.read_start) - start
 
-        simd_scores: torch.Tensor | None = None
-        if self.device.type == "cpu":
-            try:
-                from ..accel.simd_sw import simd_available, smith_waterman_score
-
-                if simd_available():
-                    values = []
-                    for chain, (start, end, _) in zip(chains, windows):
-                        codes = forward if chain.strand > 0 else reverse
-                        values.append(
-                            smith_waterman_score(
-                                decode_bases(codes),
-                                decode_bases(ref_codes[start:end]),
-                                self.cfg,
-                            )
-                        )
-                    simd_scores = torch.tensor(values, dtype=torch.float32)
-            except RuntimeError:
-                simd_scores = None
-
-        cuda_result = None
-        if self.backend == "cuda_rawkernel" and self.device.type == "cuda":
-            try:
-                from ..accel.cuda_kernels import banded_sw as cuda_banded_sw
-
-                cuda_result = cuda_banded_sw(
-                    query,
-                    target,
-                    query_len,
-                    target_len,
-                    half_band=half_band,
-                    match_score=self.cfg.match_score,
-                    mismatch_penalty=self.cfg.mismatch_penalty,
-                    gap_open=self.cfg.gap_open,
-                    gap_extend=self.cfg.gap_extend,
-                    band_offset=band_offset,
-                )
-            except RuntimeError:
-                cuda_result = None
-
-        result = banded_affine_sw_batch(
-            query,
-            target,
-            query_len,
-            target_len,
-            self.cfg,
-            half_band=half_band,
-            band_offset=band_offset,
-            return_matrices=True,
+        # Stage-3 banded DP. On CPU prefer the Numba kernel: it fills the same
+        # band-relative H/E/F as the torch reference (so the traceback below is
+        # unchanged) but avoids the millions of tiny torch-op dispatches the
+        # Python row loop costs on CPU. It internally computes the score, so the
+        # parasail SIMD cross-check only guards the torch fallback.
+        result = self._banded_dp_numba(
+            query, target, query_len, target_len, half_band, band_offset
         )
-        if cuda_result is not None:
-            cuda_score, cuda_q_end, cuda_t_end = cuda_result
-            # Traceback matrices remain on the portable tier. Only trust the
-            # accelerator result when all three observables agree.
-            agrees = (
-                torch.allclose(cuda_score, result.score, atol=1e-3, rtol=1e-4)
-                and torch.equal(cuda_q_end, result.query_end)
-                and torch.equal(cuda_t_end, result.target_end)
+        if result is None:
+            simd_scores: torch.Tensor | None = None
+            if self.device.type == "cpu":
+                try:
+                    from ..accel.simd_sw import simd_available, smith_waterman_score
+
+                    if simd_available():
+                        values = []
+                        for chain, (start, end, _) in zip(chains, windows):
+                            codes = forward if chain.strand > 0 else reverse
+                            values.append(
+                                smith_waterman_score(
+                                    decode_bases(codes),
+                                    decode_bases(ref_codes[start:end]),
+                                    self.cfg,
+                                )
+                            )
+                        simd_scores = torch.tensor(values, dtype=torch.float32)
+                except RuntimeError:
+                    simd_scores = None
+
+            cuda_result = None
+            if self.backend == "cuda_rawkernel" and self.device.type == "cuda":
+                try:
+                    from ..accel.cuda_kernels import banded_sw as cuda_banded_sw
+
+                    cuda_result = cuda_banded_sw(
+                        query,
+                        target,
+                        query_len,
+                        target_len,
+                        half_band=half_band,
+                        match_score=self.cfg.match_score,
+                        mismatch_penalty=self.cfg.mismatch_penalty,
+                        gap_open=self.cfg.gap_open,
+                        gap_extend=self.cfg.gap_extend,
+                        band_offset=band_offset,
+                    )
+                except RuntimeError:
+                    cuda_result = None
+
+            result = banded_affine_sw_batch(
+                query,
+                target,
+                query_len,
+                target_len,
+                self.cfg,
+                half_band=half_band,
+                band_offset=band_offset,
+                return_matrices=True,
             )
-            if agrees:
-                result.score = cuda_score
-                result.query_end = cuda_q_end
-                result.target_end = cuda_t_end
-        if simd_scores is not None and torch.allclose(
-            simd_scores, result.score.cpu(), atol=1e-3, rtol=1e-4
-        ):
-            result.score = simd_scores.to(result.score.device)
+            if cuda_result is not None:
+                cuda_score, cuda_q_end, cuda_t_end = cuda_result
+                # Traceback matrices remain on the portable tier. Only trust the
+                # accelerator result when all three observables agree.
+                agrees = (
+                    torch.allclose(cuda_score, result.score, atol=1e-3, rtol=1e-4)
+                    and torch.equal(cuda_q_end, result.query_end)
+                    and torch.equal(cuda_t_end, result.target_end)
+                )
+                if agrees:
+                    result.score = cuda_score
+                    result.query_end = cuda_q_end
+                    result.target_end = cuda_t_end
+            if simd_scores is not None and torch.allclose(
+                simd_scores, result.score.cpu(), atol=1e-3, rtol=1e-4
+            ):
+                result.score = simd_scores.to(result.score.device)
 
         out: list[ExtensionResult] = []
         for b, (chain, (start, _end, _)) in enumerate(zip(chains, windows)):

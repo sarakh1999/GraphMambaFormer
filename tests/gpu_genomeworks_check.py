@@ -42,10 +42,12 @@ from graphmambaformer.accel.genomeworks_ops import (
     genomeworks_align_batch_enabled,
     genomeworks_backend,
     genomeworks_bindings_available,
+    genomeworks_poa_batch_enabled,
     global_align,
     global_align_batch,
     map_to_reference,
     poa_consensus,
+    poa_consensus_batch,
     ungapped_extend,
     ungapped_extend_batch,
 )
@@ -190,9 +192,21 @@ def check_parity() -> int:
           f"{'OK' if aln_mismatch == 0 else 'FAIL'}{extra}")
     failures += aln_mismatch
 
-    # cudapoa: identical code across tiers unless real bindings are present.
-    _ = poa_consensus([_rand_seq(150, rng) for _ in range(5)])
-    print("cudapoa       poa_consensus          ran OK")
+    # cudapoa: batched GPU POA (poa_consensus_batch) vs per-group host. The GPU
+    # fills each locus's graph-alignment DP; the host does traceback + fold +
+    # heaviest-bundle, so every group's consensus must match poa_consensus.
+    poa_groups = []
+    for _ in range(48):
+        backbone = _rand_seq(rng.randint(120, 240), rng)
+        depth = rng.randint(2, 6)
+        poa_groups.append([_mutate(backbone, 0.08, rng) for _ in range(depth)])
+    gpu_poa = poa_consensus_batch(poa_groups)
+    ref_poa = [poa_consensus(g) for g in poa_groups]
+    poa_mismatch = sum(0 if g == r else 1 for g, r in zip(gpu_poa, ref_poa))
+    extra = "" if genomeworks_poa_batch_enabled() else "  [fell back to host]"
+    print(f"cudapoa       poa_consensus_batch    mismatches={poa_mismatch}  "
+          f"{'OK' if poa_mismatch == 0 else 'FAIL'}{extra}")
+    failures += poa_mismatch
 
     return failures
 
@@ -314,11 +328,29 @@ def benchmark() -> None:
               f"cuda={gpu_ms:8.2f}  portable={cpu_ms:8.2f}  "
               f"speedup={cpu_ms / gpu_ms:6.1f}x{tag}")
 
-    # cudapoa still runs on the vectorised host tier (no GPU kernel yet).
-    reads = [_mutate(_rand_seq(300, rng), 0.08, rng) for _ in range(8)]
-    poa_ms = _time(lambda: poa_consensus(reads), 20)
-    print(f"cudapoa       poa_consensus 8x300bp     host={poa_ms:8.2f} ms  "
-          "(vectorised NumPy; real cudapoa if bindings present)")
+    # cudapoa: batched POA across many independent loci (the GPU fills each
+    # locus's graph-alignment DP; graph build / traceback / fold stay on host),
+    # vs the per-locus host loop. POA is a serial fold *within* a locus, so the
+    # win comes entirely from running many loci at once — swept over locus count.
+    # Exhaust the verify-then-trust warm-up first so timings are steady-state.
+    _wg = [[_mutate(_rand_seq(150, rng), 0.08, rng) for _ in range(4)]
+           for _ in range(8)]
+    for _ in range(12):
+        poa_consensus_batch(_wg)
+    for n_loci in (64, 256):
+        groups = []
+        for _ in range(n_loci):
+            backbone = _rand_seq(rng.randint(200, 320), rng)
+            groups.append([_mutate(backbone, 0.08, rng)
+                           for _ in range(rng.randint(3, 6))])
+        gpu_ms = _time(lambda g=groups: poa_consensus_batch(g), 3)
+        cpu_ms = _time(
+            lambda g=groups: [poa_consensus(x) for x in g], 2
+        )
+        tag = "" if genomeworks_poa_batch_enabled() else " [host-fallback]"
+        print(f"cudapoa      {n_loci:>4} loci x ~4x260bp  "
+              f"cuda={gpu_ms:8.2f}  portable={cpu_ms:8.2f}  "
+              f"speedup={cpu_ms / gpu_ms:6.1f}x{tag}")
 
 
 def main() -> int:

@@ -517,6 +517,109 @@ void global_affine(const signed char* __restrict__ query,   // (B, maxM)
 """
 
 
+_POA_FILL_SRC = r"""
+// Partial-order-alignment graph-vs-sequence DP fill. One thread per problem.
+//
+// Rows 1..G are graph nodes in topological order (row 0 is the all-gap border),
+// columns 1..S are the sequence bases. A single thread runs the exact scalar POA
+// recurrence serially and writes the score, a per-cell move (0 = diagonal
+// match/mismatch, 1 = delete a graph node, 2 = insert a sequence base) and the
+// chosen predecessor row. The (cheap) traceback + graph fold + heaviest-bundle
+// consensus all run on the host, which reproduces the reference tie-breaks
+// exactly. Only integer scores reach here, so float32 is bit-exact against the
+// float64 host reference.
+//
+// Predecessors of row gi are pred_flat[pred_base[b] + pred_off[b,gi-1] ..
+// pred_base[b] + pred_off[b,gi]) — the same order the host iterates graph
+// in-edges, so the strict-'>' first-wins tie-break matches.
+extern "C" __global__
+void poa_fill(const int* __restrict__ base,        // (B, maxG) graph base per row
+             const int* __restrict__ codes,        // (B, maxS) sequence codes
+             const int* __restrict__ Gs,           // (B,) graph row count
+             const int* __restrict__ Ss,           // (B,) sequence length
+             const int* __restrict__ pred_off,     // (B, maxG+1) CSR offsets
+             const int* __restrict__ pred_flat,    // (nnz,) predecessor rows
+             const int* __restrict__ pred_base,    // (B,) start into pred_flat
+             const int batch_size,
+             const int maxG,
+             const int maxS,
+             const float match_s,
+             const float mismatch_p,
+             const float gap,
+             float* __restrict__ score,            // (B, (maxG+1)*(maxS+1))
+             signed char* __restrict__ move,       // (B, (maxG+1)*(maxS+1))
+             int* __restrict__ pred_g) {           // (B, (maxG+1)*(maxS+1))
+    const int b = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= batch_size) return;
+
+    const int G = Gs[b];
+    const int S = Ss[b];
+    const int cols = maxS + 1;
+    const long long mbase = (long long)b * (long long)(maxG + 1) * cols;
+    const int obase = b * (maxG + 1);
+    const int pbase = pred_base[b];
+    const float NEG = -1e30f;
+
+    // Row 0 (all-gap border): H[0][0]=0, H[0][s] = -gap*s (insertions).
+    score[mbase] = 0.0f;
+    move[mbase] = 0;
+    pred_g[mbase] = -1;
+    for (int s = 1; s <= S; ++s) {
+        const long long idx = mbase + s;
+        score[idx] = -gap * (float)s;
+        move[idx] = 2;
+        pred_g[idx] = -1;
+    }
+
+    // Column-0 border, gi = 1..G in topological order: come from the highest-
+    // scoring predecessor's col 0, paying one gap (delete the graph node).
+    for (int gi = 1; gi <= G; ++gi) {
+        const int o0 = pred_off[obase + gi - 1];
+        const int o1 = pred_off[obase + gi];
+        int best_r = pred_flat[pbase + o0];
+        float bestv = score[mbase + (long long)best_r * cols];
+        for (int k = o0 + 1; k < o1; ++k) {
+            const int r = pred_flat[pbase + k];
+            const float v = score[mbase + (long long)r * cols];
+            if (v > bestv) { bestv = v; best_r = r; }
+        }
+        const long long idx = mbase + (long long)gi * cols;
+        score[idx] = bestv - gap;
+        move[idx] = 1;
+        pred_g[idx] = best_r;
+    }
+
+    // Main fill.
+    for (int gi = 1; gi <= G; ++gi) {
+        const int gbase = base[b * maxG + gi - 1];
+        const int o0 = pred_off[obase + gi - 1];
+        const int o1 = pred_off[obase + gi];
+        for (int s = 1; s <= S; ++s) {
+            const int c = codes[b * maxS + s - 1];
+            const float sub =
+                (gbase == c && gbase >= 1 && gbase <= 4) ? match_s : -mismatch_p;
+            float best = NEG;
+            signed char bmove = 2;
+            int brow = pred_flat[pbase + o0];
+            for (int k = o0; k < o1; ++k) {
+                const int r = pred_flat[pbase + k];
+                const float diag = score[mbase + (long long)r * cols + (s - 1)] + sub;
+                if (diag > best) { best = diag; bmove = 0; brow = r; }
+                const float dele = score[mbase + (long long)r * cols + s] - gap;
+                if (dele > best) { best = dele; bmove = 1; brow = r; }
+            }
+            const float ins = score[mbase + (long long)gi * cols + (s - 1)] - gap;
+            if (ins > best) { best = ins; bmove = 2; brow = gi; }
+            const long long idx = mbase + (long long)gi * cols + s;
+            score[idx] = best;
+            move[idx] = bmove;
+            pred_g[idx] = brow;
+        }
+    }
+}
+"""
+
+
 # --------------------------------------------------------------------------- #
 # Lazy compilation
 # --------------------------------------------------------------------------- #
@@ -533,6 +636,7 @@ def _kernel(name: str) -> Any | None:
         "wfa_distance": _WFA_DISTANCE_SRC,
         "ungapped_extend": _UNGAPPED_EXTEND_SRC,
         "global_affine": _GLOBAL_AFFINE_SRC,
+        "poa_fill": _POA_FILL_SRC,
     }[name]
     try:
         return cp.RawKernel(source, name, options=("--use_fast_math",))
@@ -925,3 +1029,64 @@ def global_affine(
         ),
     )
     return ptr, score
+
+
+def poa_fill(
+    base: torch.Tensor,       # (B, maxG) int32 — graph base code per row
+    codes: torch.Tensor,      # (B, maxS) int32 — sequence codes
+    g_lens: torch.Tensor,     # (B,) int32 — graph row count per problem
+    s_lens: torch.Tensor,     # (B,) int32 — sequence length per problem
+    pred_off: torch.Tensor,   # (B, maxG+1) int32 — CSR predecessor offsets
+    pred_flat: torch.Tensor,  # (nnz,) int32 — predecessor rows, batch-concatenated
+    pred_base: torch.Tensor,  # (B,) int32 — start of each problem in pred_flat
+    *,
+    match: float,
+    mismatch: float,
+    gap: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Batched partial-order-alignment DP fill — one thread per problem.
+
+    Returns ``(score, move, pred_g)``, each ``(B, (maxG+1)*(maxS+1))`` row-major
+    with stride ``maxS+1`` (``score`` float32, ``move`` int8 with 0 diag / 1
+    delete-node / 2 insert-base, ``pred_g`` int32 predecessor row). The
+    traceback, graph fold and heaviest-bundle consensus run on the host so the
+    reference tie-breaks are reproduced exactly.
+    """
+    kernel = _kernel("poa_fill")
+    if kernel is None:
+        raise RuntimeError("CuPy POA-fill kernel unavailable")
+
+    B, maxG = base.shape
+    maxS = int(codes.shape[1])
+    dev = base.device
+    cells = (maxG + 1) * (maxS + 1)
+
+    score = torch.empty((B, cells), dtype=torch.float32, device=dev)
+    move = torch.empty((B, cells), dtype=torch.int8, device=dev)
+    pred_g = torch.empty((B, cells), dtype=torch.int32, device=dev)
+
+    threads = 128
+    blocks = (B + threads - 1) // threads
+    kernel(
+        (blocks,),
+        (threads,),
+        (
+            _as_cupy(base.to(torch.int32)),
+            _as_cupy(codes.to(torch.int32)),
+            _as_cupy(g_lens.to(torch.int32)),
+            _as_cupy(s_lens.to(torch.int32)),
+            _as_cupy(pred_off.to(torch.int32)),
+            _as_cupy(pred_flat.to(torch.int32)),
+            _as_cupy(pred_base.to(torch.int32)),
+            np.int32(B),
+            np.int32(maxG),
+            np.int32(maxS),
+            np.float32(match),
+            np.float32(mismatch),
+            np.float32(gap),
+            _as_cupy(score),
+            _as_cupy(move),
+            _as_cupy(pred_g),
+        ),
+    )
+    return score, move, pred_g

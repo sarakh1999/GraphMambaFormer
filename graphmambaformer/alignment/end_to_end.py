@@ -389,12 +389,23 @@ class SevenStagePipeline:
             key = (primary.reference, int(primary.record.ref_start) // bucket)
             clusters.setdefault(key, []).append(row)
 
+        # One batched cudapoa dispatch over every qualifying locus cluster: the
+        # independent per-locus POAs run together on the GPU (verify-then-trust,
+        # host fallback) instead of a Python loop over loci. Ordering matches the
+        # old per-cluster loop (sorted clusters).
+        ordered = [
+            (reference, rows)
+            for (reference, _bucket_idx), rows in sorted(clusters.items())
+            if len(rows) >= polisher.min_depth
+        ]
+        if not ordered:
+            return []
+        polished_all = polisher.consensus_batch(
+            [[reads[r] for r in rows] for _reference, rows in ordered]
+        )
+
         out: list[LocusConsensus] = []
-        for (reference, _bucket_idx), rows in sorted(clusters.items()):
-            if len(rows) < polisher.min_depth:
-                continue
-            seqs = [reads[r] for r in rows]
-            polished = polisher.consensus(seqs)
+        for (reference, rows), polished in zip(ordered, polished_all):
             if not polished.consensus:
                 continue
             out.append(

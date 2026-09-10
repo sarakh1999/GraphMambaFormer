@@ -91,6 +91,19 @@ def genomeworks_align_batch_enabled() -> bool:
     """Whether the batched cudaaligner GPU path is active this process."""
     return _GW_ALIGN_BATCH_MODE != "never" and not _gw_align_batch_disabled
 
+
+# Batched cudapoa GPU path (see :func:`poa_consensus_batch`). POA is a sequential
+# fold *within* a consensus, so the batch dimension is *across* independent loci.
+# ``never`` disables the GPU batch; a runtime verification mismatch disables it
+# for the process (the per-locus host reference then carries correctness).
+_GW_POA_BATCH_MODE = os.environ.get("GMF_GW_POA_BATCH", "warmup").strip().lower()
+_gw_poa_batch_disabled = False
+
+
+def genomeworks_poa_batch_enabled() -> bool:
+    """Whether the batched cudapoa GPU path is active this process."""
+    return _GW_POA_BATCH_MODE != "never" and not _gw_poa_batch_disabled
+
 # Base codes shared with :mod:`graphmambaformer.alignment.seeding`
 # (A C G T -> 1..4, N -> 5, sentinel 0). A real match needs equal codes in 1..4;
 # N (5), the sentinel (0) and negative padding never match.
@@ -1108,6 +1121,333 @@ def poa_msa(
     return consensus, [_decode(_as_codes(s)) for s in sequences]
 
 
+@dataclass
+class _PoaFillSpec:
+    """Inputs to one graph-vs-sequence POA fill, extracted from a ``_PoaGraph``.
+
+    Rows ``1..G`` are graph nodes in topological order; row ``0`` is the all-gap
+    border. ``pred_flat[pred_off[gi-1]:pred_off[gi]]`` holds the score-matrix
+    rows of node ``order[gi-1]``'s graph predecessors (the border row ``0`` when
+    it has none), in the same order the host reference iterates them so the
+    strict-``>`` tie-breaks match.
+    """
+
+    order: list[int]
+    base_of_row: np.ndarray   # (G,)  int32 — graph base of each row's node
+    pred_off: np.ndarray      # (G+1,) int32 — CSR offsets, one per row gi=1..G
+    pred_flat: np.ndarray     # (nnz,) int32 — predecessor rows (0..G)
+    codes: np.ndarray         # (S,)  the sequence being aligned to the graph
+    G: int
+    S: int
+
+
+def _poa_fill_spec(graph: _PoaGraph, codes: np.ndarray) -> _PoaFillSpec:
+    """Extract the fill inputs for aligning ``codes`` to the current ``graph``.
+
+    Mirrors the per-row predecessor / base construction inside the host
+    :func:`_poa_align_and_add`, but as flat arrays a kernel can consume.
+    """
+    order = graph.topo_order()
+    pos = {node: idx for idx, node in enumerate(order)}
+    G = len(order)
+    S = int(len(codes))
+    base_of_row = np.empty(G, dtype=np.int32)
+    pred_off = np.zeros(G + 1, dtype=np.int32)
+    pred_lists: list[list[int]] = []
+    for gi in range(1, G + 1):
+        node = order[gi - 1]
+        base_of_row[gi - 1] = graph.base[node]
+        preds = [pos[p] + 1 for p in graph.inn[node]] or [0]
+        pred_lists.append(preds)
+        pred_off[gi] = pred_off[gi - 1] + len(preds)
+    if G:
+        pred_flat = np.fromiter(
+            (r for preds in pred_lists for r in preds),
+            dtype=np.int32, count=int(pred_off[G]),
+        )
+    else:
+        pred_flat = np.zeros(0, dtype=np.int32)
+    return _PoaFillSpec(
+        order=order, base_of_row=base_of_row, pred_off=pred_off,
+        pred_flat=pred_flat, codes=np.asarray(codes), G=G, S=S,
+    )
+
+
+def _poa_fold_from_fill(
+    graph: _PoaGraph,
+    spec: _PoaFillSpec,
+    fill: "tuple[np.ndarray, np.ndarray, np.ndarray]",
+    weight: int,
+) -> None:
+    """Trace back the filled DP and fold the alignment into ``graph``.
+
+    Byte-for-byte the tail of the host :func:`_poa_align_and_add` (same end-cell
+    choice, ``move`` / ``pred_g`` traceback and node/edge folding), factored out
+    so the GPU fill can reuse it without re-deriving the reference behaviour.
+    """
+    order = spec.order
+    codes = spec.codes
+    score, move, pred_g = fill
+    S = spec.S
+    gi = int(np.argmax(score[:, S]))
+    s = S
+    aligned: list[tuple[int, int]] = []
+    while gi > 0 or s > 0:
+        mv = move[gi, s]
+        if gi > 0 and s > 0 and mv == 0:
+            node = order[gi - 1]
+            aligned.append((node, s - 1))
+            gi = int(pred_g[gi, s])
+            s -= 1
+        elif gi > 0 and mv == 1:
+            gi = int(pred_g[gi, s])  # delete graph node: no sequence base
+        else:
+            aligned.append((-1, s - 1))  # insertion: new node for this base
+            s -= 1
+    aligned.reverse()
+
+    node_for_seq: dict[int, int] = {}
+    for node, si in aligned:
+        if si < 0:
+            continue
+        c = int(codes[si])
+        if node >= 0 and graph.base[node] == c:
+            graph.node_weight[node] += weight
+            node_for_seq[si] = node
+        else:
+            new_node = graph.add_node(c)
+            graph.node_weight[new_node] += weight
+            node_for_seq[si] = new_node
+    prev = -1
+    for si in range(len(codes)):
+        cur = node_for_seq.get(si)
+        if cur is None:  # pragma: no cover - every base gets a node above
+            continue
+        if prev >= 0:
+            graph.add_edge(prev, cur, weight)
+        prev = cur
+
+
+def _poa_fill_batch(
+    specs: "Sequence[_PoaFillSpec]",
+    *,
+    match: float,
+    mismatch: float,
+    gap: float,
+) -> "list[tuple[np.ndarray, np.ndarray, np.ndarray]] | None":
+    """Fill every ``(graph, sequence)`` DP on the GPU (one thread per spec).
+
+    Returns per-spec ``(score, move, pred_g)`` trimmed to ``(G+1, S+1)`` — the
+    same matrices the host fill produces — or ``None`` when the CUDA fill kernel
+    is unavailable or the batch is too large, in which case the caller defers the
+    whole consensus to the host reference.
+    """
+    if not specs:
+        return []
+    cp = cupy_module()
+    if cp is None:
+        return None
+    try:
+        import torch
+
+        from .backend import default_context
+        from .cuda_kernels import _kernel as _compile_kernel
+        from .cuda_kernels import poa_fill
+
+        if _compile_kernel("poa_fill") is None or not torch.cuda.is_available():
+            return None
+        dev = torch.device(str(default_context().caps.device))
+        if dev.type != "cuda":
+            return None
+
+        B = len(specs)
+        maxG = max(sp.G for sp in specs)
+        maxS = max(sp.S for sp in specs)
+        if maxG == 0 or maxS == 0:
+            return None
+        # Bound device memory: score(f32)+move(i8)+pred_g(i32) over (B, G+1, S+1).
+        cells = B * (maxG + 1) * (maxS + 1)
+        if maxG > 4096 or maxS > 4096 or cells > 128_000_000:
+            return None
+
+        base = np.zeros((B, maxG), dtype=np.int32)
+        codes = np.zeros((B, maxS), dtype=np.int32)
+        g_lens = np.empty(B, dtype=np.int32)
+        s_lens = np.empty(B, dtype=np.int32)
+        pred_off = np.zeros((B, maxG + 1), dtype=np.int32)
+        pred_base = np.empty(B, dtype=np.int32)
+        flats: list[np.ndarray] = []
+        acc = 0
+        for bi, sp in enumerate(specs):
+            base[bi, : sp.G] = sp.base_of_row
+            codes[bi, : sp.S] = sp.codes[: sp.S]
+            g_lens[bi], s_lens[bi] = sp.G, sp.S
+            pred_off[bi, : sp.G + 1] = sp.pred_off
+            pred_base[bi] = acc
+            flats.append(sp.pred_flat)
+            acc += int(sp.pred_flat.size)
+        pred_flat = (
+            np.concatenate(flats) if flats else np.zeros(0, dtype=np.int32)
+        ).astype(np.int32)
+
+        score, move, pred_g = poa_fill(
+            torch.as_tensor(base, device=dev),
+            torch.as_tensor(codes, device=dev),
+            torch.as_tensor(g_lens, device=dev),
+            torch.as_tensor(s_lens, device=dev),
+            torch.as_tensor(pred_off, device=dev),
+            torch.as_tensor(pred_flat, device=dev),
+            torch.as_tensor(pred_base, device=dev),
+            match=match, mismatch=mismatch, gap=gap,
+        )
+        rows, cols = maxG + 1, maxS + 1
+        score_np = score.cpu().numpy().reshape(B, rows, cols)
+        move_np = move.cpu().numpy().reshape(B, rows, cols)
+        pred_np = pred_g.cpu().numpy().reshape(B, rows, cols)
+        out: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        for bi, sp in enumerate(specs):
+            g1, s1 = sp.G + 1, sp.S + 1
+            out.append((
+                score_np[bi, :g1, :s1].astype(np.float64),
+                move_np[bi, :g1, :s1].astype(np.int8),
+                pred_np[bi, :g1, :s1].astype(np.int64),
+            ))
+        return out
+    except Exception:
+        return None
+
+
+def poa_consensus_batch(
+    groups: Sequence[Sequence["str | np.ndarray"]],
+    *,
+    match: float = 2.0,
+    mismatch: float = 4.0,
+    gap: float = 4.0,
+) -> list[str]:
+    """Consensus for each independent read group (batched ``cudapoa``).
+
+    Each group is one locus pile-up: several noisy reads over the same region
+    collapsed into a single POA consensus. POA is a sequential fold *within* a
+    group (each read is aligned to the graph the previous read produced), so the
+    only parallelism is *across* groups — which is exactly this batch dimension,
+    and how :meth:`SevenStagePipeline._polish_loci` calls it.
+
+    On a CUDA host with the batched POA fill kernel this offloads every group's
+    graph-alignment DP to the GPU (one thread per active group per fold round)
+    under the same verify-then-trust warm-up as the other primitives; the graph
+    build, traceback and heaviest-bundling stay on the host so the consensus is
+    identical to :func:`poa_consensus`. A single disagreeing consensus (or any
+    exception) permanently drops the process back to the per-group host path, so
+    the result can never differ from the reference. Everywhere else (CPU/MPS,
+    fractional scores) it is the per-group host path from the first call.
+
+    Returns one consensus string per input group, in order.
+    """
+    global _gw_poa_batch_disabled
+
+    def _host() -> list[str]:
+        return [
+            poa_consensus(g, match=match, mismatch=mismatch, gap=gap)
+            for g in groups
+        ]
+
+    if not groups:
+        return []
+    # Only the integer-scoring fill is bit-exact on the GPU; the fractional case
+    # (like poa_consensus) keeps the scalar recurrence on the host.
+    if (
+        not genomeworks_poa_batch_enabled()
+        or not _integer_scoring(match, mismatch, gap)
+    ):
+        return _host()
+
+    try:
+        result = _poa_consensus_batch_gpu(
+            groups, match=match, mismatch=mismatch, gap=gap
+        )
+    except Exception:
+        result = None
+    if result is None:
+        return _host()
+
+    if _gw_should_verify("cudapoa_batch"):
+        reference = _host()
+        if result == reference:
+            _gw_mark_verified("cudapoa_batch")
+            return result
+        _gw_poa_batch_disabled = True  # buggy on this host: never batch again
+        return reference
+    return result
+
+
+def _poa_consensus_batch_gpu(
+    groups: Sequence[Sequence["str | np.ndarray"]],
+    *,
+    match: float,
+    mismatch: float,
+    gap: float,
+) -> "list[str] | None":
+    """GPU-offloaded batched POA consensus, or ``None`` to defer to the host.
+
+    The fold is orchestrated on the host — each group keeps its own
+    :class:`_PoaGraph`, sequences are added longest-first exactly as in
+    :func:`poa_consensus` — but the O(G·S) graph-alignment **fill** of every
+    group that still has a read to add this round is issued as a single batched
+    call (:func:`_poa_fill_batch`). The per-cell traceback and the fold back
+    into each graph reuse the shared host helpers, so only the fill runs on the
+    device and everything else is byte-for-byte the portable reference.
+    """
+    cp = cupy_module()
+    if cp is None:
+        return None
+    import torch
+
+    from .cuda_kernels import _kernel as _compile_kernel
+
+    if _compile_kernel("poa_fill") is None or not torch.cuda.is_available():
+        return None
+
+    # Longest-first per group (matches poa_consensus), dropping empty reads.
+    per_group: list[list[np.ndarray]] = []
+    for g in groups:
+        seqs = [c for c in (_as_codes(s) for s in g) if len(c) > 0]
+        seqs.sort(key=len, reverse=True)
+        per_group.append(seqs)
+
+    graphs = [_PoaGraph() for _ in groups]
+    for gi, seqs in enumerate(per_group):
+        if seqs:
+            _poa_add_first(graphs[gi], seqs[0], weight=1)
+
+    max_reads = max((len(s) for s in per_group), default=0)
+    for r in range(1, max_reads):
+        # Every group that still has an r-th read contributes one fill problem;
+        # they are all aligned in a single batched device call.
+        active: list[int] = []
+        specs: list[_PoaFillSpec] = []
+        for gi, seqs in enumerate(per_group):
+            if r >= len(seqs):
+                continue
+            active.append(gi)
+            specs.append(_poa_fill_spec(graphs[gi], seqs[r]))
+        if not specs:
+            continue
+        fills = _poa_fill_batch(specs, match=match, mismatch=mismatch, gap=gap)
+        if fills is None:  # device path unavailable / rejected the batch
+            return None
+        for gi, spec, fill in zip(active, specs, fills):
+            _poa_fold_from_fill(graphs[gi], spec, fill, weight=1)
+
+    out: list[str] = []
+    for gi, graph in enumerate(graphs):
+        if len(graph) == 0:
+            out.append("")
+            continue
+        path = _poa_consensus_path(graph)
+        out.append(_decode(np.asarray([graph.base[n] for n in path], dtype=np.int8)))
+    return out
+
+
 # =========================================================================== #
 # cudamapper — GPU minimizer seeding + anchor chaining (seq-to-seq mapping)
 # =========================================================================== #
@@ -1418,6 +1758,8 @@ __all__ = [
     "global_align",
     "global_align_batch",
     "poa_consensus",
+    "poa_consensus_batch",
     "poa_msa",
+    "genomeworks_poa_batch_enabled",
     "map_to_reference",
 ]

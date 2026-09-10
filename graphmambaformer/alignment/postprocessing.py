@@ -169,6 +169,45 @@ class ConsensusPolisher:
         )
         return ConsensusResult(cons, len(seqs), genomeworks_backend())
 
+    def consensus_batch(
+        self, groups: Sequence[Sequence[str]]
+    ) -> list[ConsensusResult]:
+        """POA consensus for several independent locus pile-ups in one call.
+
+        Semantically identical to calling :meth:`consensus` on each group, but
+        every qualifying group (``>= min_depth`` non-empty reads) shares a single
+        batched ``cudapoa`` dispatch — the GPU runs the independent per-locus POAs
+        together instead of the pipeline looping one locus at a time. Groups below
+        ``min_depth`` echo their single read unchanged, exactly as :meth:`consensus`.
+        """
+        from ..accel.genomeworks_ops import (
+            genomeworks_backend,
+            poa_consensus_batch,
+        )
+
+        cleaned = [[r for r in g if r] for g in groups]
+        results: list[ConsensusResult] = [
+            ConsensusResult("", 0, "none")
+        ] * len(groups)
+        todo_idx: list[int] = []
+        todo_seqs: list[list[str]] = []
+        for i, seqs in enumerate(cleaned):
+            if len(seqs) < self.min_depth:
+                results[i] = ConsensusResult(
+                    seqs[0] if seqs else "", len(seqs), "none"
+                )
+            else:
+                todo_idx.append(i)
+                todo_seqs.append(seqs)
+        if todo_seqs:
+            cons = poa_consensus_batch(
+                todo_seqs, match=self.match, mismatch=self.mismatch, gap=self.gap
+            )
+            backend = genomeworks_backend()
+            for i, seqs, c in zip(todo_idx, todo_seqs, cons):
+                results[i] = ConsensusResult(c, len(seqs), backend)
+        return results
+
 
 class PopulationAwareMAPQ:
     """Bayesian MAPQ adjustment using a bounded population prior ratio.

@@ -147,6 +147,145 @@ def test_poa_msa_returns_consensus_and_inputs():
     assert inputs == ["ACGT", "ACGT"]
 
 
+def _random_poa_groups(seed: int, n_groups: int = 8):
+    """A handful of independent locus pile-ups: a backbone per group plus a few
+    reads carrying random substitutions / short indels."""
+    rng = random.Random(seed)
+
+    def _mut(base: str) -> str:
+        chars = list(base)
+        for _ in range(rng.randint(0, 3)):
+            p = rng.randrange(len(chars))
+            roll = rng.random()
+            if roll < 0.6:                       # substitution
+                chars[p] = rng.choice("ACGT")
+            elif roll < 0.8:                     # insertion
+                chars.insert(p, rng.choice("ACGT"))
+            else:                                # deletion
+                del chars[p]
+        return "".join(chars) or base
+
+    groups = []
+    for _ in range(n_groups):
+        base = "".join(rng.choice("ACGT") for _ in range(rng.randint(20, 60)))
+        depth = rng.randint(1, 5)
+        groups.append([_mut(base) for _ in range(depth)])
+    return groups
+
+
+def test_poa_consensus_batch_matches_per_group():
+    """The batched entry point returns exactly per-group ``poa_consensus``.
+
+    On CPU this exercises the host fallback path (no CuPy), which must be the
+    plain per-group reference in order.
+    """
+    groups = _random_poa_groups(seed=17)
+    groups += [[], ["ACGTACGT"]]  # empty group and a single-read group
+    assert gw.poa_consensus_batch(groups) == [gw.poa_consensus(g) for g in groups]
+
+
+def _poa_fill_scalar(spec, match, mismatch, gap):
+    """NumPy scalar reproduction of the ``poa_fill`` CUDA kernel recurrence.
+
+    Same border init, same predecessor iteration order and strict-``>`` first-
+    wins tie-break, same insertion-last comparison. Used to validate the GPU
+    fill path (spec construction + traceback + fold + orchestration) end-to-end
+    on CPU, without a device — the analog of the cudaaligner traceback test.
+    """
+    import numpy as np
+
+    G, S = spec.G, spec.S
+    NEG = -1e30
+    score = np.full((G + 1, S + 1), NEG, dtype=np.float64)
+    move = np.zeros((G + 1, S + 1), dtype=np.int8)
+    pred_g = np.full((G + 1, S + 1), -1, dtype=np.int64)
+    off, flat, base, codes = spec.pred_off, spec.pred_flat, spec.base_of_row, spec.codes
+
+    score[0, 0] = 0.0
+    for s in range(1, S + 1):
+        score[0, s] = -gap * s
+        move[0, s] = 2
+    for gi in range(1, G + 1):
+        preds = [int(r) for r in flat[int(off[gi - 1]):int(off[gi])]]
+        best_r, best_v = preds[0], score[preds[0], 0]
+        for r in preds[1:]:
+            if score[r, 0] > best_v:
+                best_v, best_r = score[r, 0], r
+        score[gi, 0] = best_v - gap
+        move[gi, 0] = 1
+        pred_g[gi, 0] = best_r
+    for gi in range(1, G + 1):
+        gbase = int(base[gi - 1])
+        preds = [int(r) for r in flat[int(off[gi - 1]):int(off[gi])]]
+        for s in range(1, S + 1):
+            c = int(codes[s - 1])
+            sub = match if (gbase == c and 1 <= gbase <= 4) else -mismatch
+            best, bmove, brow = NEG, 2, preds[0]
+            for r in preds:
+                diag = score[r, s - 1] + sub
+                if diag > best:
+                    best, bmove, brow = diag, 0, r
+                dele = score[r, s] - gap
+                if dele > best:
+                    best, bmove, brow = dele, 1, r
+            ins = score[gi, s - 1] - gap
+            if ins > best:
+                best, bmove, brow = ins, 2, gi
+            score[gi, s], move[gi, s], pred_g[gi, s] = best, bmove, brow
+    return score, move, pred_g
+
+
+def test_poa_fill_batch_orchestration_reproduces_consensus():
+    """spec + kernel-recurrence fill + fold + round orchestration == host POA.
+
+    This is the GPU cudapoa path with the CUDA fill swapped for its exact NumPy
+    twin, so a green result means the device path is bit-identical to
+    ``poa_consensus`` for integer scores (float32 stays exact) — everything but
+    the RawKernel launch itself is covered here.
+    """
+    import numpy as np
+
+    match, mismatch, gap = 2.0, 4.0, 4.0
+    groups = _random_poa_groups(seed=23, n_groups=10)
+
+    for group in groups:
+        # Mirror _poa_consensus_batch_gpu's host orchestration exactly.
+        seqs = [c for c in (gw._as_codes(s) for s in group) if len(c) > 0]
+        seqs.sort(key=len, reverse=True)
+        graph = gw._PoaGraph()
+        if seqs:
+            gw._poa_add_first(graph, seqs[0], weight=1)
+        for r in range(1, len(seqs)):
+            spec = gw._poa_fill_spec(graph, seqs[r])
+            fill = _poa_fill_scalar(spec, match, mismatch, gap)
+            gw._poa_fold_from_fill(graph, spec, fill, weight=1)
+        if len(graph) == 0:
+            got = ""
+        else:
+            path = gw._poa_consensus_path(graph)
+            got = gw._decode(np.asarray([graph.base[n] for n in path], dtype=np.int8))
+        assert got == gw.poa_consensus(group, match=match, mismatch=mismatch, gap=gap)
+
+
+def test_consensus_batch_matches_per_group():
+    """ConsensusPolisher.consensus_batch == per-group consensus (the seam
+    _polish_loci relies on), including below-min-depth echo and empty groups."""
+    from graphmambaformer.alignment import ConsensusPolisher
+
+    polisher = ConsensusPolisher(min_depth=2)
+    groups = [
+        ["ACGTACGTAC", "ACGTACGTAC", "ACGTTCGTAC"],
+        ["TTGGCCAA"],                 # below min_depth -> echo unchanged
+        ["GGGGCCCCAAAA", "GGGGCCTCAAAA", "GGGGCCCCAAAA", "GGGACCCCAAAA"],
+        [],                          # empty -> ""
+    ]
+    batch = polisher.consensus_batch(groups)
+    per = [polisher.consensus(g) for g in groups]
+    assert len(batch) == len(groups)
+    for b, p in zip(batch, per):
+        assert (b.consensus, b.depth, b.backend) == (p.consensus, p.depth, p.backend)
+
+
 # --------------------------------------------------------------------------- #
 # cudamapper — GPU seeding + chaining facade (runs on the portable tier on CPU)
 # --------------------------------------------------------------------------- #

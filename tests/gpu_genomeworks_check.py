@@ -39,9 +39,11 @@ from graphmambaformer.accel import accel_summary, genomeworks_summary
 from graphmambaformer.accel.backend import detect_capabilities, list_visible_gpus
 from graphmambaformer.accel.cuda_kernels import kernels_available
 from graphmambaformer.accel.genomeworks_ops import (
+    genomeworks_align_batch_enabled,
     genomeworks_backend,
     genomeworks_bindings_available,
     global_align,
+    global_align_batch,
     map_to_reference,
     poa_consensus,
     ungapped_extend,
@@ -170,11 +172,26 @@ def check_parity() -> int:
     if not map_ok:
         failures += map_disagree
 
-    # cudaaligner / cudapoa: identical code across tiers unless real bindings
-    # are present; run them to confirm they execute on this host.
-    _ = global_align(_rand_seq(200, rng), _rand_seq(210, rng))
+    # cudaaligner: batched GPU Gotoh (global_align_batch) vs per-pair host. The
+    # GPU fills the DP + traceback pointers; the host rebuilds the CIGAR, so it
+    # must match global_align exactly (score and CIGAR).
+    aln_pairs = []
+    for _ in range(64):
+        q = _rand_seq(rng.randint(80, 300), rng)
+        aln_pairs.append((q, _mutate(q, 0.12, rng)))
+    gpu_aln = global_align_batch(aln_pairs)
+    ref_aln = [global_align(q, t) for q, t in aln_pairs]
+    aln_mismatch = sum(
+        0 if (g.cigar == r.cigar and abs(g.score - r.score) <= 1e-6) else 1
+        for g, r in zip(gpu_aln, ref_aln)
+    )
+    extra = "" if genomeworks_align_batch_enabled() else "  [fell back to host]"
+    print(f"cudaaligner   global_align_batch     mismatches={aln_mismatch}  "
+          f"{'OK' if aln_mismatch == 0 else 'FAIL'}{extra}")
+    failures += aln_mismatch
+
+    # cudapoa: identical code across tiers unless real bindings are present.
     _ = poa_consensus([_rand_seq(150, rng) for _ in range(5)])
-    print("cudaaligner   global_align           ran OK")
     print("cudapoa       poa_consensus          ran OK")
 
     return failures
@@ -207,6 +224,7 @@ def _map_prebuilt(reference: str, reads: list[str], device: str) -> tuple[float,
     the anchors — the steady-state mapping throughput.
     """
     from graphmambaformer.accel.backend import default_context
+    from graphmambaformer.accel.genomeworks_ops import _seed_reads
     from graphmambaformer.alignment.chaining import AffineChainer
     from graphmambaformer.alignment.seeding import SeedingEngine
     from graphmambaformer.config import ChainingConfig, SeedingConfig
@@ -223,7 +241,10 @@ def _map_prebuilt(reference: str, reads: list[str], device: str) -> tuple[float,
     bundle = _build()
 
     def _map():
-        anchors = [seeder.seed_read(r, bundle) for r in reads]
+        # _seed_reads batches the whole read set into one device lookup on CUDA
+        # (with a verify-then-trust fallback) and stays per-read on CPU, so this
+        # is the honest GPU-batched vs CPU-per-read comparison the pipeline sees.
+        anchors = _seed_reads(seeder, bundle, reads)
         return chainer.chain_batch(anchors, [None] * len(anchors), device=device)
 
     map_ms = _time(_map, 5)
@@ -263,14 +284,39 @@ def benchmark() -> None:
         print(f"cudamapper    ref {ref_len // 1000:>4}kbp  map 512 reads "
               f"cuda={g_map:8.2f}  portable={c_map:8.2f}  speedup={c_map / g_map:6.1f}x")
 
-    # cudaaligner / cudapoa run on the vectorised host tier (no A/B): report cost.
-    q = _rand_seq(500, rng)
-    t = _mutate(q, 0.1, rng)
-    aln_ms = _time(lambda: global_align(q, t), 20)
+    from graphmambaformer.accel.genomeworks_ops import genomeworks_seed_batch_enabled
+    _status = "active (verified)" if genomeworks_seed_batch_enabled() else "DISABLED (fell back to per-read)"
+    print(f"cudamapper    batched GPU seeding: {_status}")
+
+    # cudaaligner: batched global affine alignment, CUDA Gotoh kernel vs the
+    # per-pair vectorised host reference, swept over batch size (one thread per
+    # pair, so the GPU only pays off once many pairs are in flight — which is how
+    # the extension stage feeds it).
+    #
+    # Spend the verify-then-trust warm-up first: until it is exhausted every call
+    # also runs the full host reference, which would otherwise dominate the first
+    # timed block and make it look ~1x. This mirrors steady-state pipeline use.
+    _warm = [(_rand_seq(180, rng), _mutate(_rand_seq(180, rng), 0.1, rng))
+             for _ in range(4)]
+    for _ in range(12):
+        global_align_batch(_warm)
+    for n_pairs in (128, 512):
+        pairs = []
+        for _ in range(n_pairs):
+            qp = _rand_seq(rng.randint(150, 260), rng)
+            pairs.append((qp, _mutate(qp, 0.1, rng)))
+        gpu_ms = _time(lambda p=pairs: global_align_batch(p), 5)
+        cpu_ms = _time(
+            lambda p=pairs: [global_align(q, t) for q, t in p], 3
+        )
+        tag = "" if genomeworks_align_batch_enabled() else " [host-fallback]"
+        print(f"cudaaligner  {n_pairs:>4} pairs x ~200bp  "
+              f"cuda={gpu_ms:8.2f}  portable={cpu_ms:8.2f}  "
+              f"speedup={cpu_ms / gpu_ms:6.1f}x{tag}")
+
+    # cudapoa still runs on the vectorised host tier (no GPU kernel yet).
     reads = [_mutate(_rand_seq(300, rng), 0.08, rng) for _ in range(8)]
     poa_ms = _time(lambda: poa_consensus(reads), 20)
-    print(f"cudaaligner   global_align 500x~500bp   host={aln_ms:8.2f} ms  "
-          "(vectorised NumPy; real cudaaligner if bindings present)")
     print(f"cudapoa       poa_consensus 8x300bp     host={poa_ms:8.2f} ms  "
           "(vectorised NumPy; real cudapoa if bindings present)")
 

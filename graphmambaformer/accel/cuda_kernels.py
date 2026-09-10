@@ -426,6 +426,97 @@ void ungapped_extend(const signed char* __restrict__ query,   // (M,)
 """
 
 
+_GLOBAL_AFFINE_SRC = r"""
+// Global affine (Gotoh) alignment. One thread per (query, target) pair.
+//
+// A single thread runs the full three-matrix recurrence serially and writes a
+// per-cell traceback pointer (0 = diagonal / substitution, 1 = from E / gap in
+// target = deletion, 2 = from F / gap in query = insertion). The (cheap,
+// O(m+n)) traceback that turns pointers into a CIGAR runs on the host, which
+// reproduces the reference tie-break (diag >= E >= F) exactly. Only integer
+// scores are ever sent here, so every partial sum stays < 2^24 and float32 is
+// bit-exact against the float64 host reference.
+//
+// H/E/F are kept as two rolling rows in caller-provided global scratch; the
+// pointer matrix is the only (B, (M+1)*(N+1)) allocation.
+extern "C" __global__
+void global_affine(const signed char* __restrict__ query,   // (B, maxM)
+                   const signed char* __restrict__ target,  // (B, maxN)
+                   const int* __restrict__ qlen,            // (B,)
+                   const int* __restrict__ tlen,            // (B,)
+                   const int batch_size,
+                   const int maxM,
+                   const int maxN,
+                   const float match_s,
+                   const float mismatch_p,
+                   const float gap_open,
+                   const float gap_extend,
+                   float* __restrict__ Hprev,   // (B, maxN+1) scratch
+                   float* __restrict__ Hcur,    // (B, maxN+1) scratch
+                   float* __restrict__ Fprev,   // (B, maxN+1) scratch
+                   float* __restrict__ Fcur,    // (B, maxN+1) scratch
+                   signed char* __restrict__ ptr,   // (B, (maxM+1)*(maxN+1))
+                   float* __restrict__ out_score) { // (B,)
+    const int b = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= batch_size) return;
+
+    const int m = qlen[b];
+    const int n = tlen[b];
+    const float NEG = -1e30f;
+    const float go_ge = gap_open + gap_extend;
+    const long long rowW = (long long)maxN + 1;
+
+    float* hp = Hprev + (long long)b * rowW;
+    float* hc = Hcur  + (long long)b * rowW;
+    float* fp = Fprev + (long long)b * rowW;
+    float* fc = Fcur  + (long long)b * rowW;
+    const long long pbase = (long long)b * (long long)(maxM + 1) * rowW;
+
+    const signed char* qb = query  + (long long)b * maxM;
+    const signed char* tb = target + (long long)b * maxN;
+
+    // Row 0 of H: H[0][0]=0, H[0][j] = -(open + j*extend); pointers = deletions.
+    hp[0] = 0.0f;
+    fp[0] = NEG;
+    ptr[pbase] = 0;
+    for (int j = 1; j <= n; ++j) {
+        hp[j] = -(gap_open + (float)j * gap_extend);
+        fp[j] = NEG;
+        ptr[pbase + j] = 1;
+    }
+
+    for (int i = 1; i <= m; ++i) {
+        const long long prow = pbase + (long long)i * rowW;
+        const signed char a = qb[i - 1];
+        hc[0] = -(gap_open + (float)i * gap_extend);   // H[i][0]
+        fc[0] = NEG;
+        ptr[prow] = 2;                                 // col 0: insertions
+        float e_prev = NEG;                            // E[i][0]
+        for (int j = 1; j <= n; ++j) {
+            const signed char c = tb[j - 1];
+            const float sub = (a == c && a >= 1 && a <= 4) ? match_s : -mismatch_p;
+            const float diag = hp[j - 1] + sub;
+            const float e = fmaxf(hc[j - 1] - go_ge, e_prev - gap_extend);
+            const float f = fmaxf(hp[j]     - go_ge, fp[j]  - gap_extend);
+            float best = diag;
+            signed char p = 0;
+            if (e > best) { best = e; p = 1; }
+            if (f > best) { best = f; p = 2; }
+            hc[j] = best;
+            fc[j] = f;
+            ptr[prow + j] = p;
+            e_prev = e;
+        }
+        float* th = hp; hp = hc; hc = th;   // roll rows
+        float* tf = fp; fp = fc; fc = tf;
+    }
+
+    // After the last swap hp holds row max(m,0); H[m][n] is hp[n].
+    out_score[b] = hp[n];
+}
+"""
+
+
 # --------------------------------------------------------------------------- #
 # Lazy compilation
 # --------------------------------------------------------------------------- #
@@ -441,6 +532,7 @@ def _kernel(name: str) -> Any | None:
         "banded_sw": _BANDED_SW_SRC,
         "wfa_distance": _WFA_DISTANCE_SRC,
         "ungapped_extend": _UNGAPPED_EXTEND_SRC,
+        "global_affine": _GLOBAL_AFFINE_SRC,
     }[name]
     try:
         return cp.RawKernel(source, name, options=("--use_fast_math",))
@@ -766,3 +858,70 @@ def ungapped_extend(
         t_end.to(torch.long),
         score,
     )
+
+
+def global_affine(
+    query: torch.Tensor,
+    target: torch.Tensor,
+    query_len: torch.Tensor,
+    target_len: torch.Tensor,
+    *,
+    match: float,
+    mismatch: float,
+    gap_open: float,
+    gap_extend: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Batched global affine (Gotoh) alignment — traceback pointers + score.
+
+    Args:
+        query / target: ``(B, maxM)`` / ``(B, maxN)`` int8 base codes (A C G T ->
+            1..4, N -> 5, padding 0; only 1..4 can match). Rows are padded to the
+            widest pair; per-pair extents come from ``query_len`` / ``target_len``.
+
+    Returns ``(ptr, score)`` where ``ptr`` is ``(B, (maxM+1)*(maxN+1))`` int8
+    (row-major with stride ``maxN+1``: 0 diag / 1 deletion / 2 insertion) and
+    ``score`` is ``(B,)`` float32 = ``H[m][n]``. The CIGAR is reconstructed on
+    the host from ``ptr`` so the reference tie-break is reproduced exactly.
+    """
+    kernel = _kernel("global_affine")
+    if kernel is None:
+        raise RuntimeError("CuPy global-affine kernel unavailable")
+
+    B, maxM = query.shape
+    maxN = int(target.shape[1])
+    dev = query.device
+    rowW = maxN + 1
+
+    Hprev = torch.empty((B, rowW), dtype=torch.float32, device=dev)
+    Hcur = torch.empty((B, rowW), dtype=torch.float32, device=dev)
+    Fprev = torch.empty((B, rowW), dtype=torch.float32, device=dev)
+    Fcur = torch.empty((B, rowW), dtype=torch.float32, device=dev)
+    ptr = torch.empty((B, (maxM + 1) * rowW), dtype=torch.int8, device=dev)
+    score = torch.empty(B, dtype=torch.float32, device=dev)
+
+    threads = 128
+    blocks = (B + threads - 1) // threads
+    kernel(
+        (blocks,),
+        (threads,),
+        (
+            _as_cupy(query.to(torch.int8)),
+            _as_cupy(target.to(torch.int8)),
+            _as_cupy(query_len.to(torch.int32)),
+            _as_cupy(target_len.to(torch.int32)),
+            np.int32(B),
+            np.int32(maxM),
+            np.int32(maxN),
+            np.float32(match),
+            np.float32(mismatch),
+            np.float32(gap_open),
+            np.float32(gap_extend),
+            _as_cupy(Hprev),
+            _as_cupy(Hcur),
+            _as_cupy(Fprev),
+            _as_cupy(Fcur),
+            _as_cupy(ptr),
+            _as_cupy(score),
+        ),
+    )
+    return ptr, score

@@ -743,12 +743,9 @@ class ExtensionEngine:
             ]
 
         if algorithm == "cudaaligner":
-            return [
-                self._extend_cudaaligner(
-                    chain, forward, reverse, ref_codes, read_len, ref_len
-                )
-                for chain in chains
-            ]
+            return self._extend_cudaaligner_batch(
+                chains, forward, reverse, ref_codes, read_len, ref_len
+            )
 
         windows = [self._window(c, anchors, read_len, ref_len) for c in chains]
         half_band = max(w[2] for w in windows)
@@ -1058,7 +1055,7 @@ class ExtensionEngine:
         return out
 
     # ---- GenomeWorks cudaaligner / cudaextender helpers -------------------- #
-    def _extend_cudaaligner(
+    def _cudaaligner_window(
         self,
         chain: Chain,
         forward: np.ndarray,
@@ -1066,30 +1063,27 @@ class ExtensionEngine:
         ref_codes: np.ndarray,
         read_len: int,
         ref_len: int,
-    ) -> ExtensionResult:
-        """Global affine alignment of the chain window (GenomeWorks cudaaligner).
+    ) -> tuple[np.ndarray, np.ndarray, int]:
+        """``(read_codes, ref_window, window_start)`` for one chain's global
+        (cudaaligner) alignment.
 
-        Like the WFA path this aligns end-to-end within a window sized to the
-        read plus the chain's net indel, but it emits a full ``=``/``X``/``I``/
-        ``D`` CIGAR directly (Gotoh traceback) instead of an edit distance.
+        Like the WFA path this frames an end-to-end window sized to the read
+        plus the chain's net indel. Shared by the single-chain and batched
+        paths so both build byte-identical windows.
         """
-        from ..accel.genomeworks_ops import global_align
-
         codes = forward if chain.strand > 0 else reverse
         start = int(np.clip(chain.ref_start - chain.read_start, 0, max(ref_len - 1, 0)))
         net_indel = chain.ref_span - chain.read_span
         target_length = max(1, read_len + net_indel)
         end = min(ref_len, start + target_length)
-        window = ref_codes[start:end]
+        return codes, ref_codes[start:end], start
 
-        aln = global_align(
-            codes,
-            window,
-            match=self.cfg.match_score,
-            mismatch=self.cfg.mismatch_penalty,
-            gap_open=self.cfg.gap_open,
-            gap_extend=self.cfg.gap_extend,
-        )
+    def _cudaaligner_result(
+        self, aln, start: int, read_len: int
+    ) -> ExtensionResult:
+        """Assemble an :class:`ExtensionResult` from a global alignment of the
+        chain window at reference offset ``start``. The aligner emits a full
+        ``=``/``X``/``I``/``D`` CIGAR directly (Gotoh traceback)."""
         return ExtensionResult(
             score=float(aln.score),
             cigar=list(aln.cigar),
@@ -1102,6 +1096,71 @@ class ExtensionEngine:
             n_insertion=aln.n_insertion,
             n_deletion=aln.n_deletion,
         )
+
+    def _extend_cudaaligner(
+        self,
+        chain: Chain,
+        forward: np.ndarray,
+        reverse: np.ndarray,
+        ref_codes: np.ndarray,
+        read_len: int,
+        ref_len: int,
+    ) -> ExtensionResult:
+        """Global affine alignment of a single chain window (GenomeWorks
+        cudaaligner). See :meth:`_extend_cudaaligner_batch` for the batched
+        path the pipeline actually uses."""
+        from ..accel.genomeworks_ops import global_align
+
+        codes, window, start = self._cudaaligner_window(
+            chain, forward, reverse, ref_codes, read_len, ref_len
+        )
+        aln = global_align(
+            codes,
+            window,
+            match=self.cfg.match_score,
+            mismatch=self.cfg.mismatch_penalty,
+            gap_open=self.cfg.gap_open,
+            gap_extend=self.cfg.gap_extend,
+        )
+        return self._cudaaligner_result(aln, start, read_len)
+
+    def _extend_cudaaligner_batch(
+        self,
+        chains: Sequence[Chain],
+        forward: np.ndarray,
+        reverse: np.ndarray,
+        ref_codes: np.ndarray,
+        read_len: int,
+        ref_len: int,
+    ) -> list[ExtensionResult]:
+        """Global-align every chain window in one batched cudaaligner launch.
+
+        Builds the same per-chain windows as :meth:`_extend_cudaaligner`, then
+        issues a single :func:`global_align_batch` call. On the CUDA tier that
+        is one GPU Gotoh kernel launch (one thread per chain) with a host-side
+        pointer traceback; everywhere else it degrades to the per-pair host
+        reference. Either way the CIGARs are identical to the single-chain
+        path — only the number of launches changes.
+        """
+        if not chains:
+            return []
+        from ..accel.genomeworks_ops import global_align_batch
+
+        windows = [
+            self._cudaaligner_window(c, forward, reverse, ref_codes, read_len, ref_len)
+            for c in chains
+        ]
+        alns = global_align_batch(
+            [(codes, window) for codes, window, _ in windows],
+            match=self.cfg.match_score,
+            mismatch=self.cfg.mismatch_penalty,
+            gap_open=self.cfg.gap_open,
+            gap_extend=self.cfg.gap_extend,
+        )
+        return [
+            self._cudaaligner_result(aln, start, read_len)
+            for aln, (_codes, _window, start) in zip(alns, windows)
+        ]
 
     def _chain_seed(
         self, chain: Chain, anchors: AnchorSet

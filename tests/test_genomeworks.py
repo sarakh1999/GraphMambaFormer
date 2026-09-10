@@ -162,6 +162,153 @@ def test_map_to_reference_places_read():
     assert abs(top.target_start - 300) <= 20
 
 
+def test_gpu_kmer_query_batch_matches_per_read_query():
+    """Batched cudamapper seeding must reproduce per-read ``query()`` exactly.
+
+    This exercises the risky segment-and-split math on CPU: ``GPUKmerIndex``
+    runs on CPU too (only the ``_seed_reads`` dispatcher gates on CUDA), so the
+    GPU batched lookup is validated without a GPU. On the A100 the same code is
+    additionally cross-checked at runtime by the verify-then-trust warm-up.
+    """
+    import numpy as np
+
+    from graphmambaformer.alignment.seeding import (
+        SeedingEngine,
+        encode_bases,
+        reverse_complement_codes,
+    )
+    from graphmambaformer.config import SeedingConfig
+
+    reference = _random_seq(1200, seed=11)
+    seeder = SeedingEngine(
+        SeedingConfig(modes=("gpu_kmer",), kmer=13, window=5), device="cpu"
+    )
+    bundle = seeder.build_indices(reference)
+    index = bundle.indices["gpu_kmer"]
+
+    # Exact substrings, their reverse-complements, a near-miss random read, and
+    # an empty input — covering the zero-length and no-hit branches.
+    reads = [reference[100:260], reference[700:830], _random_seq(150, seed=99)]
+    code_arrays = []
+    for r in reads:
+        fwd = encode_bases(r)
+        code_arrays.append(fwd)
+        code_arrays.append(reverse_complement_codes(fwd))
+    code_arrays.append(encode_bases(""))
+
+    batched = gw._gpu_kmer_query_batch(index, code_arrays)
+    assert len(batched) == len(code_arrays)
+    for codes, (rp, fp, ln) in zip(code_arrays, batched):
+        e_rp, e_fp, e_ln = index.query(codes)
+        got = sorted(zip(rp.tolist(), fp.tolist(), ln.tolist()))
+        exp = sorted(
+            zip(
+                np.asarray(e_rp).tolist(),
+                np.asarray(e_fp).tolist(),
+                np.asarray(e_ln).tolist(),
+            )
+        )
+        assert got == exp, "batched lookup diverged from per-read query()"
+
+
+def test_global_align_batch_cpu_matches_per_pair():
+    """On CPU, global_align_batch must equal per-pair global_align (incl. empties)."""
+    rng = random.Random(4)
+    pairs = []
+    for _ in range(24):
+        q = _random_seq(rng.randint(0, 60), rng.randint(0, 10_000))
+        t = _random_seq(rng.randint(0, 60), rng.randint(0, 10_000))
+        pairs.append((q, t))
+    got = gw.global_align_batch(pairs)
+    exp = [gw.global_align(q, t) for q, t in pairs]
+    assert len(got) == len(exp)
+    for g, e in zip(got, exp):
+        assert g.cigar == e.cigar and abs(g.score - e.score) <= 1e-6
+
+
+def test_traceback_ptr_reproduces_global_align():
+    """The GPU path's host traceback + flat ptr layout reproduce global_align.
+
+    The CUDA ``global_affine`` kernel only fills the ``(m+1, n+1)`` pointer matrix
+    (flattened with stride ``maxN+1``); the CIGAR is rebuilt on the host by
+    ``_traceback_ptr``. Here the *exact same* integer-scored Gotoh recurrence the
+    kernel runs is reproduced in NumPy, then handed to ``_traceback_ptr`` — so
+    the pointer convention, flat indexing, tie-break, and traceback are all
+    validated on CPU (only the float32-vs-float64 arithmetic differs on-device,
+    and integer scores are exact in both).
+    """
+    import numpy as np
+
+    match, mismatch, go, ge = 2.0, 4.0, 6.0, 2.0
+    go_ge = go + ge
+    NEG = -1e30
+    rng = random.Random(9)
+    for trial in range(60):
+        q = _random_seq(rng.randint(1, 45), 1000 + trial)
+        t = _random_seq(rng.randint(1, 45), 5000 + trial)
+        qc, tc = gw._as_codes(q), gw._as_codes(t)
+        m, n = len(qc), len(tc)
+        rowW = n + 1
+        ptr = np.zeros((m + 1) * rowW, dtype=np.int8)
+        h_prev = np.empty(rowW)
+        f_prev = np.empty(rowW)
+        h_prev[0] = 0.0
+        f_prev[0] = NEG
+        for j in range(1, n + 1):
+            h_prev[j] = -(go + j * ge)
+            f_prev[j] = NEG
+            ptr[j] = 1
+        for i in range(1, m + 1):
+            a = int(qc[i - 1])
+            h_cur = np.empty(rowW)
+            f_cur = np.empty(rowW)
+            h_cur[0] = -(go + i * ge)
+            f_cur[0] = NEG
+            ptr[i * rowW] = 2
+            e_prev = NEG
+            for j in range(1, n + 1):
+                b = int(tc[j - 1])
+                sub = match if (a == b and 1 <= a <= 4) else -mismatch
+                diag = h_prev[j - 1] + sub
+                e = max(h_cur[j - 1] - go_ge, e_prev - ge)
+                f = max(h_prev[j] - go_ge, f_prev[j] - ge)
+                best, p = diag, 0
+                if e > best:
+                    best, p = e, 1
+                if f > best:
+                    best, p = f, 2
+                h_cur[j] = best
+                f_cur[j] = f
+                ptr[i * rowW + j] = p
+                e_prev = e
+            h_prev, f_prev = h_cur, f_cur
+
+        ops, nm, nx, ni, nd = gw._traceback_ptr(ptr, qc, tc, m, n, n)
+        exp = gw.global_align(q, t)
+        assert gw._merge_ops(ops) == exp.cigar, (q, t)
+        assert abs(float(h_prev[n]) - exp.score) <= 1e-6
+        assert (nm, nx, ni, nd) == (
+            exp.n_match, exp.n_mismatch, exp.n_insertion, exp.n_deletion
+        )
+
+
+def test_seed_reads_cpu_falls_back_to_per_read():
+    """On CPU (no CUDA index) ``_seed_reads`` yields identical per-read anchors."""
+    from graphmambaformer.alignment.seeding import SeedingEngine
+    from graphmambaformer.config import SeedingConfig
+
+    reference = _random_seq(900, seed=5)
+    reads = [reference[200:340], reference[500:600]]
+    seeder = SeedingEngine(
+        SeedingConfig(modes=("gpu_kmer",), kmer=13, window=5), device="cpu"
+    )
+    bundle = seeder.build_indices(reference)
+
+    got = gw._seed_reads(seeder, bundle, reads)
+    ref = [seeder.seed_read(r, bundle) for r in reads]
+    assert gw._anchor_sets_equal(got, ref)
+
+
 # --------------------------------------------------------------------------- #
 # End-to-end wiring: the primitives plugged into the alignment pipeline
 # --------------------------------------------------------------------------- #
@@ -186,6 +333,69 @@ def test_extension_cudaaligner_algorithm_maps_read():
     # A clean substring aligns with a CIGAR that consumes the whole read.
     assert cigar_read_length(primary.cigar) == len(read)
     assert primary.cigar_string.endswith("=") or "=" in primary.cigar_string
+
+
+def test_extend_cudaaligner_batch_matches_per_chain():
+    """The batched extension path (what the pipeline now calls) must return
+    exactly the per-chain ``_extend_cudaaligner`` results, in order.
+
+    Validates the wiring on CPU, where ``global_align_batch`` degrades to the
+    per-pair host reference; on the CUDA tier the same call is one GPU Gotoh
+    launch, verified bit-for-bit against this reference.
+    """
+    import numpy as np
+
+    from graphmambaformer.alignment.seeding import (
+        encode_bases,
+        reverse_complement_codes,
+    )
+    from graphmambaformer.alignment.types import Chain
+
+    reference = _random_seq(1200, seed=101)
+    read = reference[300:300 + 180]
+    engine = _fast_pipeline(algorithm="cudaaligner").extender
+
+    forward = encode_bases(read)
+    reverse = reverse_complement_codes(forward)
+    ref_codes = encode_bases(reference)
+    read_len, ref_len = len(forward), len(ref_codes)
+
+    # Synthetic chains at different loci / strands / net-indels. Only the
+    # coordinates and strand feed the cudaaligner window; anchor_idx/score do
+    # not, so an empty index array is fine here.
+    def _chain(strand, rs, re_, fs, fe):
+        return Chain(anchor_idx=np.array([], dtype=np.int64), score=0.0,
+                     strand=strand, read_start=rs, read_end=re_,
+                     ref_start=fs, ref_end=fe)
+
+    chains = [
+        _chain(1, 0, 180, 300, 480),    # net indel 0
+        _chain(1, 10, 170, 305, 470),   # target shorter than read
+        _chain(-1, 0, 180, 800, 995),   # reverse strand, target longer
+        _chain(1, 0, 180, 1150, 1200),  # window clipped by ref end
+    ]
+
+    batched = engine._extend_cudaaligner_batch(
+        chains, forward, reverse, ref_codes, read_len, ref_len
+    )
+    per_chain = [
+        engine._extend_cudaaligner(c, forward, reverse, ref_codes, read_len, ref_len)
+        for c in chains
+    ]
+
+    assert len(batched) == len(per_chain) == len(chains)
+    for b, s in zip(batched, per_chain):
+        assert b.cigar == s.cigar
+        assert b.score == s.score
+        assert (b.read_start, b.read_end, b.ref_start, b.ref_end) == (
+            s.read_start, s.read_end, s.ref_start, s.ref_end)
+        assert (b.n_match, b.n_mismatch, b.n_insertion, b.n_deletion) == (
+            s.n_match, s.n_mismatch, s.n_insertion, s.n_deletion)
+
+    # Empty chain list is a no-op (matches the per-chain comprehension).
+    assert engine._extend_cudaaligner_batch(
+        [], forward, reverse, ref_codes, read_len, ref_len
+    ) == []
 
 
 def test_extension_ungapped_prefilter_keeps_true_chain():

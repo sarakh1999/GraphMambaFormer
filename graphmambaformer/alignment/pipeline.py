@@ -22,7 +22,7 @@ across batches, since index construction dominates single-batch cost.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Iterable, Optional, Sequence
 
 import numpy as np
@@ -228,8 +228,18 @@ class AlignmentPipeline:
             else 1
         )
 
+        # GenomeWorks routing (AccelConfig). The master switch propagates to the
+        # extension engine (its kill switch), and routing the seeding stage to
+        # GenomeWorks selects the cudamapper minimizer index. Keep these here so
+        # ``genomeworks`` / ``stage_backends`` stay effective end to end.
+        _stage_backends = getattr(acfg, "stage_backends", {}) or {}
+        _gw_master = bool(getattr(acfg, "genomeworks", True))
+        seeding_cfg = self.cfg.seeding
+        if _gw_master and _stage_backends.get("seeding") == "genomeworks":
+            seeding_cfg = replace(seeding_cfg, modes=("cudamapper",))
+
         self.seeder = SeedingEngine(
-            self.cfg.seeding, device=self.device, workers=self._stage_workers
+            seeding_cfg, device=self.device, workers=self._stage_workers
         )
         self.chainer = AffineChainer(
             self.cfg.chaining,
@@ -240,6 +250,7 @@ class AlignmentPipeline:
             self.cfg.extension,
             device=self.device,
             backend=self.accel.kernel_backend("extension"),
+            genomeworks=_gw_master,
         )
 
         # The pipeline owns the compute device, so the model must live on it too;

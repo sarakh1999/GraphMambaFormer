@@ -80,6 +80,17 @@ def _gw_should_verify(name: str) -> bool:
 def _gw_mark_verified(name: str) -> None:
     _gw_verify_counts[name] = _gw_verify_counts.get(name, 0) + 1
 
+
+# Batched cudaaligner GPU path (see :func:`global_align_batch`). ``never``
+# disables it; a runtime verification mismatch disables it for the process.
+_GW_ALIGN_BATCH_MODE = os.environ.get("GMF_GW_ALIGN_BATCH", "warmup").strip().lower()
+_gw_align_batch_disabled = False
+
+
+def genomeworks_align_batch_enabled() -> bool:
+    """Whether the batched cudaaligner GPU path is active this process."""
+    return _GW_ALIGN_BATCH_MODE != "never" and not _gw_align_batch_disabled
+
 # Base codes shared with :mod:`graphmambaformer.alignment.seeding`
 # (A C G T -> 1..4, N -> 5, sentinel 0). A real match needs equal codes in 1..4;
 # N (5), the sentinel (0) and negative padding never match.
@@ -641,6 +652,47 @@ def global_align(
     )
 
 
+def _traceback_ptr(
+    ptr_flat: np.ndarray, q: np.ndarray, t: np.ndarray, m: int, n: int, maxN: int
+) -> tuple[list[str], int, int, int, int]:
+    """Turn a GPU pointer matrix into a CIGAR op list.
+
+    Byte-for-byte the traceback of :func:`_global_align_scalar` (same tie-break:
+    diag, then deletion, then insertion), so the CIGAR matches the host exactly.
+    """
+    rowW = maxN + 1
+    ops: list[str] = []
+    n_match = n_mismatch = n_ins = n_del = 0
+    i, j = m, n
+    while i > 0 or j > 0:
+        p = int(ptr_flat[i * rowW + j])
+        if i > 0 and j > 0 and p == 0:
+            a, b = int(q[i - 1]), int(t[j - 1])
+            if a == b and 1 <= a <= 4:
+                ops.append("=")
+                n_match += 1
+            else:
+                ops.append("X")
+                n_mismatch += 1
+            i -= 1
+            j -= 1
+        elif j > 0 and (i == 0 or p == 1):
+            ops.append("D")
+            n_del += 1
+            j -= 1
+        else:
+            ops.append("I")
+            n_ins += 1
+            i -= 1
+    ops.reverse()
+    return ops, n_match, n_mismatch, n_ins, n_del
+
+
+def _align_equal(a: GlobalAlignment, b: GlobalAlignment) -> bool:
+    """Alignments agree when their score and (merged) CIGAR match."""
+    return a.cigar == b.cigar and abs(a.score - b.score) <= 1e-6
+
+
 def global_align_batch(
     pairs: Sequence[tuple["str | np.ndarray", "str | np.ndarray"]],
     *,
@@ -649,14 +701,116 @@ def global_align_batch(
     gap_open: float = 6.0,
     gap_extend: float = 2.0,
 ) -> list[GlobalAlignment]:
-    """Global-align each ``(query, target)`` pair (``cudaaligner`` batch)."""
-    return [
-        global_align(
-            q, t, match=match, mismatch=mismatch,
-            gap_open=gap_open, gap_extend=gap_extend,
+    """Global-align every ``(query, target)`` pair (``cudaaligner`` batch).
+
+    On a CUDA host with CuPy this runs one batched :func:`global_affine` launch
+    (one thread per pair) that fills the DP and per-cell traceback pointers on
+    the GPU; the O(m+n) pointer traceback then runs on the host so the CIGAR is
+    identical to :func:`global_align`. Everywhere else (CPU/MPS, fractional
+    scores, oversized pairs) it is the per-pair host reference. Guarded by the
+    same verify-then-trust warm-up as the other primitives: a single disagreeing
+    CIGAR (or any exception) permanently drops the process back to the host path,
+    so the result can never be wrong.
+    """
+    global _gw_align_batch_disabled
+
+    def _host() -> list[GlobalAlignment]:
+        return [
+            global_align(
+                q, t, match=match, mismatch=mismatch,
+                gap_open=gap_open, gap_extend=gap_extend,
+            )
+            for q, t in pairs
+        ]
+
+    if not pairs:
+        return []
+    # Only the integer-scoring GPU path is bit-exact (float32 stays exact); the
+    # fractional case, like global_align, keeps the scalar recurrence.
+    if (
+        not genomeworks_align_batch_enabled()
+        or not _integer_scoring(match, mismatch, gap_open, gap_extend)
+    ):
+        return _host()
+
+    cp = cupy_module()
+    if cp is None:
+        return _host()
+
+    try:
+        import torch
+
+        from .backend import default_context
+        from .cuda_kernels import _kernel as _compile_kernel
+        from .cuda_kernels import global_affine
+
+        if _compile_kernel("global_affine") is None or not torch.cuda.is_available():
+            return _host()
+        dev = torch.device(str(default_context().caps.device))
+        if dev.type != "cuda":
+            return _host()
+
+        codes = [(_as_codes(q), _as_codes(t)) for q, t in pairs]
+        # Empty-dimension pairs are cheap edge cases; keep them on the host.
+        gpu_idx = [k for k, (q, t) in enumerate(codes) if len(q) and len(t)]
+        if not gpu_idx:
+            return _host()
+        maxM = max(len(codes[k][0]) for k in gpu_idx)
+        maxN = max(len(codes[k][1]) for k in gpu_idx)
+        B = len(gpu_idx)
+        # Bound memory (ptr is B*(maxM+1)*(maxN+1) bytes) and keep integer scores
+        # exact in float32 (sums stay < 2^24 for these lengths).
+        if maxM > 4096 or maxN > 4096 or B * (maxM + 1) * (maxN + 1) > 512_000_000:
+            return _host()
+
+        q_np = np.zeros((B, maxM), dtype=np.int8)
+        t_np = np.zeros((B, maxN), dtype=np.int8)
+        ql = np.empty(B, dtype=np.int32)
+        tl = np.empty(B, dtype=np.int32)
+        for bi, k in enumerate(gpu_idx):
+            q, t = codes[k]
+            q_np[bi, : len(q)] = q
+            t_np[bi, : len(t)] = t
+            ql[bi], tl[bi] = len(q), len(t)
+
+        ptr, score = global_affine(
+            torch.as_tensor(q_np, device=dev),
+            torch.as_tensor(t_np, device=dev),
+            torch.as_tensor(ql, device=dev),
+            torch.as_tensor(tl, device=dev),
+            match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
         )
-        for q, t in pairs
-    ]
+        ptr_np = ptr.cpu().numpy()
+        score_np = score.cpu().numpy()
+
+        results: list[GlobalAlignment | None] = [None] * len(pairs)
+        for bi, k in enumerate(gpu_idx):
+            q, t = codes[k]
+            ops, nm, nx, ni, nd = _traceback_ptr(
+                ptr_np[bi], q, t, len(q), len(t), maxN
+            )
+            results[k] = GlobalAlignment(
+                score=float(score_np[bi]), cigar=_merge_ops(ops),
+                n_match=nm, n_mismatch=nx, n_insertion=ni, n_deletion=nd,
+            )
+        for k, (q, t) in enumerate(codes):
+            if results[k] is None:  # empty-dimension edge cases
+                results[k] = global_align(
+                    pairs[k][0], pairs[k][1], match=match, mismatch=mismatch,
+                    gap_open=gap_open, gap_extend=gap_extend,
+                )
+        final = [r for r in results if r is not None]
+
+        if _gw_should_verify("cudaaligner_batch"):
+            reference = _host()
+            if all(_align_equal(a, b) for a, b in zip(final, reference)):
+                _gw_mark_verified("cudaaligner_batch")
+                return final
+            _gw_align_batch_disabled = True  # buggy on this host: never batch again
+            return reference
+        return final
+    except Exception:
+        return _host()
 
 
 # =========================================================================== #
@@ -970,6 +1124,223 @@ class MapperOverlap:
     num_anchors: int
 
 
+# --------------------------------------------------------------------------- #
+# Batched minimizer seeding for cudamapper.
+#
+# ``SeedingEngine.seed_read`` seeds one read at a time, so on a GPU host every
+# read pays a separate device round-trip (host->device copy, kmer-lookup launch,
+# a ``count.sum().item()`` sync, gather, device->host copy). The k-mer index is
+# built to answer *batched* lookups, so seeding a whole read batch should be one
+# device lookup + one gather. This packs every read's (both strands') minimizers
+# together, issues a single :meth:`GPUKmerIndex.lookup`, and splits the expanded
+# ``(read_pos, ref_pos)`` back per read — collapsing thousands of tiny launches
+# into one. It is gated by the same verify-then-trust warm-up as the other
+# primitives: for the first few calls the result is checked anchor-for-anchor
+# against the per-read reference, and on ANY mismatch (or exception) the process
+# permanently falls back to per-read seeding. The worst case is therefore the
+# current per-read speed; the result can never be wrong.
+# --------------------------------------------------------------------------- #
+_GW_SEED_BATCH_MODE = os.environ.get("GMF_GW_SEED_BATCH", "warmup").strip().lower()
+_gw_seed_batch_disabled = False
+
+
+def genomeworks_seed_batch_enabled() -> bool:
+    """Whether batched cudamapper seeding is currently active this process."""
+    return _GW_SEED_BATCH_MODE != "never" and not _gw_seed_batch_disabled
+
+
+def _gpu_kmer_query_batch(
+    index: Any, code_arrays: "list[np.ndarray]"
+) -> "list[tuple[np.ndarray, np.ndarray, np.ndarray]]":
+    """Batched equivalent of ``[index.query(c) for c in code_arrays]``.
+
+    One device lookup + gather for every input's minimizers, then the expanded
+    ``(read_pos, ref_pos, length)`` is split back per input. Numerically this
+    reproduces :meth:`GPUKmerIndex.query` exactly.
+    """
+    import torch
+
+    from ..alignment.seeding import hash64, minimizer_mask, pack_kmers
+
+    k, window, device = index.k, index.window, index.device
+
+    # Per-input CPU sketch (cheap NumPy): each input's minimizer read-positions
+    # and the packed k-mers at those positions.
+    per_pos: list[np.ndarray] = []
+    per_kmers: list[np.ndarray] = []
+    for codes in code_arrays:
+        packed, valid = pack_kmers(codes, k)
+        if packed.size == 0:
+            per_pos.append(np.zeros(0, dtype=np.int64))
+            per_kmers.append(packed[:0])
+            continue
+        selected = valid & minimizer_mask(hash64(packed), window)
+        pos = np.flatnonzero(selected).astype(np.int64)
+        per_pos.append(pos)
+        per_kmers.append(packed[pos])
+
+    counts_per_input = np.array([p.size for p in per_pos], dtype=np.int64)
+    empty = [
+        (np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0, np.int64))
+        for _ in code_arrays
+    ]
+    if int(counts_per_input.sum()) == 0:
+        return empty
+
+    flat_kmers = np.concatenate(per_kmers)
+    flat_pos = np.concatenate(per_pos)
+
+    # Single batched device lookup for every input's minimizers.
+    start, count = index.lookup(torch.as_tensor(flat_kmers, device=device))
+    count_l = count.to(torch.long)
+    total = int(count_l.sum().item())  # one sync for the whole batch
+    if total == 0:
+        return empty
+
+    pos_t = torch.as_tensor(flat_pos, device=device)
+    read_pos = torch.repeat_interleave(pos_t, count_l)
+    group_base = torch.repeat_interleave(torch.cumsum(count_l, 0) - count_l, count_l)
+    within = torch.arange(total, device=device) - group_base
+    flat = torch.repeat_interleave(start.to(torch.long), count_l) + within
+    ref_pos = index.positions[flat]
+
+    read_pos_np = read_pos.cpu().numpy().astype(np.int64)  # one transfer
+    ref_pos_np = ref_pos.cpu().numpy().astype(np.int64)
+    count_np = count_l.cpu().numpy()
+
+    # Expanded-entry offset for each input: cumulative sum of ``count`` at the
+    # input's query boundary. ``q_bounds`` indexes the query axis; ``csum`` is
+    # the per-query cumulative expanded count, so ``csum[q_bounds]`` gives the
+    # expanded-entry offset where each input begins.
+    q_bounds = np.concatenate([[0], np.cumsum(counts_per_input)])
+    csum = np.concatenate([[0], np.cumsum(count_np)])
+    e_bounds = csum[q_bounds]
+
+    out: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+    for j in range(len(code_arrays)):
+        a, b = int(e_bounds[j]), int(e_bounds[j + 1])
+        out.append(
+            (read_pos_np[a:b], ref_pos_np[a:b], np.full(b - a, k, dtype=np.int64))
+        )
+    return out
+
+
+def _seed_reads_gpu_batched(seeder: Any, bundle: Any, reads: "list[str]"):
+    """Batched seeding for the single ``gpu_kmer`` CUDA index; else ``None``.
+
+    Builds each read's ``AnchorSet`` from the batched lookup, then reuses the
+    engine's own ``_merge_diagonals`` / ``_cap`` / node projection so the output
+    matches :meth:`SeedingEngine.seed_read` exactly.
+    """
+    from ..alignment.seeding import (
+        GPUKmerIndex,
+        encode_bases,
+        reverse_complement_codes,
+    )
+    from ..alignment.types import AnchorSet, source_id
+
+    if list(bundle.indices.keys()) != ["gpu_kmer"]:
+        return None
+    index = bundle.indices["gpu_kmer"]
+    if not isinstance(index, GPUKmerIndex) or index.device.type != "cuda":
+        return None
+
+    both = bool(seeder.cfg.both_strands)
+    gw_src = source_id("gpu_kmer")
+
+    code_arrays: list[np.ndarray] = []
+    layout: list[tuple[int, list[tuple[int, int, int]]]] = []
+    for read in reads:
+        fwd = encode_bases(read)
+        entries = [(1, fwd)]
+        if both:
+            entries.append((-1, reverse_complement_codes(fwd)))
+        idxs = []
+        for strand, codes in entries:
+            idxs.append((strand, len(codes), len(code_arrays)))
+            code_arrays.append(codes)
+        layout.append((len(fwd), idxs))
+
+    results = _gpu_kmer_query_batch(index, code_arrays)
+
+    anchor_sets = []
+    for read_len, idxs in layout:
+        anchors = AnchorSet.empty(read_len=read_len, ref_len=bundle.ref_len)
+        for strand, codes_len, input_index in idxs:
+            rp, fp, ln = results[input_index]
+            if rp.size == 0:
+                continue
+            anchors = anchors.concat(
+                AnchorSet.from_lists(
+                    read_pos=rp,
+                    ref_pos=fp,
+                    length=ln,
+                    strand=np.full(rp.size, strand, dtype=np.int8),
+                    node_id=None,
+                    source=np.full(rp.size, gw_src, dtype=np.int8),
+                    read_len=codes_len,
+                    ref_len=bundle.ref_len,
+                )
+            )
+        anchors = seeder._merge_diagonals(anchors)
+        anchors = seeder._cap(anchors)
+        projected = bundle.node_of(anchors.ref_pos)
+        anchors.node_id = np.where(anchors.node_id >= 0, anchors.node_id, projected)
+        anchor_sets.append(anchors)
+    return anchor_sets
+
+
+def _anchor_sets_equal(a_list: list, b_list: list) -> bool:
+    """Order-insensitive anchor equality (chaining re-sorts, so order is free)."""
+    if len(a_list) != len(b_list):
+        return False
+    for a, b in zip(a_list, b_list):
+        if len(a) != len(b):
+            return False
+        ka = np.lexsort((a.length, a.strand, a.ref_pos, a.read_pos))
+        kb = np.lexsort((b.length, b.strand, b.ref_pos, b.read_pos))
+        if not (
+            np.array_equal(a.read_pos[ka], b.read_pos[kb])
+            and np.array_equal(a.ref_pos[ka], b.ref_pos[kb])
+            and np.array_equal(a.length[ka], b.length[kb])
+            and np.array_equal(a.strand[ka], b.strand[kb])
+        ):
+            return False
+    return True
+
+
+def _seed_reads(seeder: Any, bundle: Any, reads: "list[str]") -> list:
+    """Seed every read, preferring the batched GPU path with a safety net.
+
+    Verify-then-trust: the batched result is cross-checked against per-read
+    seeding for the first few calls; a single mismatch (or any exception)
+    permanently disables batching for the process and returns the trusted
+    per-read result, so the anchors can never be wrong.
+    """
+    global _gw_seed_batch_disabled
+
+    def _per_read() -> list:
+        return [seeder.seed_read(r, bundle) for r in reads]
+
+    if not reads or not genomeworks_seed_batch_enabled():
+        return _per_read()
+    try:
+        batched = _seed_reads_gpu_batched(seeder, bundle, reads)
+    except Exception:
+        batched = None
+    if batched is None:
+        return _per_read()  # not the gpu_kmer / CUDA case
+
+    if _gw_should_verify("cudamapper_seed"):
+        reference = _per_read()
+        if _anchor_sets_equal(batched, reference):
+            _gw_mark_verified("cudamapper_seed")
+            return batched
+        _gw_seed_batch_disabled = True  # buggy on this host: never batch again
+        return reference
+    return batched
+
+
 def map_to_reference(
     reads: Sequence[str],
     reference: str,
@@ -1010,7 +1381,7 @@ def map_to_reference(
     ctx = default_context()
     chainer = AffineChainer(ChainingConfig(), backend=ctx.kernel_backend("chaining"))
 
-    anchor_sets = [seeder.seed_read(read, bundle) for read in reads]
+    anchor_sets = _seed_reads(seeder, bundle, list(reads))
     chains_per_read = chainer.chain_batch(
         anchor_sets, [None] * len(anchor_sets), device=dev
     )

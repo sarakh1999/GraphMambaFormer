@@ -72,6 +72,7 @@ architecture/*.pptx
 # Cursor agent scratch files, local build output, throwaway review logs, and
 # manifest backups. All transient and re-derivable.
 .cursor_tmp_*
+.tmp/
 build/
 tmp_agnes_review/
 *.bak

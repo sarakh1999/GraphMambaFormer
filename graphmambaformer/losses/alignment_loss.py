@@ -80,6 +80,17 @@ class KendallWeighting(nn.Module):
         self.enabled = enabled
         self.log_vars = nn.ParameterDict()
         self._static: dict[str, float] = dict(initial or {})
+        # Materialize the known task log-variances up front (on CPU; they move
+        # with the module's later ``.to(device)``). Creating them lazily on the
+        # first ``combine()`` call meant they came into existence *after* the
+        # trainer had already built its optimizer from ``criterion.parameters()``,
+        # so they were never optimized and the "learned" weights stayed frozen at
+        # their init. Eager creation lets the optimizer capture them. Task names
+        # not known at construction (e.g. dynamically enabled multi-task heads)
+        # are still created lazily in ``combine`` and share that caveat.
+        if self.enabled:
+            for name in self._static:
+                self._ensure(name, torch.device("cpu"))
 
     def _ensure(self, name: str, device: torch.device) -> None:
         if name in self.log_vars:
@@ -247,14 +258,52 @@ class AlignmentLoss(nn.Module):
         )
         return _masked_mean(per_read, valid)
 
-    def router_loss(self, cost: torch.Tensor) -> torch.Tensor:
-        """Pull the expected compute cost toward the configured budget.
+    def router_loss(self, router: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Load-balancing router objective that prevents collapse to one route.
 
-        One-sided: cheaper than target is free, so the router is only penalized
-        for spending more than the budget allows.
+        The previous term penalized only expected compute *over* budget, so
+        sending every read to the cheapest path was the global optimum and the
+        router collapsed to 100% "fast". This combines three signals computed on
+        the current batch's router output:
+
+        * **load balance** (Switch-Transformer aux loss): ``R * sum_r f_r * P_r``
+          where ``f_r`` is the fraction of reads hard-routed to ``r`` and ``P_r``
+          the mean soft probability of ``r``; minimized when both are uniform,
+          i.e. all routes get used.
+        * **entropy bonus** (optional): rewards higher per-read routing entropy so
+          early training explores instead of latching onto one route.
+        * **cost nudge**: a gentle *two-sided* pull of the expected compute cost
+          toward ``router_target_cost`` (replaces the old one-sided penalty).
+
+        All three coefficients live on :class:`LossConfig`; set them to 0 to
+        recover the legacy one-sided cost penalty.
         """
-        over = (cost.mean() - self.cfg.router_target_cost).clamp_min(0.0)
-        return over.pow(2)
+        probs = router["probs"]
+        if probs.dim() != 2:
+            probs = probs.reshape(-1, probs.shape[-1])
+        n_routes = probs.shape[-1]
+
+        importance = probs.mean(dim=0)  # P_r: mean soft prob per route
+        weights = router.get("weights")
+        if weights is not None:
+            load = weights.to(probs.dtype)
+            if load.dim() != 2:
+                load = load.reshape(-1, load.shape[-1])
+            load = load.mean(dim=0)  # f_r: fraction hard-routed per route
+        else:
+            load = F.one_hot(probs.argmax(dim=-1), n_routes).to(probs.dtype).mean(dim=0)
+
+        loss = self.cfg.router_balance_coef * n_routes * torch.sum(importance * load)
+
+        if self.cfg.router_entropy_coef:
+            per_read_entropy = -(probs * probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
+            loss = loss - self.cfg.router_entropy_coef * per_read_entropy  # maximize
+
+        if self.cfg.router_cost_coef and "cost" in router:
+            cost_pen = (router["cost"].mean() - self.cfg.router_target_cost).pow(2)
+            loss = loss + self.cfg.router_cost_coef * cost_pen
+
+        return loss
 
     def extension_loss(
         self, best: torch.Tensor, decoy: torch.Tensor, margin: float = 1.0
@@ -321,7 +370,7 @@ class AlignmentLoss(nn.Module):
 
         router = getattr(outputs, "router", None)
         if router is not None:
-            losses["router"] = self.router_loss(router["cost"])
+            losses["router"] = self.router_loss(router)
 
         if "best_score" in targets and "decoy_score" in targets:
             losses["extension"] = self.extension_loss(

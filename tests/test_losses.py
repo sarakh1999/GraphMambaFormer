@@ -171,11 +171,18 @@ def test_kendall_weights_are_learnable():
     cfg = LossConfig(learnable_weights=True)
     loss_fn = GraphMambaLoss(cfg)
     al = AlignmentLoss(cfg)
+    # Log-variances are materialized eagerly in __init__ (before any forward) so
+    # the trainer's optimizer, built from criterion.parameters(), captures them.
+    # All eight alignment terms therefore exist up front.
+    assert set(loss_fn.weighting.log_vars.keys()) == {
+        "seed", "transition", "chain", "node", "position", "mapq", "router", "extension"
+    }
     losses = {"seed": torch.tensor(1.0, requires_grad=True), "node": torch.tensor(2.0, requires_grad=True)}
     total, applied = loss_fn.weighting.combine(losses)
     total.backward()
-    params = list(loss_fn.weighting.log_vars.values())
-    assert len(params) == 2 and all(p.grad is not None for p in params)
+    # The two terms combined this step receive gradients on their log-variances.
+    assert loss_fn.weighting.log_vars["seed"].grad is not None
+    assert loss_fn.weighting.log_vars["node"].grad is not None
 
     static = GraphMambaLoss(LossConfig(learnable_weights=False))
     _, applied_static = static.weighting.combine(
@@ -252,12 +259,26 @@ def test_unlabelled_head_is_skipped():
     print("unlabelled head contributes no term")
 
 
-def test_router_budget_is_one_sided():
+def test_router_load_balancing():
+    # The router term is a Switch-Transformer-style load-balancing loss (not a
+    # one-sided cost penalty), so routing every read to one path is penalized
+    # more than spreading usage across all routes -- this is what stops the
+    # observed 100%-"fast" collapse.
     cfg = LossConfig(router_target_cost=0.6)
     al = AlignmentLoss(cfg)
-    assert float(al.router_loss(torch.tensor([0.2, 0.3]))) == 0.0
-    assert float(al.router_loss(torch.tensor([0.9, 0.9]))) > 0.0
-    print("router budget penalizes overspend only")
+    b, r = 16, 3
+    collapse = {
+        "probs": torch.tensor([[0.98, 0.01, 0.01]] * b),
+        "weights": torch.eye(r)[[0] * b],
+        "cost": torch.full((b,), 0.35),
+    }
+    balanced = {
+        "probs": torch.tensor([[1 / 3, 1 / 3, 1 / 3]] * b),
+        "weights": torch.eye(r)[[0, 1, 2] * 5 + [0]],
+        "cost": torch.full((b,), 0.6),
+    }
+    assert float(al.router_loss(collapse)) > float(al.router_loss(balanced))
+    print("router load-balancing penalizes route collapse")
 
 
 if __name__ == "__main__":
@@ -271,5 +292,5 @@ if __name__ == "__main__":
     test_multitask_losses()
     test_ignored_node_labels_are_skipped()
     test_unlabelled_head_is_skipped()
-    test_router_budget_is_one_sided()
+    test_router_load_balancing()
     print("\nALL LOSS CHECKS PASSED")

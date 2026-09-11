@@ -491,6 +491,17 @@ class GraphMambaConfig:
     #: reads longer than the window (shorter reads take the exact full-attention
     #: path), and adds no parameters. Set False to use fixed (aligned) windows.
     read_attention_shift: bool = True
+    #: Which read-tower layers carry the windowed self-attention sublayer (0-based).
+    #: ``None`` (default) = *every* layer, i.e. the original 1:1 Mamba:attention
+    #: topology — this keeps existing checkpoints loadable byte-for-byte. A tuple
+    #: of layer indices restricts attention to those layers only, so the
+    #: Mamba:attention ratio and placement can be tuned/ablated without touching
+    #: the Mamba stack. Recent hybrid-SSM results (Jamba, Samba, NVIDIA's Mamba
+    #: study) find attention is most useful *sparse and mid-stack* rather than in
+    #: every layer, so the recommended schedule for the default 6-layer tower is
+    #: the middle pair ``(2, 3)``. Ignored entirely when ``use_read_attention``
+    #: is False (no attention anywhere).
+    read_attention_layers: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         d = self.d_model
@@ -527,6 +538,21 @@ class GraphMambaConfig:
             rheads //= 2
         self.read_attention.n_heads = rheads
         self.read_attention.d_head = d // rheads
+
+        # Validate the (optional) per-layer attention schedule against the stack
+        # depth so a typo fails loudly at construction rather than silently
+        # dropping / duplicating an attention sublayer.
+        if self.read_attention_layers is not None:
+            self.read_attention_layers = tuple(self.read_attention_layers)
+            out_of_range = sorted(
+                i for i in self.read_attention_layers
+                if not 0 <= i < self.n_mamba_layers
+            )
+            if out_of_range:
+                raise ValueError(
+                    f"read_attention_layers {out_of_range} out of range for a "
+                    f"{self.n_mamba_layers}-layer read tower (valid: 0..{self.n_mamba_layers - 1})"
+                )
 
 
 @dataclass
@@ -993,6 +1019,18 @@ class LossConfig:
     huber_beta: float = 0.1
     # Target compute cost for the router (fraction of the full path).
     router_target_cost: float = 0.6
+    # Router objective is a Switch-Transformer-style load-balancing loss, not a
+    # one-sided cost penalty: penalizing only "too expensive" made routing every
+    # read to the cheapest path the global optimum, so the router collapsed to
+    # 100% "fast" and medium/full were never used. ``router_balance_coef`` weights
+    # the load-balance term (push usage toward all routes), ``router_entropy_coef``
+    # a per-read entropy bonus that encourages early exploration (anneal toward 0
+    # after ~1 epoch if desired), and ``router_cost_coef`` a gentle *two-sided*
+    # nudge of the expected cost toward ``router_target_cost``. Set all three to 0
+    # to recover the legacy one-sided cost penalty.
+    router_balance_coef: float = 1.0
+    router_entropy_coef: float = 0.01
+    router_cost_coef: float = 0.02
 
 
 # --------------------------------------------------------------------------- #

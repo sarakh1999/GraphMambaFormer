@@ -30,6 +30,7 @@ each anchor onto a pangenome graph node.
 
 from __future__ import annotations
 
+import functools
 import os
 from dataclasses import dataclass
 from typing import Optional, Sequence
@@ -38,6 +39,23 @@ import numpy as np
 import torch
 
 from ..accel.parallel import parallel_map
+
+
+@functools.lru_cache(maxsize=1)
+def _fm_numba():
+    """The ``numba_fm`` kernel module, or ``None`` when Numba is unavailable.
+
+    Resolved once (cached) so the hot FM query methods never re-import; a
+    missing/kill-switched Numba leaves every FM operation on the NumPy path.
+    """
+    try:
+        from ..accel import numba_fm
+
+        if numba_fm.numba_available():
+            return numba_fm
+    except Exception:
+        pass
+    return None
 from ..config import SeedingConfig
 from ..progress import progress, progress_disabled
 from .types import AnchorSet, source_id
@@ -479,6 +497,9 @@ class FMIndex:
             raise ValueError("reference codes must not contain the sentinel value 0")
         self.sa_sample = max(1, sa_sample)
         self.occ_sample = max(1, occ_sample)
+        # Resolved once here (before _self_check, which queries the index): the
+        # Numba FM kernels when available, else None -> NumPy paths below.
+        self._fm = _fm_numba()
 
         # Suffix-array construction dominates index build time on long contigs, so
         # lift it onto CuPy (radix sorts) when a CUDA device and a big enough
@@ -593,6 +614,16 @@ class FMIndex:
         """
         indices = np.asarray(indices, dtype=np.int64)
         chars = np.asarray(chars, dtype=np.int64)
+
+        # Numba tier: a checkpoint lookup + bounded BWT scan in native code,
+        # avoiding the per-call probe matrix the vectorized form below builds.
+        # Identical counts; falls back to NumPy on any kernel problem.
+        if self._fm is not None:
+            try:
+                return self._fm.fm_rank(self.occ, self.bwt, self.occ_sample, indices, chars)
+            except Exception:
+                pass
+
         checkpoint = indices // self.occ_sample
         base = self.occ[checkpoint, chars]
 
@@ -620,6 +651,16 @@ class FMIndex:
         if indices.size == 0:
             return np.zeros(0, dtype=np.int64)
 
+        # Numba tier: walk LF to the next sampled SA row in native code.
+        if self._fm is not None:
+            try:
+                return self._fm.fm_locate(
+                    self.occ, self.bwt, self.C, self.occ_sample, indices,
+                    self.sa_mask, self.sa_rank, self.sa_values, self.sa_sample,
+                )
+            except Exception:
+                pass
+
         steps = np.zeros(len(indices), dtype=np.int64)
         current = indices.copy()
         pending = ~self.sa_mask[current]
@@ -637,6 +678,16 @@ class FMIndex:
 
     def count(self, pattern: np.ndarray) -> tuple[int, int]:
         """SA interval ``[lo, hi)`` of one exact pattern (backward search)."""
+        # Numba tier: the whole backward search in one native call.
+        if self._fm is not None:
+            try:
+                return self._fm.fm_count(
+                    self.occ, self.bwt, self.C, self.occ_sample, self.n,
+                    np.asarray(pattern, dtype=np.int64), N_CODE,
+                )
+            except Exception:
+                pass
+
         lo, hi = np.array([0]), np.array([self.n])
         for char in pattern[::-1]:
             if char == N_CODE:
@@ -653,28 +704,28 @@ class FMIndex:
             return np.zeros(0, dtype=np.int64)
         return self.locate(np.arange(lo, hi, dtype=np.int64))
 
-    # ---- SMEMs -------------------------------------------------------------- #
-    def smems(
-        self, read_codes: np.ndarray, min_len: int = 13, max_occ: int = 200
+    def _smems_search(
+        self, read_codes: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Super-maximal exact matches of ``read_codes`` against the reference.
+        """Backward search behind :meth:`smems` — ``(left, interval_lo, interval_hi)``.
 
-        For every read end position ``j`` the search finds the smallest ``i``
-        such that ``read[i..j]`` still occurs in the reference. Those matches are
-        right-maximal by construction (they end at ``j``) and left-maximal by
-        minimality of ``i``; because ``i_min`` is non-decreasing in ``j``, an
-        interval is contained in its successor exactly when
-        ``i_min(j + 1) == i_min(j)``, so dropping those leaves the SMEMs.
-
-        Every ``j`` is extended simultaneously, one batched rank query per
-        extension step, which is what makes this affordable on long reads.
-
-        Returns ``(read_start, length, sa_row)`` per SMEM; ``sa_row`` is the low
-        end of the SA interval, and its size is recovered by the caller.
+        For every read end position ``j``, ``left[j]`` is the smallest ``i`` such
+        that ``read[i..j]`` still occurs in the reference (``j + 1`` when nothing
+        matches) and ``interval_*[j]`` is that match's SA interval. The Numba
+        kernel runs the whole search natively; the NumPy fallback extends every
+        end position simultaneously, one batched rank query per step.
         """
         n = len(read_codes)
-        if n == 0:
-            return (np.zeros(0, dtype=np.int64),) * 3
+        read_codes = np.asarray(read_codes, dtype=np.int64)
+
+        if self._fm is not None:
+            try:
+                return self._fm.fm_smems(
+                    self.occ, self.bwt, self.C, self.occ_sample, self.n,
+                    read_codes, N_CODE,
+                )
+            except Exception:
+                pass
 
         ends = np.arange(n, dtype=np.int64)
         lo = np.zeros(n, dtype=np.int64)
@@ -704,6 +755,34 @@ class FMIndex:
             active[exhausted] = False
             still = kept[cursor[kept] >= 0]
             active[still] = read_codes[cursor[still]] != N_CODE
+
+        return left, interval_lo, interval_hi
+
+    # ---- SMEMs -------------------------------------------------------------- #
+    def smems(
+        self, read_codes: np.ndarray, min_len: int = 13, max_occ: int = 200
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Super-maximal exact matches of ``read_codes`` against the reference.
+
+        For every read end position ``j`` the search finds the smallest ``i``
+        such that ``read[i..j]`` still occurs in the reference. Those matches are
+        right-maximal by construction (they end at ``j``) and left-maximal by
+        minimality of ``i``; because ``i_min`` is non-decreasing in ``j``, an
+        interval is contained in its successor exactly when
+        ``i_min(j + 1) == i_min(j)``, so dropping those leaves the SMEMs.
+
+        Every ``j`` is extended simultaneously, one batched rank query per
+        extension step, which is what makes this affordable on long reads.
+
+        Returns ``(read_start, length, sa_row)`` per SMEM; ``sa_row`` is the low
+        end of the SA interval, and its size is recovered by the caller.
+        """
+        n = len(read_codes)
+        if n == 0:
+            return (np.zeros(0, dtype=np.int64),) * 3
+
+        ends = np.arange(n, dtype=np.int64)
+        left, interval_lo, interval_hi = self._smems_search(read_codes)
 
         lengths = ends - left + 1
         occ = interval_hi - interval_lo

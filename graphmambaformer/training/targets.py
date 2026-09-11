@@ -135,12 +135,20 @@ class TargetBuilder:
     def __init__(self, pipeline, model=None, max_anchors: int = 32,
                  max_chains: int = 8, max_members: int = 8,
                  max_read_len: Optional[int] = None,
-                 decoy_chains: int = 1):
+                 decoy_chains: int = 1,
+                 position_window: float = 512.0):
         self.pipeline = pipeline
         self.max_anchors = max_anchors
         self.max_chains = max_chains
         self.max_members = max_members
         self.max_read_len = max_read_len
+        # Half-width (bp) of the window the position head regresses within. The
+        # position target is a *local* offset relative to the locus the classical
+        # chainer already found (see ``_local_position_target``), not an absolute
+        # genomic coordinate, so this sets the scale over which that offset spans
+        # roughly [-1, 1].
+        self.position_window = float(position_window)
+        self._position_warned = False
         # Number of synthetic hard-negative chains to inject for a read that the
         # chainer collapsed to a single candidate. A listwise cross-entropy over
         # one candidate is identically zero with zero gradient (softmax of a
@@ -175,6 +183,41 @@ class TargetBuilder:
             if overlap > best_overlap:
                 best, best_overlap = i, overlap
         return best
+
+    @staticmethod
+    def _local_position_target(
+        reads: Sequence, chains_per_read: Sequence[Sequence[Chain]], window: float
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """A *local* within-window offset target the position head can predict.
+
+        The old target, ``read.ref_start / len(whole_reference)``, is an absolute
+        genomic coordinate: predicting it from a single read embedding is ill-posed,
+        so the Huber regressor minimized by emitting the batch mean (position head
+        variance collapsed to ~0). Instead express the read's start as a signed
+        fraction of a small ``window`` around the locus the classical chainer
+        already localized::
+
+            target = clamp( (read.ref_start - chain.ref_start) / window, -1, 1 )
+
+        The fused embedding attends to the reference in that neighbourhood, so this
+        residual is in-distribution and learnable. Reads with no chain are marked
+        invalid so they do not drag the head toward a meaningless value.
+        """
+        n = len(reads)
+        tgt = np.zeros(n, dtype=np.float32)
+        valid = np.zeros(n, dtype=bool)
+        w = max(float(window), 1.0)
+        for i, (read, chains) in enumerate(zip(reads, chains_per_read)):
+            ref_start = getattr(read, "ref_start", None)
+            if ref_start is None or not chains:
+                continue
+            anchor = min((c.ref_start for c in chains), default=None)
+            if anchor is None:
+                continue
+            offset = (float(ref_start) - float(anchor)) / w
+            tgt[i] = max(-1.0, min(1.0, offset))
+            valid[i] = True
+        return tgt, valid
 
     @staticmethod
     def _subchain(parent: Chain, anchors: AnchorSet, keep: np.ndarray) -> Chain:
@@ -401,14 +444,26 @@ class TargetBuilder:
             "mapq_valid": torch.ones(n, dtype=torch.bool),
         }
 
-        # Within-node offset: the read's true start as a fraction of the
-        # reference span it was drawn from.
-        ref_len = max(len(reference.ref_seq), 1)
-        targets["position_target"] = torch.tensor(
-            [min(1.0, max(0.0, r.ref_start / ref_len)) for r in reads],
-            dtype=torch.float32,
+        # Within-window offset relative to the locus the chainer already found.
+        # A *local* residual is learnable from the fused embedding; the absolute
+        # ``ref_start / len(reference)`` coordinate it replaced was not (the head
+        # degenerated to predicting the batch mean). Computed from the same
+        # ``chains_per_read`` used above, so no extra stage runs.
+        pos_target, pos_valid = self._local_position_target(
+            reads, chains_per_read, self.position_window
         )
-        targets["position_valid"] = torch.ones(n, dtype=torch.bool)
+        targets["position_target"] = torch.from_numpy(pos_target)
+        targets["position_valid"] = torch.from_numpy(pos_valid)
+        if not self._position_warned and (
+            pos_valid.sum() < 2 or float(pos_target[pos_valid].std() if pos_valid.any() else 0.0) < 1e-3
+        ):
+            self._position_warned = True
+            print(
+                "[targets] WARNING: local position_target has ~0 spread on this "
+                f"batch; the position head has little to learn. Revisit "
+                f"position_window (={self.position_window}) or confirm chain.ref_start "
+                "differs from read.ref_start."
+            )
 
         supervised = ("seed", "chain", "mapq", "position", "router")
         return Supervision(

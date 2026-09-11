@@ -649,7 +649,14 @@ def test_seeding_genomeworks_backend_uses_cudamapper_index():
     accel = AccelConfig(stage_backends={
         "seeding": "genomeworks", "chaining": "genomeworks", "extension": "auto"})
     pipeline = _pipeline_with_accel(accel)
-    assert pipeline.seeder.cfg.modes == ("cudamapper",)
+    # The GPU minimizer index (cudamapper) leads the seeder and replaces the CPU
+    # minimizer/gpu_kmer mode, but the complementary modes are retained so the
+    # route keeps the default seeder's sensitivity.
+    modes = pipeline.seeder.cfg.modes
+    assert modes[0] == "cudamapper"
+    assert "minimizer" not in modes and "gpu_kmer" not in modes
+    # The default fast-mode seeder's complementary modes survive the swap.
+    assert set(modes[1:]) == {"smem", "fuzzy"}
 
     reference = _random_seq(900, seed=25)
     read = reference[420:560]

@@ -43,6 +43,7 @@ arithmetic per cell.
 
 from __future__ import annotations
 
+import functools
 import os
 from dataclasses import dataclass
 from typing import Optional, Sequence
@@ -62,6 +63,22 @@ from .types import (
 )
 
 _NEG_INF = -1e30
+
+#: Op codes emitted by the Numba traceback kernel, in CIGAR-letter order.
+_TRACE_OPS = ("=", "X", "I", "D")
+
+
+@functools.lru_cache(maxsize=1)
+def _numba_traceback():
+    """The njit banded-SW traceback, or ``None`` when Numba is unavailable."""
+    try:
+        from ..accel.numba_sw import banded_traceback, numba_available
+
+        if numba_available():
+            return banded_traceback
+    except Exception:
+        pass
+    return None
 
 
 def _wfa_gpu_cigar_to_pipeline(
@@ -297,6 +314,40 @@ def traceback_banded(
     i = int(result.query_end[index].item())
     j = int(result.target_end[index].item())
     score = float(result.score[index].item())
+
+    # Numba tier: walk the same recurrence in a nogil kernel. It returns the op
+    # codes (reverse order); the run-length encoding stays here. Any problem
+    # falls through to the portable Python walk below.
+    kernel = _numba_traceback()
+    if kernel is not None:
+        try:
+            codes, i_end, j_end = kernel(
+                H, E, F, hb, offset, i, j, query, target,
+                match_score=cfg.match_score,
+                mismatch_penalty=cfg.mismatch_penalty,
+                gap_open=cfg.gap_open,
+                gap_extend=cfg.gap_extend,
+                tolerance=tolerance,
+            )
+            ops = [_TRACE_OPS[c] for c in codes[::-1]]
+            cigar = run_length_encode(ops)
+            counts = {op: 0 for op in ("=", "X", "I", "D")}
+            for op, n in cigar:
+                counts[op] = counts.get(op, 0) + n
+            return ExtensionResult(
+                score=score,
+                cigar=cigar,
+                read_start=int(i_end),
+                read_end=i,
+                ref_start=int(j_end),
+                ref_end=j,
+                n_match=counts["="],
+                n_mismatch=counts["X"],
+                n_insertion=counts["I"],
+                n_deletion=counts["D"],
+            )
+        except Exception:
+            pass
 
     def band(row_i: int, col_j: int) -> int:
         return col_j - row_i - offset + hb

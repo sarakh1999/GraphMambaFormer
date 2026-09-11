@@ -54,9 +54,10 @@ def numba_available() -> bool:
     return _numba() is not None
 
 
-# The kernel is compiled lazily on first use so importing this module never pays
-# the JIT cost (and never requires Numba). ``_KERNEL`` caches the compiled fn.
+# The kernels are compiled lazily on first use so importing this module never
+# pays the JIT cost (and never requires Numba). These cache the compiled fns.
 _KERNEL: Any | None = None
+_TRACE_KERNEL: Any | None = None
 
 
 def _build_kernel() -> Any:
@@ -245,5 +246,137 @@ def banded_affine_sw_fill(
         float(gap_extend),
         float(x_drop),
         int(_N_CODE),
+        float(_NEG_INF),
+    )
+
+
+def _build_trace_kernel() -> Any:
+    numba = _numba()
+    assert numba is not None
+    from numba import njit
+
+    # Op codes emitted by the traceback (reverse order); mapped back to CIGAR
+    # letters by the caller: 0 '=', 1 'X', 2 'I', 3 'D'.
+    @njit(nogil=True, inline="always")
+    def _cell(mat, i, j, offset, hb, neg):
+        # Band-relative lookup with the same out-of-band sentinel the torch
+        # traceback uses; ``d`` is the diagonal's column within the band.
+        d = j - i - offset + hb
+        if i < 0 or i >= mat.shape[0] or d < 0 or d >= mat.shape[1]:
+            return neg
+        return mat[i, d]
+
+    @njit(cache=True, nogil=True, fastmath=False)
+    def _trace(
+        H, E, F, hb, offset, i0, j0, query, target,
+        match_s, mismatch_p, gap_open, gap_extend, n_code, tol, neg,
+    ):
+        # Walk back from the best cell, choosing the recurrence term that
+        # produced each cell (diagonal, then vertical F, then horizontal E),
+        # exactly as :func:`extension.traceback_banded`. ``ops`` is filled in
+        # reverse; the path is at most ``i0 + j0`` steps long.
+        ops = np.empty(i0 + j0, dtype=np.int8)
+        k = 0
+        i = i0
+        j = j0
+        state = 0  # 0 = H, 1 = F (insertion), 2 = E (deletion)
+        while i > 0 and j > 0:
+            if state == 0:
+                hij = _cell(H, i, j, offset, hb, neg)
+                if hij <= 0.0:
+                    break
+                qb = query[i - 1]
+                tb = target[j - 1]
+                matched = (qb == tb) and (qb >= 0) and (qb != n_code)
+                sub = match_s if matched else -mismatch_p
+                hdiag = _cell(H, i - 1, j - 1, offset, hb, neg)
+                if hdiag < 0.0:
+                    hdiag = 0.0
+                diag = hdiag + sub
+                if abs(hij - diag) <= tol:
+                    ops[k] = 0 if matched else 1
+                    k += 1
+                    i -= 1
+                    j -= 1
+                elif abs(hij - _cell(F, i, j, offset, hb, neg)) <= tol:
+                    state = 1
+                else:
+                    state = 2
+            elif state == 1:  # vertical: consumes a query base -> insertion
+                current = _cell(F, i, j, offset, hb, neg)
+                ops[k] = 2
+                k += 1
+                i -= 1
+                if abs(current - (_cell(H, i, j, offset, hb, neg) - gap_open)) <= tol:
+                    state = 0
+                elif abs(current - (_cell(F, i, j, offset, hb, neg) - gap_extend)) > tol:
+                    state = 0  # numerical drift: resume from the H state
+            else:  # horizontal: consumes a target base -> deletion
+                current = _cell(E, i, j, offset, hb, neg)
+                ops[k] = 3
+                k += 1
+                j -= 1
+                if abs(current - (_cell(H, i, j, offset, hb, neg) - gap_open)) <= tol:
+                    state = 0
+                elif abs(current - (_cell(E, i, j, offset, hb, neg) - gap_extend)) > tol:
+                    state = 0
+        return ops[:k], i, j
+
+    return _trace
+
+
+def _trace_kernel() -> Any:
+    global _TRACE_KERNEL
+    if _TRACE_KERNEL is None:
+        _TRACE_KERNEL = _build_trace_kernel()
+    return _TRACE_KERNEL
+
+
+def banded_traceback(
+    H: np.ndarray,
+    E: np.ndarray,
+    F: np.ndarray,
+    half_band: int,
+    band_offset: int,
+    query_end: int,
+    target_end: int,
+    query: np.ndarray,
+    target: np.ndarray,
+    *,
+    match_score: float,
+    mismatch_penalty: float,
+    gap_open: float,
+    gap_extend: float,
+    tolerance: float = 1e-3,
+) -> tuple[np.ndarray, int, int]:
+    """Recover the CIGAR op path for one banded-SW alignment with the Numba kernel.
+
+    Mirrors the cell-walk of :func:`graphmambaformer.alignment.extension.
+    traceback_banded`. ``H``/``E``/``F`` are the band-relative ``float32``
+    matrices for one batch element. Returns ``(ops, read_start, ref_start)``
+    where ``ops`` is an ``int8`` array *in reverse order* using the op codes
+    ``0='='``, ``1='X'``, ``2='I'``, ``3='D'``.
+    """
+    Hc = np.ascontiguousarray(H, dtype=np.float32)
+    Ec = np.ascontiguousarray(E, dtype=np.float32)
+    Fc = np.ascontiguousarray(F, dtype=np.float32)
+    q = np.ascontiguousarray(query, dtype=np.int64)
+    t = np.ascontiguousarray(target, dtype=np.int64)
+    return _trace_kernel()(
+        Hc,
+        Ec,
+        Fc,
+        int(half_band),
+        int(band_offset),
+        int(query_end),
+        int(target_end),
+        q,
+        t,
+        float(match_score),
+        float(mismatch_penalty),
+        float(gap_open),
+        float(gap_extend),
+        int(_N_CODE),
+        float(tolerance),
         float(_NEG_INF),
     )

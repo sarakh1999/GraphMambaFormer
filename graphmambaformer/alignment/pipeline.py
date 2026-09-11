@@ -236,7 +236,17 @@ class AlignmentPipeline:
         _gw_master = bool(getattr(acfg, "genomeworks", True))
         seeding_cfg = self.cfg.seeding
         if _gw_master and _stage_backends.get("seeding") == "genomeworks":
-            seeding_cfg = replace(seeding_cfg, modes=("cudamapper",))
+            # Route seeding through the cudamapper GPU minimizer index, but keep
+            # the complementary modes (SMEM, fuzzy, …) so the GPU route stays as
+            # sensitive as the default seeder: cudamapper *replaces the minimizer
+            # / gpu_kmer mode*, it does not replace the whole multi-mode seeder.
+            # Minimizer-only seeding otherwise leaves ~5% of hard / reverse-
+            # complement reads unmapped (see tests/gpu_pipeline_e2e.py).
+            kept = tuple(
+                m for m in seeding_cfg.modes
+                if m not in ("minimizer", "gpu_kmer", "cudamapper")
+            )
+            seeding_cfg = replace(seeding_cfg, modes=("cudamapper",) + kept)
 
         self.seeder = SeedingEngine(
             seeding_cfg, device=self.device, workers=self._stage_workers

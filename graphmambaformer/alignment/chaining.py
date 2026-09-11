@@ -47,6 +47,7 @@ CuPy ``chain_dp`` RawKernel. All three are verified to agree.
 
 from __future__ import annotations
 
+import functools
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Sequence
@@ -60,6 +61,19 @@ from .types import AnchorSet, Chain
 
 NO_PREDECESSOR = -1
 _NEG_INF = -1e30
+
+
+@functools.lru_cache(maxsize=1)
+def _chain_dp_kernel():
+    """The njit chaining DP, or ``None`` when Numba is unavailable (cached)."""
+    try:
+        from ..accel.numba_chain import chain_dp_numba, numba_available
+
+        if numba_available():
+            return chain_dp_numba
+    except Exception:
+        pass
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -620,6 +634,26 @@ class AffineChainer:
                 return f[0].cpu().numpy().astype(np.float64), parent[0].cpu().numpy()
             except (RuntimeError, TypeError):
                 pass  # kernel unavailable / host tensors; fall through to portable
+
+        # CPU Numba tier: the same recurrence as chain_dp_numpy in a nogil
+        # scalar kernel — faster single-threaded and, releasing the GIL, it lets
+        # the per-read stage pool actually scale. Falls back on any problem.
+        kernel = _chain_dp_kernel()
+        if kernel is not None:
+            try:
+                return kernel(
+                    anchors.read_end,
+                    anchors.ref_end,
+                    weight,
+                    lookback=max(1, self.cfg.max_lookback),
+                    max_gap=self.cfg.max_gap,
+                    gap_open=self.cfg.gap_open,
+                    gap_extend=self.cfg.gap_extend,
+                    log_coeff=self.cfg.log_coeff,
+                    bonus=bonus,
+                )
+            except Exception:
+                pass
 
         return chain_dp_numpy(
             anchors.read_end, anchors.ref_end, weight, self.cfg, bonus=bonus

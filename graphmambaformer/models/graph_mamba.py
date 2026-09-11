@@ -179,6 +179,14 @@ class BiMambaTower(nn.Module):
     between the Mamba mixer and the FFN so the layer carries all of the figure's
     read-side inductive biases: sequence-state mixing (Mamba) followed by
     context-dependent pairwise scoring (attention).
+
+    Attention placement is schedulable via ``cfg.read_attention_layers``: ``None``
+    puts it in every layer (the original 1:1 Mamba:attention topology), while a
+    tuple of layer indices restricts it to those layers only — Mamba (and the FFN)
+    still run in all layers. This lets the attention ratio be thinned toward the
+    sparse, mid-stack placement recent hybrid-SSM work finds most efficient,
+    without disturbing the Mamba backbone or breaking checkpoints built with the
+    default.
     """
 
     def __init__(self, cfg: GraphMambaConfig):
@@ -190,6 +198,13 @@ class BiMambaTower(nn.Module):
         # the exact full-attention path inside WindowedSelfAttention.
         window = cfg.read_attention.window
         half = (window // 2) if window else 0
+        # Per-layer attention schedule: ``None`` -> attention in every layer (the
+        # original 1:1 topology, checkpoint-compatible); a set of indices -> only
+        # those layers, so the Mamba:attention ratio/placement is tunable.
+        attn_layers = (
+            None if cfg.read_attention_layers is None
+            else set(cfg.read_attention_layers)
+        )
         self._attn_shift: list[int] = []
         for i in range(cfg.n_mamba_layers):
             block = nn.ModuleDict(
@@ -198,7 +213,7 @@ class BiMambaTower(nn.Module):
                     "mixer": BiMamba2(cfg.mamba),
                 }
             )
-            if cfg.use_read_attention:
+            if cfg.use_read_attention and (attn_layers is None or i in attn_layers):
                 block["attn_norm"] = RMSNorm(cfg.d_model)
                 block["attn"] = WindowedSelfAttention(cfg.read_attention)
             if cfg.mamba_ffn:

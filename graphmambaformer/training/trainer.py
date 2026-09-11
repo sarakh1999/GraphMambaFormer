@@ -110,6 +110,12 @@ class TrainConfig:
     #: Intra-epoch validation also runs the end-to-end aligner, which is costly on
     #: a large val set, so a small cap keeps the mid-epoch check cheap.
     intra_val_max_batches: int = 0
+    #: Cap the *epoch-boundary* validation to this many val batches (0 = full
+    #: pass). The end-of-epoch validate() runs the whole aligner over every val
+    #: batch, which can dominate epoch time on a large held-out set; capping it
+    #: keeps a solid estimate while reclaiming hours per epoch. Intra-epoch
+    #: validation has its own (usually smaller) cap above.
+    epoch_val_max_batches: int = 0
     #: If set, keep ``last.pt`` pointing at the most recent epoch's weights.
     save_last: bool = True
     #: If set, flush ``history.json`` to disk after every epoch (crash-safe log).
@@ -690,10 +696,19 @@ class Trainer:
             unit="epoch",
             disable=not self.verbose,
         )
+        # Optionally cap the epoch-boundary validation for speed (0 = full pass).
+        epoch_val = val_batches
+        cap = int(getattr(self.cfg, "epoch_val_max_batches", 0) or 0)
+        if cap > 0 and len(val_batches) > cap:
+            epoch_val = list(val_batches)[:cap]
+            if self.verbose:
+                print(f"epoch-end validation capped to {cap} of {len(val_batches)} "
+                      "batches (TrainConfig.epoch_val_max_batches; 0 = full pass)")
+
         for epoch in epoch_bar:
             summary = self.train_epoch(train_batches, epoch, total_steps,
                                        val_batches)
-            metrics = self.validate(val_batches)
+            metrics = self.validate(epoch_val)
 
             score = metrics.monitored(self.cfg.monitor)
             if score is None:

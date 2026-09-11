@@ -22,10 +22,7 @@ graphmambaformer/distributed.py
 scripts/transfer/run_hg005_local.sh
 scripts/train.py
 scripts/plot_loss.py
-# NEW fixed files (kept alongside the untouched originals):
-graphmambaformer/training/run_fixes.py
-graphmambaformer/losses/graph_mamba_loss_fixed.py
-graphmambaformer/training/targets_fixed.py
-graphmambaformer/alignment/seeding_fixed.py
-scripts/train_fixed.py
 scripts/transfer/run_hg005_fixed.sh
+# NOTE: the former *_fixed shadow modules (run_fixes.py, graph_mamba_loss_fixed.py,
+# targets_fixed.py, seeding_fixed.py, scripts/train_fixed.py) have been folded
+# into the base modules and deleted, so there is nothing extra to exclude here.

@@ -412,6 +412,11 @@ def load_real_reads(
     if truth_bam:
         if not os.path.exists(truth_bam):
             raise FileNotFoundError(f"truth BAM not found: {truth_bam}")
+        # With a region (windowed manifest), push the read cap into read_bam as
+        # a coverage-uniform downsample so the kept reads are spread evenly
+        # across the window (a real ~12x) instead of the leftmost head-truncation
+        # the break below would give. Without a region we can't count cheaply, so
+        # read_bam ignores subsample_to and the break enforces the cap as before.
         raw = read_bam(
             truth_bam,
             region=region,
@@ -419,6 +424,7 @@ def load_real_reads(
             modality=modality,
             reference_fasta=fasta,
             as_sequences=False,
+            subsample_to=(max_reads or None),
         )
         for rec in progress(raw, desc="shift reads into window", unit="read", leave=False):
             if window_len is not None:
@@ -429,7 +435,9 @@ def load_real_reads(
             else:
                 rec.ref_id = ref_id
                 records.append(rec)
-            if max_reads and len(records) >= max_reads:
+            # read_bam already applied a uniform cap when a region was given;
+            # only head-truncate here for the region-less path.
+            if max_reads and region is None and len(records) >= max_reads:
                 break
         has_truth = True
     elif reads:

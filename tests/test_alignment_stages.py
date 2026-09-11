@@ -1200,6 +1200,93 @@ def test_banded_sw_identical_sequences_score_perfectly():
           f"CIGAR {extension.cigar_string}")
 
 
+def test_numba_banded_sw_matches_torch_reference():
+    """The optional Numba CPU tier fills the *same* band-relative H/E/F as the
+    torch banded DP, so score, end coordinates, and the full CIGAR are identical.
+
+    Skips cleanly when Numba is not installed (it is an optional accelerator).
+    """
+    try:
+        from graphmambaformer.accel.numba_sw import (
+            banded_affine_sw_fill,
+            numba_available,
+        )
+    except Exception:
+        print("numba unavailable; skipping numba banded-SW parity test")
+        return
+    if not numba_available():
+        print("numba unavailable; skipping numba banded-SW parity test")
+        return
+    from graphmambaformer.alignment.extension import BandedDPResult
+
+    cfg = ExtensionConfig()
+    hb = 12
+    for trial in range(16):
+        m = int(RNG.integers(15, 70))
+        a = random_seq(m)
+        if trial % 2 == 0:
+            # A mutated copy of ``a`` (subs + indels) to exercise =/X/I/D.
+            b_list = list(a)
+            for _ in range(int(RNG.integers(1, 5))):
+                pos = int(RNG.integers(0, len(b_list)))
+                action = RNG.integers(0, 3)
+                if action == 0:
+                    b_list[pos] = RNG.choice(list(BASES))
+                elif action == 1 and len(b_list) > 1:
+                    b_list.pop(pos)
+                else:
+                    b_list.insert(pos, RNG.choice(list(BASES)))
+            # An ambiguous base must never score as a match on either path.
+            if trial % 4 == 0 and b_list:
+                b_list[int(RNG.integers(0, len(b_list)))] = "N"
+            b = "".join(b_list)
+        else:
+            b = random_seq(int(RNG.integers(15, 70)))
+
+        q = encode_bases(a).astype(np.int16)
+        t = encode_bases(b).astype(np.int16)
+        off = int(RNG.integers(-6, 7))
+
+        ref = banded_affine_sw_batch(
+            torch.as_tensor(q)[None],
+            torch.as_tensor(t)[None],
+            torch.tensor([len(a)]),
+            torch.tensor([len(b)]),
+            cfg,
+            half_band=hb,
+            band_offset=torch.tensor([off]),
+            return_matrices=True,
+        )
+        H, E, F, score, best_i, best_j = banded_affine_sw_fill(
+            q[None], t[None],
+            np.array([len(a)]), np.array([len(b)]), np.array([off]), hb,
+            match_score=cfg.match_score,
+            mismatch_penalty=cfg.mismatch_penalty,
+            gap_open=cfg.gap_open,
+            gap_extend=cfg.gap_extend,
+            x_drop=cfg.x_drop,
+        )
+        assert abs(float(score[0]) - float(ref.score[0])) < 1e-3, (
+            trial, float(score[0]), float(ref.score[0]))
+        assert int(best_i[0]) == int(ref.query_end[0]), (trial, best_i[0], ref.query_end[0])
+        assert int(best_j[0]) == int(ref.target_end[0]), (trial, best_j[0], ref.target_end[0])
+
+        numba_res = BandedDPResult(
+            score=torch.from_numpy(score),
+            query_end=torch.from_numpy(best_i),
+            target_end=torch.from_numpy(best_j),
+            half_band=hb,
+            band_offset=torch.tensor([off], dtype=torch.long),
+            H=torch.from_numpy(H),
+            E=torch.from_numpy(E),
+            F=torch.from_numpy(F),
+        )
+        cig_ref = traceback_banded(ref, 0, q, t, cfg).cigar
+        cig_numba = traceback_banded(numba_res, 0, q, t, cfg).cigar
+        assert cig_ref == cig_numba, (trial, cig_ref, cig_numba)
+    print("numba banded SW matches the torch reference (score, ends, CIGAR)")
+
+
 def _levenshtein(a: str, b: str) -> int:
     previous = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):

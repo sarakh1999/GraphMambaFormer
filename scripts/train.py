@@ -752,6 +752,13 @@ def main() -> int:
                    help="cap intra-epoch validation to this many val batches "
                         "(0 = full val set). Intra-epoch validation also runs the "
                         "end-to-end aligner, so a small cap keeps it cheap")
+    p.add_argument("--epoch-val-max-batches", type=int,
+                   default=int(os.environ.get("EPOCH_VAL_MAX_BATCHES", "0") or 0),
+                   help="cap the epoch-boundary validation to this many val "
+                        "batches (0 = full pass). Defaults to $EPOCH_VAL_MAX_BATCHES "
+                        "so existing launchers keep working. The full aligner runs "
+                        "over every val batch, so a cap reclaims time on large "
+                        "held-out sets while keeping a solid estimate")
     p.add_argument("--dataset-cache-dir", default="data/dataset_cache",
                    help="directory for the prebuilt-dataset cache. The expensive "
                         "'build manifest entries' phase (reading BAMs, building "
@@ -924,6 +931,7 @@ def main() -> int:
             plot_every_steps=args.plot_every_steps,
             validate_every_steps=args.validate_every_steps,
             intra_val_max_batches=args.intra_val_max_batches,
+            epoch_val_max_batches=args.epoch_val_max_batches,
             devices=args.devices,
         ),
         loss_cfg=LossConfig(),

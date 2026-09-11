@@ -1,19 +1,8 @@
 #!/usr/bin/env bash
-# HG005 chr21 run with the FIXED loss stack (scripts/train_fixed.py).
-#
-# Identical to run_hg005_local.sh except:
-#   * it launches scripts/train_fixed.py, which activates ALL fixes:
-#       - router load-balance + eager Kendall weights (graph_mamba_loss_fixed.py)
-#       - pinned chain decoys + local position target (targets_fixed.py)
-#     Targets are rebuilt every step from the cached (reads, reference), so these
-#     apply on the EXISTING cache with no rebuild needed.
-#   * it writes to a *_fixed OUT dir so it never collides with the currently
-#     running (unfixed) job's checkpoints.
-#
-# Because the fixed criterion adds trainable log-variance parameters, its
-# checkpoints are NOT compatible with the old run's last.pt; this launcher
-# therefore starts the fixed run fresh (set RESUME=1 only to resume a *_fixed
-# checkpoint made by this same script).
+# HG005 chr21 run. The former "fixes" (router load-balance, eager Kendall loss
+# weights, chain decoys, local position target) are now the DEFAULT behaviour in
+# the base modules, so this just launches scripts/train.py directly — there is no
+# separate fixed entrypoint any more.
 #
 # Run detached so it survives an SSH drop:
 #   cd ~/mambaformer
@@ -21,6 +10,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."          # repo root (mambaformer)
+# Make the package importable regardless of how torchrun sets sys.path[0].
+export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 # shellcheck disable=SC1091
 source .venv/bin/activate
 module load cuda/13.2.1 gcc/13.2.0 2>/dev/null || true
@@ -82,10 +73,10 @@ else
 fi
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-# Cap the per-epoch full validation (train_fixed.py reads this; default 200).
-# Set to 0 to run the full ~6194-batch pass (the ~5h/epoch behaviour).
+# Cap the per-epoch full validation (train.py reads $EPOCH_VAL_MAX_BATCHES as the
+# default for --epoch-val-max-batches; default 200). Set 0 for the full pass.
 export EPOCH_VAL_MAX_BATCHES="${EPOCH_VAL_MAX_BATCHES:-200}"
-torchrun --standalone --nproc_per_node="$NGPU" scripts/train_fixed.py \
+torchrun --standalone --nproc_per_node="$NGPU" scripts/train.py \
   --data real \
   --manifest "$MANIFEST" \
   --dataset-cache-dir "$CACHE_DIR" \

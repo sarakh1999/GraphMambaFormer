@@ -414,6 +414,7 @@ def read_bam(
     include_unmapped: bool = False,
     reference_fasta: Optional[str] = None,
     as_sequences: bool = False,
+    subsample_to: Optional[int] = None,
 ) -> list[ReadRecord]:
     """Read alignments from a BAM (or SAM/CRAM) into :class:`ReadRecord` objects.
 
@@ -426,7 +427,15 @@ def read_bam(
         bam_path: path to a ``.bam`` / ``.sam`` / ``.cram`` file.
         region: optional ``samtools``-style region (e.g. ``"chr20:1000000-1100000"``).
             Requires a coordinate-sorted, indexed BAM. ``None`` streams from the start.
-        limit: stop after this many returned records (``None`` = all).
+        limit: stop after this many returned records (``None`` = all). This is
+            a leftmost head-truncation; prefer ``subsample_to`` for downsampling.
+        subsample_to: if set and a ``region`` is given, keep a coverage-uniform
+            random subset of ~this many primary reads, chosen by hashing the
+            read name, rather than the leftmost ``subsample_to`` reads. This
+            spreads the kept reads evenly across the window (e.g. a true ~12x
+            downsample of a deep BAM) instead of piling full depth on the
+            window's left edge, and it skips decoding the reads it drops so a
+            deep window is read several times faster.
         modality: modality tag stamped on every record (default ``"pacbio_hifi"``).
         include_unmapped: if ``True``, also yield unmapped reads (seq only, no
             alignment); by default they are skipped.
@@ -442,6 +451,8 @@ def read_bam(
         forward-reference coordinate per query base (``-1`` for insertions/clips).
         When ``as_sequences`` is set, every record is unmapped.
     """
+    import zlib
+
     import pysam  # local import so pysam stays an optional dependency
 
     from .formats import validate_modality
@@ -456,6 +467,25 @@ def read_bam(
     # check_sq=False so unaligned BAM/CRAM (no @SQ lines) can still be read.
     with pysam.AlignmentFile(bam_path, open_mode, **open_kwargs) as af:
         ref_id_of = {name: i for i, name in enumerate(af.references)}
+        # Coverage-uniform downsample. When a target read count is given (e.g. a
+        # 12x illumina cap on a much deeper BAM), keep a random subset chosen by
+        # hashing the read name so the survivors are spread evenly across the
+        # window, rather than head-truncating to the leftmost reads (which piles
+        # full depth on the window's left edge and leaves the rest empty). A
+        # cheap C-level primary-read count sets the keep fraction; the hash test
+        # runs before the expensive record decode, so dropped reads are ~free.
+        # Needs a region for the count to be cheap; without one we leave the
+        # stream intact and rely on ``limit``.
+        keep_thresh: Optional[int] = None
+        salt = b""
+        if subsample_to is not None and region is not None:
+            try:
+                n_primary = af.count(region=region, read_callback="all")
+            except Exception:  # pragma: no cover - count is best-effort
+                n_primary = 0
+            if n_primary > subsample_to:
+                keep_thresh = int((subsample_to / n_primary) * (1 << 32))
+                salt = (region or "").encode() + b"|"
         itr = af.fetch(region=region) if region is not None else af.fetch(until_eof=True)
         label = os.path.basename(bam_path)
         for aln in progress(itr, desc=f"read BAM {label}", unit="aln", leave=False):
@@ -463,6 +493,10 @@ def read_bam(
                 continue
             if aln.is_unmapped and not include_unmapped and not as_sequences:
                 continue
+            if keep_thresh is not None:
+                h = zlib.crc32(salt + (aln.query_name or "").encode()) & 0xFFFFFFFF
+                if h >= keep_thresh:
+                    continue
 
             if as_sequences:
                 seq = aln.query_sequence or ""

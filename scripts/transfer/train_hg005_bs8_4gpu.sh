@@ -22,29 +22,28 @@
 #      at batch-size 8 per GPU, bf16, full d_model=256, with host workers tuned so
 #      the CPU-side seeding/chaining keeps all 4 GPUs fed (high utilisation).
 #
-# Chain-ranking loss fix (was ~0): this launches scripts/train_fixed.py, which
-# activates the FIXED stack with zero edits to the original modules:
-#   * FixedTargetBuilder — PINS >=1 hard-negative decoy chain per read, so every
-#     read has >=2 candidates and the listwise cross-entropy is no longer the
-#     degenerate single-candidate case (softmax of one element == 1.0, grad == 0).
-#     Also switches the position head to a learnable local (in-window) target.
-#   * FixedGraphMambaLoss — router load-balancing (stops the 100%-"fast" collapse)
-#     + eager Kendall log-variances (so the learnable loss weights actually train).
-# Supervision is rebuilt live each step from the cached (reads, indexes), so these
-# fixes apply on the EXISTING cache — no cache rebuild needed for them.
+# The training fixes are now the DEFAULT behaviour of the base modules (no
+# separate fixed entrypoint):
+#   * >=1 hard-negative decoy chain per read (TargetBuilder.decoy_chains=1), so
+#     the listwise chain loss is never the degenerate single-candidate case
+#     (softmax of one element == 1.0, grad == 0), plus a learnable local
+#     (in-window) position target.
+#   * router load-balancing loss (stops the 100%-"fast" collapse) + eagerly
+#     materialized Kendall log-variances (so the learnable loss weights train).
+# Supervision is rebuilt live each step from the cached (reads, indexes), so this
+# applies on the EXISTING cache — no cache rebuild needed.
 # Watch history/plot 06 "chain_candidates_per_read" (>1) and the "chain" loss
-# term (now non-zero) to confirm the fix is live.
-#
-# Prefer plain train.py (chain fix only, via the decoy_chains=1 default; no router/
-# Kendall/position changes)?  Set  ENTRY=scripts/train.py.
+# term (now non-zero) to confirm training is healthy.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."            # repo root (mambaformer)
+# Make the package importable regardless of how torchrun sets sys.path[0].
+export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 # shellcheck disable=SC1091
 source .venv/bin/activate
 module load cuda/13.2.1 gcc/13.2.0 2>/dev/null || true
 
-ENTRY="${ENTRY:-scripts/train_fixed.py}"
+ENTRY="${ENTRY:-scripts/train.py}"
 MANIFEST=data/hprc/manifests/chr21_HG005_pangenome_windows.bal.json
 DMODEL="${DMODEL:-256}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
@@ -136,6 +135,9 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # host worker pool (that oversubscription is a common GPU-starving stall).
 export OMP_NUM_THREADS="$WORKERS"
 export MKL_NUM_THREADS="$WORKERS"
+# Cap the per-epoch full validation (train.py reads this as the default for
+# --epoch-val-max-batches; default 200). Set 0 to run the full pass.
+export EPOCH_VAL_MAX_BATCHES="${EPOCH_VAL_MAX_BATCHES:-200}"
 
 torchrun --standalone --nproc_per_node="$NGPU" "$ENTRY" \
   --data real \

@@ -11,6 +11,19 @@ numpy>=1.24
 # torch implementation.
 parasail>=1.3; platform_machine == "x86_64" or platform_machine == "AMD64"
 
+# CPU classical-stage tier (all platforms): Numba JIT-compiles the hot inner
+# loops of all three CPU alignment stages into native, GIL-releasing kernels:
+#   - seeding   FM-index rank / count / locate / SMEM search  (accel/numba_fm.py)
+#   - chaining  the affine-gap chaining DP                     (accel/numba_chain.py)
+#   - extension the banded affine SW forward fill + traceback  (accel/numba_sw.py)
+# Each reproduces its NumPy/torch reference exactly (verified in tests), so
+# anchors and CIGARs are unchanged; together they cut single-thread CPU
+# alignment several-fold AND, by releasing the GIL, let the per-read stage thread
+# pool actually scale across cores. Probed at runtime and disabled via
+# GMF_NUMBA_SW=0; the portable NumPy/torch paths run when it is absent. numba
+# pins numpy<2.6, which the numpy floor above satisfies.
+numba>=0.60
+
 # BAM/SAM/CRAM I/O (bundles htslib, so no external samtools needed). Used to
 # write sorted+indexed synthetic BAMs and to read real BAMs (e.g. HG002).
 pysam>=0.22

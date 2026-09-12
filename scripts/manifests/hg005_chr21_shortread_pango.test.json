@@ -1,0 +1,15 @@
+{
+  "reference_fasta": "data/chr21/HG005/ref/chr21.fa",
+  "gfa": "data/chr21/HG002/pangenome_windows/chr21_005750348_007942007.gfa",
+  "region": "chr21:5750349-7942007",
+  "contig": "chr21",
+  "entries": [
+    {
+      "sample": "HG005",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG005/bam/HG005.chr21.illumina.real.sorted.bam",
+      "max_reads": 24000,
+      "_comment": "HELD-OUT TEST: disjoint HPRC window subgraph chr21:5750349-7942007 (195kb gap from the train window end 5555548 >> read length -> no leakage). 24000 reads for a stable graph-aware locus estimate."
+    }
+  ]
+}

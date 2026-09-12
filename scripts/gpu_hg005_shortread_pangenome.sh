@@ -11,15 +11,17 @@
 #   * Run this alongside the linear short-read run to get a linear-vs-graph
 #     comparison on the SAME held-out test region (chr21:6.5-7.0Mb).
 #
-# SPLIT (unchanged, the fix from the HG002 runs):
-#   - TRAIN/VAL : chr21:5,000,000-6,000,000  (80/20)
-#   - TEST      : chr21:6,500,000-7,000,000  (DISJOINT, 500kb gap >> read length)
+# SPLIT (window-aligned so each region has its own small subgraph):
+#   - TRAIN/VAL : chr21:5,000,056-5,555,548  (555kb window subgraph, 80/20)
+#   - TEST      : chr21:5,750,349-7,942,007  (DISJOINT window, 195kb gap >> read len)
+#   Illumina ~12x on train (max_reads=26800); 24000 reads on the held-out test.
 #
-# NOTE (pangenome cost): the first run builds a graph-aware seed index for the
-#   region (slower than linear, and the chr21.gfa is ~719MB); it is cached, so
-#   later runs/epochs are faster. Pangenome also typically needs more epochs to
-#   converge than the near-ceiling linear run -- early stopping (patience) will
-#   still cut it off when val locus_accuracy plateaus.
+# NOTE (why window subgraphs): the full chr21.gfa (~719MB, whole chromosome) OOMs
+#   in graph tokenization (every node padded to the longest node -> a 37TB tensor).
+#   The manifests here use a single small HPRC per-window subgraph each, the same
+#   pattern the working pangenome_windows manifests use. The first run still builds
+#   a graph-aware seed index (cached afterwards); pangenome also converges slower
+#   than the near-ceiling linear run -- early stopping cuts it off on plateau.
 #
 # GPU: set CUDA_VISIBLE_DEVICES to a FREE GPU (GPUs 0-3 may be busy with the
 #   other four runs -- check `nvidia-smi` first). That env var remaps the chosen
@@ -57,8 +59,11 @@ WORKERS="${WORKERS:-4}"
 # batch; cap it. Illumina-only -> a simple prefix cap is representative.
 EPOCH_VAL_MAX_BATCHES="${EPOCH_VAL_MAX_BATCHES:-300}"
 
-MANIFEST="${MANIFEST:-scripts/manifests/hg005_chr21_shortread.json}"
-TEST_MANIFEST="${TEST_MANIFEST:-scripts/manifests/hg005_chr21_shortread.test.json}"
+# Pangenome uses per-window SUBGRAPH manifests (a single small HPRC window graph
+# each). The full chr21.gfa (~719MB whole chromosome) OOMs in graph tokenization,
+# so these point at data/chr21/HG002/pangenome_windows/*.gfa windows instead.
+MANIFEST="${MANIFEST:-scripts/manifests/hg005_chr21_shortread_pango.json}"
+TEST_MANIFEST="${TEST_MANIFEST:-scripts/manifests/hg005_chr21_shortread_pango.test.json}"
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT_TRAIN="${OUT_TRAIN:-data/training_runs/hg005_chr21_shortread_pango_${STAMP}}"
@@ -69,9 +74,9 @@ echo "############################################################"
 echo "# GraphMambaFormer HG005 SHORT-READ PANGENOME train+test  ($STAMP)"
 echo "#   CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES  d_model=$D_MODEL"
 echo "#   epochs=$EPOCHS batch=$BATCH  epoch_val_cap=$EPOCH_VAL_MAX_BATCHES"
-echo "#   ref-mode=pangenome (GFA graph attached; GATv2 tower active)"
-echo "#   TRAIN/VAL manifest = $MANIFEST   (Illumina ~12x, chr21:5-6Mb)"
-echo "#   HELD-OUT TEST      = $TEST_MANIFEST (chr21:6.5-7.0Mb, disjoint)"
+echo "#   ref-mode=pangenome (per-window GFA subgraph; GATv2 tower active)"
+echo "#   TRAIN/VAL manifest = $MANIFEST   (Illumina ~12x, chr21:5.00-5.56Mb window)"
+echo "#   HELD-OUT TEST      = $TEST_MANIFEST (chr21:5.75-7.94Mb window, disjoint)"
 echo "############################################################"
 
 if [ ! -f "$ROOT/.venv/bin/activate" ]; then

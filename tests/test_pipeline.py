@@ -9,6 +9,7 @@ import torch
 
 from graphmambaformer.alignment import (
     HybridAlignmentPipeline,
+    TwoPassAligner,
     build_pipeline,
     PIPELINE_REGISTRY,
 )
@@ -107,11 +108,11 @@ def accuracy(results, truth, tol=30):
     return hits / len(truth)
 
 
-def test_default_is_hybrid():
-    assert PipelineConfig().mode == "hybrid"
-    assert isinstance(build_pipeline(), HybridAlignmentPipeline)
+def test_default_is_two_pass():
+    assert PipelineConfig().mode == "two_pass"
+    assert isinstance(build_pipeline(), TwoPassAligner)
     assert set(PIPELINE_REGISTRY) == {"hybrid", "fast", "two_pass"}
-    print("default pipeline mode is hybrid; registry has all 3 modes")
+    print("default pipeline mode is two_pass; registry has all 3 modes")
 
 
 def test_route_labels_come_from_the_router():
@@ -521,7 +522,7 @@ def test_two_pass_matches_hybrid_on_hard_reads():
 
 
 if __name__ == "__main__":
-    test_default_is_hybrid()
+    test_default_is_two_pass()
     test_hybrid_end_to_end()
     test_all_modes_align()
     test_neural_pruning_shrinks_dp_input()

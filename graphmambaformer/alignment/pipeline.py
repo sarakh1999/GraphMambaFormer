@@ -871,7 +871,7 @@ def _signals_for_row(outputs, row: int) -> dict[str, np.ndarray]:
     return signals
 
 
-#: Pipeline mode -> implementation. ``"hybrid"`` is the default.
+#: Pipeline mode -> implementation. ``"two_pass"`` is the default.
 PIPELINE_REGISTRY: dict[str, type[AlignmentPipeline]] = {
     "hybrid": HybridAlignmentPipeline,
     "fast": FastAlignmentPipeline,
@@ -887,7 +887,8 @@ def build_pipeline(
 ) -> AlignmentPipeline:
     """Build the pipeline named by ``cfg`` (a config, a mode name, or ``None``).
 
-    ``None`` gives the default hybrid pipeline.
+    ``None`` gives the default two-pass pipeline: the fast classical path for easy
+    reads with a hybrid (neural) rescue for the hard tail.
     """
     if cfg is None:
         cfg = PipelineConfig()

@@ -1002,21 +1002,26 @@ class PipelineConfig:
     """Alignment-pipeline configuration.
 
     ``mode`` selects the pipeline implementation:
-      - ``"hybrid"`` (default): :class:`HybridAlignmentPipeline`, the accuracy
-        path — seed -> chain -> extend -> score. Resource-driven Stages 5-7 are
-        composed around it by :class:`alignment.SevenStagePipeline`.
+      - ``"hybrid"``: :class:`HybridAlignmentPipeline`, the accuracy path — seed
+        -> chain -> extend -> score, with the neural pass run on *every* read.
+        Resource-driven Stages 5-7 are composed around it by
+        :class:`alignment.SevenStagePipeline`.
       - ``"fast"``: :class:`FastAlignmentPipeline`, the throughput path — the
         classical stages only, with MAPQ from the primary/secondary score
         margin and no neural forward pass at all. (The architecture's fast mode
         also keeps a batched model pass over precomputed graph embeddings;
         here the neural work is simply skipped.)
-      - ``"two_pass"``: :class:`TwoPassAligner`, the fast path for easy reads
-        with a hybrid rescue for the hard tail. (The architecture's Pass 1 is a
+      - ``"two_pass"`` (default): :class:`TwoPassAligner`, the fast classical path
+        for the easy majority with a hybrid (neural) rescue for the hard tail.
+        The neural pass fires *only* on reads the heuristics can't place
+        confidently (see ``easy_coverage`` / ``easy_margin``), so it keeps the
+        hybrid path's accuracy on hard reads while paying fast-path cost on the
+        rest — the recommended operating point. (The architecture's Pass 1 is a
         runtime-compiled C extension; this one is the array-programmed Python
         path, so the reads/sec figures in the spec do not apply.)
     """
 
-    mode: str = "hybrid"
+    mode: str = "two_pass"
 
     seeding: SeedingConfig = field(default_factory=SeedingConfig)
     chaining: ChainingConfig = field(default_factory=ChainingConfig)

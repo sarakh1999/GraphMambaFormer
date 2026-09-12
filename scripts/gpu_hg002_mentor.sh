@@ -47,6 +47,11 @@ EPOCHS="${EPOCHS:-10}"
 BATCH="${BATCH:-4}"                 # if OOM at 24k length -> set BATCH=2; if room -> 8
 WORKERS="${WORKERS:-4}"
 MAX_READ_LEN="${MAX_READ_LEN:-24576}"  # covers HiFi fully + most ONT
+# The epoch-boundary validation runs the FULL end-to-end aligner over every val
+# batch; uncapped that is 1-2h/epoch. The manifest lists the rare long-read
+# modalities FIRST (val is not shuffled), so this prefix cap still covers all 3
+# modalities -> macro_locus_accuracy stays valid. 0 = full pass.
+EPOCH_VAL_MAX_BATCHES="${EPOCH_VAL_MAX_BATCHES:-400}"
 
 MANIFEST="${MANIFEST:-scripts/manifests/hg002_chr21_mentor.json}"
 
@@ -93,6 +98,7 @@ python -u scripts/train.py \
   --max-read-len "$MAX_READ_LEN" \
   --device cuda --devices auto --require-gpu \
   --monitor macro_locus_accuracy \
+  --epoch-val-max-batches "$EPOCH_VAL_MAX_BATCHES" \
   --out "$OUT_TRAIN"
 
 if [ ! -f "$CKPT" ]; then

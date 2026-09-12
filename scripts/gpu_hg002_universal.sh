@@ -45,6 +45,11 @@ EPOCHS="${EPOCHS:-20}"
 BATCH="${BATCH:-4}"                 # smaller: long reads are memory-heavy
 WORKERS="${WORKERS:-4}"            # modest: share host cores with the GPU-0 run
 MAX_READ_LEN="${MAX_READ_LEN:-4096}"  # REQUIRED for ONT/HiFi to bound memory
+# The epoch-boundary validation runs the FULL end-to-end aligner over every val
+# batch (~1.5s/batch); uncapped that is ~2h/epoch on this val set. The manifest
+# lists the rare long-read modalities FIRST (val is not shuffled), so this prefix
+# cap still covers all 3 modalities -> macro_locus_accuracy stays valid. 0 = full.
+EPOCH_VAL_MAX_BATCHES="${EPOCH_VAL_MAX_BATCHES:-400}"
 
 MANIFEST="${MANIFEST:-scripts/manifests/hg002_chr21_universal.json}"
 
@@ -94,6 +99,7 @@ python -u scripts/train.py \
   --max-read-len "$MAX_READ_LEN" \
   --device cuda --devices auto --require-gpu \
   --monitor macro_locus_accuracy \
+  --epoch-val-max-batches "$EPOCH_VAL_MAX_BATCHES" \
   --out "$OUT_TRAIN"
 
 if [ ! -f "$CKPT" ]; then

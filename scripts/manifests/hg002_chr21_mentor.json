@@ -6,22 +6,22 @@
   "entries": [
     {
       "sample": "HG002",
-      "modality": "illumina",
-      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
-      "max_reads": 48000,
-      "_comment": "48000 x 250bp / 1Mb ~= 12x (mentor target 10-15x). Loader subsamples uniformly across the window when a region is set."
-    },
-    {
-      "sample": "HG002",
       "modality": "ont",
       "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
-      "_comment": "no max_reads: use ALL ONT long reads (mentor: cover all long reads)"
+      "_comment": "no max_reads: use ALL ONT long reads (mentor: cover all long reads). Long-read modalities are listed FIRST so the un-shuffled val set puts them ahead of the abundant Illumina; then --epoch-val-max-batches still covers all 3 modalities and macro_locus_accuracy stays valid."
     },
     {
       "sample": "HG002",
       "modality": "pacbio_hifi",
       "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam",
       "_comment": "no max_reads: use ALL HiFi long reads"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam",
+      "max_reads": 48000,
+      "_comment": "48000 x 250bp / 1Mb ~= 12x (mentor target 10-15x). Loader subsamples uniformly across the window when a region is set."
     }
   ]
 }

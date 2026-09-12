@@ -49,6 +49,10 @@ EPOCHS="${EPOCHS:-20}"
 BATCH="${BATCH:-8}"
 WORKERS="${WORKERS:-8}"            # host threads for seeding/chaining
 MAX_READS="${MAX_READS:-0}"        # 0 = all reads in the window
+# The epoch-boundary validation runs the FULL end-to-end aligner over every val
+# batch (~1.5s/batch), so an uncapped val set can add 1h+/epoch. Illumina-only
+# here, so a simple prefix cap is a representative, cheap estimate. 0 = full.
+EPOCH_VAL_MAX_BATCHES="${EPOCH_VAL_MAX_BATCHES:-300}"
 
 REF_FA="${REF_FA:-data/chr21/HG002/ref/chr21.fa}"
 GFA="${GFA:-data/chr21/HG002/chr21.gfa}"
@@ -110,6 +114,7 @@ python -u scripts/train.py \
   --workers "$WORKERS" \
   --device cuda --devices auto --require-gpu \
   --monitor locus_accuracy \
+  --epoch-val-max-batches "$EPOCH_VAL_MAX_BATCHES" \
   --out "$OUT_TRAIN"
 
 if [ ! -f "$CKPT" ]; then

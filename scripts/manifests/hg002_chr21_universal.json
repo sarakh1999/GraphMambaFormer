@@ -6,18 +6,19 @@
   "entries": [
     {
       "sample": "HG002",
-      "modality": "illumina",
-      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam"
-    },
-    {
-      "sample": "HG002",
       "modality": "ont",
-      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam"
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.ont.real.sorted.bam",
+      "_comment": "Long-read modalities are listed FIRST on purpose. Val batches are appended per entry and are NOT shuffled (train batches are), so with the rare long reads first, --epoch-val-max-batches still covers all 3 modalities and macro_locus_accuracy stays valid."
     },
     {
       "sample": "HG002",
       "modality": "pacbio_hifi",
       "truth_bam": "data/chr21/HG002/bam/HG002.chr21.pacbio_hifi.real.sorted.bam"
+    },
+    {
+      "sample": "HG002",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG002/bam/HG002.chr21.illumina.real.sorted.bam"
     }
   ]
 }

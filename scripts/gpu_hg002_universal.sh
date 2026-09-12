@@ -92,7 +92,7 @@ python -u scripts/train.py \
   --batch-size "$BATCH" \
   --workers "$WORKERS" \
   --max-read-len "$MAX_READ_LEN" \
-  --device cuda --devices 1 --require-gpu \
+  --device cuda --devices auto --require-gpu \
   --monitor macro_locus_accuracy \
   --out "$OUT_TRAIN"
 

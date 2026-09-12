@@ -519,6 +519,20 @@ class FMIndex:
                 pass  # fall through to the portable NumPy build
         self._construct(codes, np)
 
+    # ``_fm`` is the resolved Numba kernel module (or None) — a module object is
+    # not picklable, and older on-disk index caches predate this attribute
+    # entirely. Drop it on pickling and re-resolve it on load so a bundle written
+    # by any version (or on a host without Numba) reloads cleanly instead of
+    # raising ``AttributeError: 'FMIndex' object has no attribute '_fm'``.
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state.pop("_fm", None)
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._fm = _fm_numba()
+
     def _construct(self, codes: np.ndarray, xp: object) -> None:
         """Build the BWT / rank checkpoints / sampled SA in the ``xp`` namespace.
 

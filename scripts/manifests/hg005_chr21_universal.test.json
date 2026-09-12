@@ -1,0 +1,27 @@
+{
+  "reference_fasta": "data/chr21/HG005/ref/chr21.fa",
+  "gfa": "data/chr21/HG005/chr21.gfa",
+  "region": "chr21:6500000-7000000",
+  "contig": "chr21",
+  "entries": [
+    {
+      "sample": "HG005",
+      "modality": "ont",
+      "truth_bam": "data/chr21/HG005/bam/HG005.chr21.ont.real.sorted.bam",
+      "_comment": "HELD-OUT TEST region chr21:6.5-7.0Mb, DISJOINT from train/val (5-6Mb) with a 500kb gap >> read length. All ONT reads in the test window."
+    },
+    {
+      "sample": "HG005",
+      "modality": "pacbio_hifi",
+      "truth_bam": "data/chr21/HG005/bam/HG005.chr21.pacbio_hifi.real.sorted.bam",
+      "_comment": "all HiFi reads in the test window"
+    },
+    {
+      "sample": "HG005",
+      "modality": "illumina",
+      "truth_bam": "data/chr21/HG005/bam/HG005.chr21.illumina.real.sorted.bam",
+      "max_reads": 24000,
+      "_comment": "24000 x ~249bp / 500kb ~= 12x on the held-out test window"
+    }
+  ]
+}

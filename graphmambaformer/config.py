@@ -455,8 +455,9 @@ class GraphMambaConfig:
     (context-dependent substitution / indel scoring, ``use_read_attention``), and
     GATv2 on the graph branch (topological reasoning), fused by cross-attention.
 
-    Defaults: ``d_model=256``, 6 BiMamba2 layers (+ windowed self-attn), 3 GATv2
-    layers, ~16M parameters.
+    Defaults: ``d_model=256``, 6 BiMamba2 layers with windowed self-attention on
+    3 of them (``read_attention_layers="auto"`` -> ``(1, 3, 5)``) and 3 GATv2
+    layers -- a 2:1:1 Mamba:Transformer:GNN composition -- ~16M parameters.
     """
 
     d_model: int = 256
@@ -498,13 +499,15 @@ class GraphMambaConfig:
     #: path), and adds no parameters. Set False to use fixed (aligned) windows.
     read_attention_shift: bool = True
     #: Which read-tower layers carry the windowed self-attention sublayer (0-based).
-    #: Recent hybrid-SSM results (Jamba, Samba, NVIDIA's Mamba study) find
-    #: attention is most useful *sparse and mid-stack* rather than in every layer,
-    #: so the placement is configurable independently of the Mamba stack:
+    #: This sets the Mamba:Transformer ratio, independently of the Mamba stack:
     #:
-    #: * ``"auto"`` (default) — a depth-adaptive sparse mid-stack schedule
-    #:   (~1/3 of the layers, centered), i.e. ``(2, 3)`` for the default 6-layer
-    #:   tower. This is the recommended arrangement.
+    #: * ``"auto"`` (default) — a 2:1 Mamba:Transformer interleave: ~1 attention
+    #:   sublayer per 2 Mamba layers, spread evenly, e.g. ``(1, 3, 5)`` for the
+    #:   default 6-layer tower. With the 3-layer GAT branch this realizes a 2:1:1
+    #:   Mamba:Transformer:GNN composition. Accuracy-leaning (more global mixing).
+    #: * ``"sparse"`` — a lighter, runtime-leaning schedule: ~1/3 of the layers,
+    #:   mid-stack (``(2, 3)`` at 6 layers), the minimal-attention placement
+    #:   hybrid-SSM studies (Jamba, NVIDIA) favor. Fewer attention sublayers.
     #: * ``None`` (or ``"all"``) — *every* layer carries attention, the original
     #:   1:1 Mamba:attention topology. Keeps pre-sparse checkpoints loadable
     #:   byte-for-byte; use it to restore the old behavior.
@@ -551,20 +554,24 @@ class GraphMambaConfig:
         self.read_attention.n_heads = rheads
         self.read_attention.d_head = d // rheads
 
-        # Resolve the attention schedule. Strings are keywords: "auto" picks a
-        # depth-adaptive sparse mid-stack, "all"/"every" fall back to attention in
-        # every layer (encoded as None downstream). An explicit tuple is validated
-        # against the stack depth so a typo fails loudly at construction rather
-        # than silently dropping / duplicating an attention sublayer.
+        # Resolve the attention schedule. Strings are keywords: "auto" is the 2:1
+        # Mamba:Transformer interleave, "sparse" the lighter ~1/3 mid-stack
+        # schedule, "all"/"every" fall back to attention in every layer (encoded
+        # as None downstream). An explicit tuple is validated against the stack
+        # depth so a typo fails loudly at construction rather than silently
+        # dropping / duplicating an attention sublayer.
         if isinstance(self.read_attention_layers, str):
             key = self.read_attention_layers.lower()
             if key == "auto":
                 self.read_attention_layers = self._auto_attention_layers(self.n_mamba_layers)
+            elif key == "sparse":
+                self.read_attention_layers = self._sparse_attention_layers(self.n_mamba_layers)
             elif key in ("all", "every"):
                 self.read_attention_layers = None
             else:
                 raise ValueError(
-                    f"read_attention_layers string must be 'auto' or 'all', got {self.read_attention_layers!r}"
+                    "read_attention_layers string must be 'auto', 'sparse', or "
+                    f"'all', got {self.read_attention_layers!r}"
                 )
         if self.read_attention_layers is not None:
             self.read_attention_layers = tuple(self.read_attention_layers)
@@ -580,12 +587,33 @@ class GraphMambaConfig:
 
     @staticmethod
     def _auto_attention_layers(n_layers: int) -> tuple[int, ...]:
-        """A sparse, mid-stack windowed-attention schedule for ``n_layers``.
+        """Default schedule: a 2:1 Mamba:Transformer interleave.
 
-        Places attention on ~1/3 of the layers, centered in the stack — the
-        arrangement hybrid-SSM studies (Jamba, Samba, NVIDIA) find most effective.
-        Depth-adaptive so it stays in range for shallow towers (a 1- or 2-layer
-        model used in tests gets a single mid layer, never an out-of-range index).
+        Places windowed attention on ~1 of every 2 Mamba layers, spread evenly
+        across the stack (e.g. ``(1, 3, 5)`` for the default 6-layer tower). With
+        the 3-layer GAT branch this realizes the 2:1:1 Mamba:Transformer:GNN
+        composition. Depth-adaptive and always in range, so shallow towers used in
+        tests still resolve to valid indices.
+        """
+        if n_layers <= 0:
+            return ()
+        k = max(1, round(n_layers / 2))
+        if k >= n_layers:
+            return tuple(range(n_layers))
+        step = n_layers / k
+        return tuple(
+            sorted({min(n_layers - 1, int(round((i + 0.5) * step))) for i in range(k)})
+        )
+
+    @staticmethod
+    def _sparse_attention_layers(n_layers: int) -> tuple[int, ...]:
+        """Lighter, runtime-leaning schedule: ~1/3 of the layers, mid-stack.
+
+        Attention only on the middle third (``(2, 3)`` for a 6-layer tower) — the
+        sparse-and-mid-stack placement hybrid-SSM studies (Jamba, NVIDIA) favor
+        for minimal attention. Fewer attention sublayers than ``"auto"``, so it
+        trades a little global mixing for lower compute. Depth-adaptive and always
+        in range for shallow towers.
         """
         if n_layers <= 0:
             return ()

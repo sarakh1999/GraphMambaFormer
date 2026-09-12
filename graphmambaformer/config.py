@@ -347,6 +347,12 @@ class MappingHeadConfig:
     max_nodes: int = 4096  # node-classifier output width (graph is padded to this)
     max_mapq: int = 60
     dropout: float = 0.1
+    #: Half-width (bp) of the window the position head regresses within. The head
+    #: emits a signed ``tanh`` fraction in ``[-1, 1]`` and multiplies by this to
+    #: get a base offset, matching the *local* position target the loss supervises
+    #: (``TargetBuilder._local_position_target``), which uses the same scale. Kept
+    #: in sync with ``TargetBuilder.position_window`` (same default).
+    position_window: int = 512
 
 
 @dataclass
@@ -492,16 +498,22 @@ class GraphMambaConfig:
     #: path), and adds no parameters. Set False to use fixed (aligned) windows.
     read_attention_shift: bool = True
     #: Which read-tower layers carry the windowed self-attention sublayer (0-based).
-    #: ``None`` (default) = *every* layer, i.e. the original 1:1 Mamba:attention
-    #: topology — this keeps existing checkpoints loadable byte-for-byte. A tuple
-    #: of layer indices restricts attention to those layers only, so the
-    #: Mamba:attention ratio and placement can be tuned/ablated without touching
-    #: the Mamba stack. Recent hybrid-SSM results (Jamba, Samba, NVIDIA's Mamba
-    #: study) find attention is most useful *sparse and mid-stack* rather than in
-    #: every layer, so the recommended schedule for the default 6-layer tower is
-    #: the middle pair ``(2, 3)``. Ignored entirely when ``use_read_attention``
-    #: is False (no attention anywhere).
-    read_attention_layers: tuple[int, ...] | None = None
+    #: Recent hybrid-SSM results (Jamba, Samba, NVIDIA's Mamba study) find
+    #: attention is most useful *sparse and mid-stack* rather than in every layer,
+    #: so the placement is configurable independently of the Mamba stack:
+    #:
+    #: * ``"auto"`` (default) — a depth-adaptive sparse mid-stack schedule
+    #:   (~1/3 of the layers, centered), i.e. ``(2, 3)`` for the default 6-layer
+    #:   tower. This is the recommended arrangement.
+    #: * ``None`` (or ``"all"``) — *every* layer carries attention, the original
+    #:   1:1 Mamba:attention topology. Keeps pre-sparse checkpoints loadable
+    #:   byte-for-byte; use it to restore the old behavior.
+    #: * an explicit tuple of 0-based layer indices — attention only on those
+    #:   layers, for hand-tuned ablations.
+    #:
+    #: Ignored entirely when ``use_read_attention`` is False (no attention
+    #: anywhere). Resolved to a concrete tuple (or ``None``) in ``__post_init__``.
+    read_attention_layers: tuple[int, ...] | str | None = "auto"
 
     def __post_init__(self) -> None:
         d = self.d_model
@@ -539,9 +551,21 @@ class GraphMambaConfig:
         self.read_attention.n_heads = rheads
         self.read_attention.d_head = d // rheads
 
-        # Validate the (optional) per-layer attention schedule against the stack
-        # depth so a typo fails loudly at construction rather than silently
-        # dropping / duplicating an attention sublayer.
+        # Resolve the attention schedule. Strings are keywords: "auto" picks a
+        # depth-adaptive sparse mid-stack, "all"/"every" fall back to attention in
+        # every layer (encoded as None downstream). An explicit tuple is validated
+        # against the stack depth so a typo fails loudly at construction rather
+        # than silently dropping / duplicating an attention sublayer.
+        if isinstance(self.read_attention_layers, str):
+            key = self.read_attention_layers.lower()
+            if key == "auto":
+                self.read_attention_layers = self._auto_attention_layers(self.n_mamba_layers)
+            elif key in ("all", "every"):
+                self.read_attention_layers = None
+            else:
+                raise ValueError(
+                    f"read_attention_layers string must be 'auto' or 'all', got {self.read_attention_layers!r}"
+                )
         if self.read_attention_layers is not None:
             self.read_attention_layers = tuple(self.read_attention_layers)
             out_of_range = sorted(
@@ -553,6 +577,21 @@ class GraphMambaConfig:
                     f"read_attention_layers {out_of_range} out of range for a "
                     f"{self.n_mamba_layers}-layer read tower (valid: 0..{self.n_mamba_layers - 1})"
                 )
+
+    @staticmethod
+    def _auto_attention_layers(n_layers: int) -> tuple[int, ...]:
+        """A sparse, mid-stack windowed-attention schedule for ``n_layers``.
+
+        Places attention on ~1/3 of the layers, centered in the stack — the
+        arrangement hybrid-SSM studies (Jamba, Samba, NVIDIA) find most effective.
+        Depth-adaptive so it stays in range for shallow towers (a 1- or 2-layer
+        model used in tests gets a single mid layer, never an out-of-range index).
+        """
+        if n_layers <= 0:
+            return ()
+        k = max(1, round(n_layers / 3))
+        start = (n_layers - k) // 2
+        return tuple(range(start, start + k))
 
 
 @dataclass
@@ -1013,6 +1052,17 @@ class LossConfig:
     # Class imbalance: the synthetic data has ~20-30% false seeds, so positives
     # dominate; this scales the positive term in the seed BCE.
     seed_pos_weight: float = 1.0
+    # Hard-read up-weighting. The neural stage is trained to *augment* the
+    # classical heuristics on every read, but its highest value is on the reads
+    # the heuristics struggle with (the chainer places them nowhere, off the true
+    # locus, or with a single low-coverage candidate). ``TargetBuilder`` tags each
+    # read with a difficulty in ``{0.0, 0.5, 1.0}`` (``targets["read_difficulty"]``)
+    # and the per-read loss terms (seed / transition / chain / node / position /
+    # mapq) are scaled by ``1 + (hard_read_weight - 1) * difficulty`` — a *weighted
+    # average*, so hard reads pull more gradient without inflating the loss scale
+    # (keeping it stable under the Kendall weighting). ``1.0`` disables the
+    # emphasis and recovers the uniform per-read objective exactly.
+    hard_read_weight: float = 3.0
     # Label smoothing for the node classifier (large, noisy label space).
     node_label_smoothing: float = 0.05
     # Huber transition point for the position / MAPQ regressions.

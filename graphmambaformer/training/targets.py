@@ -31,6 +31,16 @@ __all__ = ["Supervision", "TargetBuilder"]
 #: correct. Minimizer anchors land a few bases off under indel noise.
 ANCHOR_TOLERANCE = 20
 
+#: Hard-read detection thresholds (feed ``targets["read_difficulty"]``, which the
+#: loss turns into a per-read weight via ``LossConfig.hard_read_weight``). A read
+#: is "weakly placed" (difficulty 0.5) when the chainer left it a single candidate
+#: or the best chain covers less than this fraction of the read, and "failed"
+#: (difficulty 1.0) when the chainer found nothing or put the best chain's locus
+#: more than ``position_window`` bases off the truth. Coverage floor only; the
+#: locus tolerance is read from the builder's ``position_window`` so it tracks the
+#: scale the position head is trained on.
+HARD_READ_MIN_COVERAGE = 0.5
+
 
 @dataclass
 class Supervision:
@@ -183,6 +193,38 @@ class TargetBuilder:
             if overlap > best_overlap:
                 best, best_overlap = i, overlap
         return best
+
+    def _heuristic_difficulty(
+        self, read, chains: Sequence[Chain], read_len: int
+    ) -> float:
+        """How badly the classical heuristics handled this read, in ``[0, 1]``.
+
+        * ``1.0`` — the chainer produced no chain at all, or its best chain's
+          locus is more than ``position_window`` bases off the truth (a gross
+          misplacement the neural stage must rescue).
+        * ``0.5`` — placed but weakly: a single candidate (nothing to rank) or a
+          best chain covering less than ``HARD_READ_MIN_COVERAGE`` of the read.
+        * ``0.0`` — a clean, confident placement.
+
+        Read from the *pre-decoy* chains so the "single candidate" signal reflects
+        what the chainer actually returned, not the training decoys injected
+        later. Feeds ``targets["read_difficulty"]``; the loss turns it into a
+        per-read weight via ``LossConfig.hard_read_weight``.
+        """
+        if not chains:
+            return 1.0
+        best = chains[0]  # select() returns candidates best-score-first
+        truth = getattr(read, "ref_start", None)
+        if truth is not None and abs(int(best.ref_start) - int(truth)) > self.position_window:
+            return 1.0
+        coverage = (
+            best.coverage(read_len)
+            if hasattr(best, "coverage")
+            else (best.read_end - best.read_start) / max(read_len, 1)
+        )
+        if len(chains) < 2 or coverage < HARD_READ_MIN_COVERAGE:
+            return 0.5
+        return 0.0
 
     @staticmethod
     def _local_position_target(
@@ -367,6 +409,17 @@ class TargetBuilder:
         anchor_sets = self.pipeline.seed(seqs, reference)
         chains_per_read = self.pipeline.chain(anchor_sets, reference)
 
+        # Per-read heuristic difficulty (from the *pre-decoy* chains), used by the
+        # loss to up-weight the reads the classical stages struggled with. Scored
+        # here so it sees exactly what seeding+chaining produced for this read.
+        read_difficulty = np.array(
+            [
+                self._heuristic_difficulty(read, chains, len(read.seq))
+                for read, chains in zip(reads, chains_per_read)
+            ],
+            dtype=np.float32,
+        )
+
         # Inject hard-negative decoy chains for reads the chainer collapsed to a
         # single candidate, so the listwise chain-ranking loss has >=2 candidates
         # to order (a singleton list makes that term identically zero). Done
@@ -442,6 +495,8 @@ class TargetBuilder:
             # MAPQ from the generator's own confidence label.
             "mapq_target": torch.tensor([float(r.mapq) for r in reads]),
             "mapq_valid": torch.ones(n, dtype=torch.bool),
+            # Per-read heuristic difficulty -> per-read loss weight (see the loss).
+            "read_difficulty": torch.from_numpy(read_difficulty),
         }
 
         # Within-window offset relative to the locus the chainer already found.

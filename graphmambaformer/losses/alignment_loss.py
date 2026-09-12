@@ -66,6 +66,36 @@ def _masked_mean(values: torch.Tensor, mask: torch.Tensor | None) -> torch.Tenso
     return (values * mask).sum() / total.clamp_min(1.0)
 
 
+def _weighted_masked_mean(
+    values: torch.Tensor,
+    mask: torch.Tensor | None,
+    read_weight: torch.Tensor | None,
+) -> torch.Tensor:
+    """Masked mean of ``values`` with an optional per-read weight.
+
+    ``read_weight`` is a ``(B,)`` non-negative multiplier broadcast over every
+    non-batch axis of ``values``, so a hard read's anchors / edges / offset all
+    count proportionally more. The result is a *weighted average* (normalized by
+    the summed weight), which re-balances the gradient toward the up-weighted
+    reads without changing the term's magnitude — so it stays comparable across
+    batches and stable under the Kendall weighting. With ``read_weight=None`` this
+    is exactly :func:`_masked_mean`, so the uniform objective is recovered
+    byte-for-byte.
+    """
+    if read_weight is None:
+        return _masked_mean(values, mask)
+    w = read_weight.to(values.dtype)
+    while w.dim() < values.dim():
+        w = w.unsqueeze(-1)
+    w = w.expand_as(values)
+    if mask is not None:
+        w = w * mask.to(values.dtype)
+    total = w.sum()
+    if float(total) == 0.0:
+        return (values * 0.0).sum()
+    return (values * w).sum() / total.clamp_min(1.0)
+
+
 class KendallWeighting(nn.Module):
     """Uncertainty weighting from Kendall et al. (arXiv:1705.07115).
 
@@ -156,6 +186,7 @@ class AlignmentLoss(nn.Module):
         logits: torch.Tensor,
         labels: torch.Tensor,
         anchor_mask: torch.Tensor | None,
+        read_weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Per-anchor true/decoy BCE, masked over the padded anchor slots."""
         pos_weight = torch.as_tensor(
@@ -164,7 +195,7 @@ class AlignmentLoss(nn.Module):
         per_anchor = F.binary_cross_entropy_with_logits(
             logits, labels.to(logits.dtype), pos_weight=pos_weight, reduction="none"
         )
-        return _masked_mean(per_anchor, anchor_mask)
+        return _weighted_masked_mean(per_anchor, anchor_mask, read_weight)
 
     def transition_loss(
         self,
@@ -173,6 +204,7 @@ class AlignmentLoss(nn.Module):
         edge_mask: torch.Tensor,
         seed_labels: torch.Tensor,
         gnn_active: torch.Tensor | None = None,
+        read_weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """BCE for chaining edges; a positive edge joins two true seeds."""
         labels = seed_labels.to(logits.device)
@@ -185,13 +217,14 @@ class AlignmentLoss(nn.Module):
         if gnn_active is not None:
             live = live & gnn_active.bool()[:, None]
         per_edge = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
-        return _masked_mean(per_edge, live)
+        return _weighted_masked_mean(per_edge, live, read_weight)
 
     def chain_loss(
         self,
         logits: torch.Tensor,
         target: torch.Tensor,
         chain_mask: torch.Tensor | None,
+        read_weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Listwise cross-entropy over each read's candidate chains.
 
@@ -220,33 +253,60 @@ class AlignmentLoss(nn.Module):
         if not bool(finite.any()):
             return zero
         rows = rows[finite]
-        return F.cross_entropy(masked[rows], target[rows])
+        per_read = F.cross_entropy(masked[rows], target[rows], reduction="none")
+        if read_weight is None:
+            return per_read.mean()
+        w = read_weight.to(per_read.dtype)[rows]
+        denom = w.sum()
+        if float(denom) == 0.0:
+            return per_read.mean()
+        return (per_read * w).sum() / denom.clamp_min(1.0)
 
-    def node_loss(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return F.cross_entropy(
+    def node_loss(
+        self,
+        logits: torch.Tensor,
+        target: torch.Tensor,
+        read_weight: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if read_weight is None:
+            return F.cross_entropy(
+                logits,
+                target,
+                ignore_index=-100,
+                label_smoothing=self.cfg.node_label_smoothing,
+            )
+        # Per-read cross-entropy so hard reads can be up-weighted; ignored rows
+        # (target == -100) already contribute exactly zero, and the valid mask
+        # keeps the weighted-average normalization over the supervised rows only.
+        per_read = F.cross_entropy(
             logits,
             target,
             ignore_index=-100,
             label_smoothing=self.cfg.node_label_smoothing,
+            reduction="none",
         )
+        valid = (target != -100).to(per_read.dtype)
+        return _weighted_masked_mean(per_read, valid, read_weight)
 
     def position_loss(
         self,
         fraction: torch.Tensor,
         target: torch.Tensor,
         valid: torch.Tensor | None = None,
+        read_weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Huber on the within-node offset; robust to the odd mis-assigned node."""
         per_read = F.smooth_l1_loss(
             fraction, target.to(fraction.dtype), beta=self.cfg.huber_beta, reduction="none"
         )
-        return _masked_mean(per_read, valid)
+        return _weighted_masked_mean(per_read, valid, read_weight)
 
     def mapq_loss(
         self,
         mapq: torch.Tensor,
         target: torch.Tensor,
         valid: torch.Tensor | None = None,
+        read_weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Huber on MAPQ, normalized to ``[0, 1]`` to keep the scale comparable."""
         scale = max(self.max_mapq, 1.0)
@@ -256,7 +316,7 @@ class AlignmentLoss(nn.Module):
             beta=self.cfg.huber_beta,
             reduction="none",
         )
-        return _masked_mean(per_read, valid)
+        return _weighted_masked_mean(per_read, valid, read_weight)
 
     def router_loss(self, router: dict[str, torch.Tensor]) -> torch.Tensor:
         """Load-balancing router objective that prevents collapse to one route.
@@ -312,6 +372,22 @@ class AlignmentLoss(nn.Module):
         return F.relu(margin - (best - decoy)).mean()
 
     # -- assembly ------------------------------------------------------------ #
+    def _read_weight(self, targets: dict[str, torch.Tensor]) -> torch.Tensor | None:
+        """Per-read loss multiplier from the batch's difficulty tag.
+
+        ``targets["read_difficulty"]`` is ``(B,)`` in ``[0, 1]`` (0 = the
+        heuristics placed the read cleanly, 1 = they failed it). The multiplier is
+        ``1 + (hard_read_weight - 1) * difficulty``, so an easy read keeps weight
+        1 and the hardest reads reach ``hard_read_weight``. Returns ``None`` — the
+        uniform objective — when the feature is disabled (``hard_read_weight == 1``)
+        or the batch carries no difficulty tag (e.g. an inference-time call).
+        """
+        difficulty = targets.get("read_difficulty")
+        hw = float(self.cfg.hard_read_weight)
+        if difficulty is None or hw == 1.0:
+            return None
+        return 1.0 + (hw - 1.0) * difficulty.to(torch.float32)
+
     def forward(
         self,
         outputs,
@@ -322,9 +398,17 @@ class AlignmentLoss(nn.Module):
         """Collect every applicable alignment term, keyed by name."""
         losses: dict[str, torch.Tensor] = {}
 
+        # Per-read hard-read emphasis: reads the classical heuristics struggle
+        # with (see ``TargetBuilder``) get a larger weight in every per-read term,
+        # so the neural stage spends its capacity where it adds the most over the
+        # heuristics. ``None`` when the feature is off or the batch carries no
+        # difficulty tag, in which case every term reduces to its uniform form.
+        read_weight = self._read_weight(targets)
+
         if seed_scores is not None and "seed_labels" in targets:
             losses["seed"] = self.seed_loss(
-                seed_scores["logits"], targets["seed_labels"], targets.get("anchor_mask")
+                seed_scores["logits"], targets["seed_labels"], targets.get("anchor_mask"),
+                read_weight,
             )
             if {
                 "transition_logits",
@@ -337,6 +421,7 @@ class AlignmentLoss(nn.Module):
                     seed_scores["edge_mask"],
                     targets["seed_labels"],
                     seed_scores.get("gnn_active"),
+                    read_weight,
                 )
 
         if chain_scores is not None and "chain_target" in targets:
@@ -346,13 +431,14 @@ class AlignmentLoss(nn.Module):
                 else chain_scores["logits"],
                 targets["chain_target"],
                 targets.get("chain_mask"),
+                read_weight,
             )
 
         mapping = getattr(outputs, "mapping", None)
         if mapping is not None:
             if "node_target" in targets:
                 losses["node"] = self.node_loss(
-                    mapping["node_logits"], targets["node_target"]
+                    mapping["node_logits"], targets["node_target"], read_weight
                 )
             if "position_target" in targets:
                 # Only supervise the offset where the node label is known: the
@@ -361,11 +447,13 @@ class AlignmentLoss(nn.Module):
                 if valid is None and "node_target" in targets:
                     valid = targets["node_target"] >= 0
                 losses["position"] = self.position_loss(
-                    mapping["position_fraction"], targets["position_target"], valid
+                    mapping["position_fraction"], targets["position_target"], valid,
+                    read_weight,
                 )
             if "mapq_target" in targets:
                 losses["mapq"] = self.mapq_loss(
-                    mapping["mapq"], targets["mapq_target"], targets.get("mapq_valid")
+                    mapping["mapq"], targets["mapq_target"], targets.get("mapq_valid"),
+                    read_weight,
                 )
 
         router = getattr(outputs, "router", None)

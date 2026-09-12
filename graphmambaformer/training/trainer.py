@@ -292,14 +292,35 @@ class Trainer:
             gnn_active=sup.seed_gnn_active,
         )
         b, n_chain, n_members = sup.member_states_shape
+        # Member states are the backbone's ``read_hidden`` at each chain member
+        # anchor's read position -- the SAME representation the inference
+        # re-ranker pools (NeuralScorer.score_chains). Training previously fed
+        # zeros here, which left the chain head's member-pooling branch untrained
+        # AND created a train/serve skew (real states at inference then flowed
+        # through that untrained branch, corrupting the chain scores). Gather the
+        # real states from the supervision's member positions so train == serve.
+        read_hidden = outputs.read_hidden
+        d_model = read_hidden.shape[-1]
+        length = read_hidden.shape[1]
+        if sup.chain_member_pos is not None and n_members > 0:
+            member_pos = sup.chain_member_pos.to(read_hidden.device)
+            member_mask = sup.chain_member_mask.to(read_hidden.device)
+            flat = member_pos.clamp(0, max(length - 1, 0)).reshape(b, -1)
+            member_states = read_hidden.gather(
+                1, flat.unsqueeze(-1).expand(-1, -1, d_model)
+            ).reshape(b, n_chain, n_members, d_model)
+            member_states = member_states * member_mask.unsqueeze(-1).to(member_states.dtype)
+        else:
+            # Back-compat (e.g. a supervision built before this field existed):
+            # fall back to the previous zero-member behaviour.
+            member_states = read_hidden.new_zeros((b, n_chain, n_members, d_model))
+            member_mask = torch.ones(
+                b, n_chain, n_members, dtype=torch.bool, device=read_hidden.device
+            )
         chain_scores = self.raw_model.score_chains(
             chain_features=sup.chain_feats,
-            member_states=torch.zeros(
-                b, n_chain, n_members, self.raw_model.cfg.d_model, device=self.device
-            ),
-            member_mask=torch.ones(
-                b, n_chain, n_members, dtype=torch.bool, device=self.device
-            ),
+            member_states=member_states,
+            member_mask=member_mask,
             chain_mask=sup.chain_mask,
         )
         return outputs, seed_scores, chain_scores

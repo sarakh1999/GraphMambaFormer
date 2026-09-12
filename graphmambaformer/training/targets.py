@@ -64,6 +64,15 @@ class Supervision:
     seed_gnn_active: Optional[torch.Tensor] = None
     chain_feats: Optional[torch.Tensor] = None
     chain_mask: Optional[torch.Tensor] = None
+    #: ``(B, n_chain, n_members)`` read positions of each chain's member anchors,
+    #: and a matching validity mask. The trainer gathers the backbone's
+    #: ``read_hidden`` at these positions to build the chain head's member states,
+    #: which is exactly what the inference re-ranker does
+    #: (:meth:`NeuralScorer.score_chains`). Keeping them here is what lets
+    #: training feed the head the *same* member representation it is served at
+    #: inference, instead of the zeros that left the member branch untrained.
+    chain_member_pos: Optional[torch.Tensor] = None
+    chain_member_mask: Optional[torch.Tensor] = None
     member_states_shape: tuple[int, ...] = ()
 
     #: Names of the loss terms this batch can actually supervise.
@@ -119,6 +128,8 @@ class Supervision:
             seed_gnn_active=move(self.seed_gnn_active),
             chain_feats=move(self.chain_feats),
             chain_mask=move(self.chain_mask),
+            chain_member_pos=move(self.chain_member_pos),
+            chain_member_mask=move(self.chain_member_mask),
             member_states_shape=self.member_states_shape,
             supervised=self.supervised,
             n_reads=self.n_reads,
@@ -385,15 +396,29 @@ class TargetBuilder:
         best_score = max((c.score for c in chains), default=1.0) or 1.0
         chain_feat_row = np.zeros((n_chain, self.n_chain_features), dtype=np.float32)
         chain_mask_row = np.zeros(n_chain, dtype=bool)
+        # Per-chain member read positions + validity, so the trainer can gather
+        # the SAME per-anchor backbone states the inference re-ranker pools over
+        # (NeuralScorer.score_chains gathers ``read_hidden`` at these positions).
+        # Members are the chain's anchors, indexed into this read's AnchorSet.
+        n_members = self.max_members
+        n_anchors_total = len(anchors)
+        member_pos_row = np.zeros((n_chain, n_members), dtype=np.int64)
+        member_mask_row = np.zeros((n_chain, n_members), dtype=bool)
         for j, chain in enumerate(chains):
             cfeats = chain_features(chain, anchors, len(read.seq), best_score)
             chain_feat_row[j, : min(len(cfeats), self.n_chain_features)] = cfeats[
                 : self.n_chain_features
             ]
             chain_mask_row[j] = True
+            idx = np.asarray(chain.anchor_idx, dtype=np.int64)[:n_members]
+            idx = idx[(idx >= 0) & (idx < n_anchors_total)]
+            if idx.size:
+                member_pos_row[j, : idx.size] = anchors.read_pos[idx].astype(np.int64)
+                member_mask_row[j, : idx.size] = True
         chain_target = self._chain_label(chains, read.ref_start, read.ref_end)
 
-        return feats, pos, nodes, amask, labels, chain_feat_row, chain_mask_row, chain_target
+        return (feats, pos, nodes, amask, labels, chain_feat_row, chain_mask_row,
+                chain_target, member_pos_row, member_mask_row)
 
     # ---- assembly --------------------------------------------------------- #
     def build(self, reads: Sequence, reference) -> Supervision:
@@ -464,6 +489,12 @@ class TargetBuilder:
         )
         chain_target = np.array([r[7] for r in rows], dtype=np.int64) if rows else np.zeros(
             0, dtype=np.int64
+        )
+        member_pos = np.stack([r[8] for r in rows]) if rows else np.zeros(
+            (0, n_chain, self.max_members), dtype=np.int64
+        )
+        member_mask = np.stack([r[9] for r in rows]) if rows else np.zeros(
+            (0, n_chain, self.max_members), dtype=bool
         )
 
         features = np.stack(feat_rows)
@@ -539,6 +570,8 @@ class TargetBuilder:
             seed_gnn_active=seed_gnn_active,
             chain_feats=torch.from_numpy(chain_feat),
             chain_mask=torch.from_numpy(chain_mask),
+            chain_member_pos=torch.from_numpy(member_pos),
+            chain_member_mask=torch.from_numpy(member_mask),
             member_states_shape=(n, n_chain, self.max_members),
             supervised=supervised + (("transition",) if seed_edge_mask is not None else ()),
             n_reads=n,

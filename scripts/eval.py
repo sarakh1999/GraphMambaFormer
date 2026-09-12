@@ -514,6 +514,11 @@ def main() -> int:
     p.add_argument("--contig", default=None)
     p.add_argument("--modality", default="illumina")
     p.add_argument("--max-reads", type=int, default=0)
+    p.add_argument("--hard-mapq-threshold", type=int, default=20,
+                   help="baseline (truth-BAM) MAPQ at/above which a read is "
+                        "'easy' for the easy/hard locus-accuracy split reported "
+                        "in metrics.json; below it is the 'hard' fraction "
+                        "(match the value used at training time)")
     p.add_argument("--max-read-len", type=int, default=None,
                    help="truncate each read to this many bases before encoding "
                         "(match training; required for long reads to avoid OOM)")
@@ -659,7 +664,8 @@ def main() -> int:
         model, pipeline,
         cfg=TrainConfig(out_dir=args.out, save_checkpoint=False,
                         save_every_epoch=False, save_last=False,
-                        checkpoint_history=False),
+                        checkpoint_history=False,
+                        hard_mapq_threshold=args.hard_mapq_threshold),
         loss_cfg=LossConfig(), accel=accel, verbose=False,
     )
 

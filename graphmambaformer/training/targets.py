@@ -24,6 +24,7 @@ import torch
 from ..accel.parallel import parallel_map
 from ..alignment.scoring import chain_features, encode_read_batch
 from ..alignment.types import AnchorSet, Chain
+from .metrics import LOCUS_TOLERANCE
 
 __all__ = ["Supervision", "TargetBuilder"]
 
@@ -518,14 +519,35 @@ class TargetBuilder:
                 seed_gnn_active,
             ) = scorer._pad_seed_graph(truncated, torch.device("cpu"))
 
+        # Correctness-calibrated MAPQ target. Rather than copy the truth BAM's
+        # own MAPQ (which only teaches the head to *reproduce* the baseline's
+        # confidence, and caps calibration at the baseline's), label each read by
+        # whether the classical primary placement is actually right -- its start
+        # within ``LOCUS_TOLERANCE`` of the truth. Trained with a BCE calibration
+        # loss, the MAPQ head then predicts P(placement correct), so its MAPQ is
+        # calibrated by construction (MAPQ = -10 log10(1 - p)). ``mapq_target``
+        # (the baseline MAPQ) is kept for reference/back-compat and for the
+        # easy/hard read stratification in validation.
+        mapq_correct = np.zeros(n, dtype=np.float32)
+        mapq_valid = np.zeros(n, dtype=bool)
+        for i, (read, chains) in enumerate(zip(reads, chains_per_read)):
+            truth = getattr(read, "ref_start", None)
+            if truth is None:
+                continue  # inference read: no correctness label
+            mapq_valid[i] = True
+            if chains and abs(int(chains[0].ref_start) - int(truth)) <= LOCUS_TOLERANCE:
+                mapq_correct[i] = 1.0
+
         targets: dict[str, torch.Tensor] = {
             "seed_labels": torch.from_numpy(np.stack(label_rows)),
             "anchor_mask": torch.from_numpy(np.stack(amask_rows)),
             "chain_target": torch.from_numpy(chain_target),
             "chain_mask": torch.from_numpy(chain_mask),
-            # MAPQ from the generator's own confidence label.
+            # Baseline (truth-BAM) MAPQ, kept for reference and easy/hard split.
             "mapq_target": torch.tensor([float(r.mapq) for r in reads]),
-            "mapq_valid": torch.ones(n, dtype=torch.bool),
+            # Correctness label the calibration loss actually trains against.
+            "mapq_correct": torch.from_numpy(mapq_correct),
+            "mapq_valid": torch.from_numpy(mapq_valid),
             # Per-read heuristic difficulty -> per-read loss weight (see the loss).
             "read_difficulty": torch.from_numpy(read_difficulty),
         }

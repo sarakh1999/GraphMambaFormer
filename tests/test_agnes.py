@@ -224,6 +224,11 @@ def test_training_learns_to_classify_seeds():
     import torch.nn as nn
 
     torch.manual_seed(0)
+    # Seed numpy too: the synthetic generator draws from the numpy global RNG, so
+    # without this the dataset (and thus the test's difficulty) depends on how
+    # much RNG earlier tests consumed -- which made this test flaky in the full
+    # suite while passing in isolation.
+    np.random.seed(0)
     syn = dataclasses.replace(SyntheticConfig(), n_train=60, n_val=20, n_test=20,
                               include_edge_cases=False)
     ds = generate_dataset(syn)

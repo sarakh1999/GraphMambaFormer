@@ -308,13 +308,40 @@ class AlignmentLoss(nn.Module):
         valid: torch.Tensor | None = None,
         read_weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Huber on MAPQ, normalized to ``[0, 1]`` to keep the scale comparable."""
+        """Huber on MAPQ, normalized to ``[0, 1]`` to keep the scale comparable.
+
+        Legacy path: regresses the head's MAPQ toward a *target* MAPQ (e.g. the
+        baseline's). Kept for back-compat / ablation; the default objective is now
+        :meth:`mapq_calibration_loss`, which calibrates instead of copies.
+        """
         scale = max(self.max_mapq, 1.0)
         per_read = F.smooth_l1_loss(
             mapq / scale,
             target.to(mapq.dtype) / scale,
             beta=self.cfg.huber_beta,
             reduction="none",
+        )
+        return _weighted_masked_mean(per_read, valid, read_weight)
+
+    def mapq_calibration_loss(
+        self,
+        logit: torch.Tensor,
+        correct: torch.Tensor,
+        valid: torch.Tensor | None = None,
+        read_weight: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Calibration BCE: train ``p = sigmoid(logit)`` toward ``P(correct)``.
+
+        The mapping head reports ``MAPQ = -10 log10(1 - p)``. Training ``p``
+        against the binary "is this placement right?" label (start within
+        ``LOCUS_TOLERANCE`` of truth) with cross-entropy makes ``p`` a calibrated
+        probability -- and therefore a calibrated MAPQ -- which is what lets the
+        aligner *win* on MAPQ calibration instead of merely reproducing the
+        baseline's MAPQ. Masked to reads that carry a correctness label and
+        re-weighted per read exactly like every other term.
+        """
+        per_read = F.binary_cross_entropy_with_logits(
+            logit, correct.to(logit.dtype), reduction="none"
         )
         return _weighted_masked_mean(per_read, valid, read_weight)
 
@@ -373,20 +400,37 @@ class AlignmentLoss(nn.Module):
 
     # -- assembly ------------------------------------------------------------ #
     def _read_weight(self, targets: dict[str, torch.Tensor]) -> torch.Tensor | None:
-        """Per-read loss multiplier from the batch's difficulty tag.
+        """Per-read loss multiplier from difficulty and/or modality.
 
-        ``targets["read_difficulty"]`` is ``(B,)`` in ``[0, 1]`` (0 = the
-        heuristics placed the read cleanly, 1 = they failed it). The multiplier is
-        ``1 + (hard_read_weight - 1) * difficulty``, so an easy read keeps weight
-        1 and the hardest reads reach ``hard_read_weight``. Returns ``None`` — the
-        uniform objective — when the feature is disabled (``hard_read_weight == 1``)
-        or the batch carries no difficulty tag (e.g. an inference-time call).
+        Two independent, multiplicative signals feed the same ``(B,)`` weight:
+
+        * ``targets["read_difficulty"]`` — ``(B,)`` in ``[0, 1]`` (0 = the
+          heuristics placed the read cleanly, 1 = they failed it), turned into
+          ``1 + (hard_read_weight - 1) * difficulty`` so easy reads keep weight 1
+          and the hardest reach ``hard_read_weight``.
+        * ``targets["modality_weight"]`` — ``(B,)`` inverse-frequency multiplier
+          the trainer injects when modality re-weighting is on, so a rare
+          modality (e.g. ONT/HiFi in an Illumina-dominated batch) counts more per
+          read and cannot be drowned out by the abundant modality.
+
+        The two are multiplied when both are present. Returns ``None`` — the
+        uniform objective, recovered byte-for-byte — when neither applies (e.g.
+        an inference-time call, or ``hard_read_weight == 1`` with no modality
+        weight).
         """
+        weight: torch.Tensor | None = None
+
         difficulty = targets.get("read_difficulty")
         hw = float(self.cfg.hard_read_weight)
-        if difficulty is None or hw == 1.0:
-            return None
-        return 1.0 + (hw - 1.0) * difficulty.to(torch.float32)
+        if difficulty is not None and hw != 1.0:
+            weight = 1.0 + (hw - 1.0) * difficulty.to(torch.float32)
+
+        modality_weight = targets.get("modality_weight")
+        if modality_weight is not None:
+            mw = modality_weight.to(torch.float32)
+            weight = mw if weight is None else weight * mw
+
+        return weight
 
     def forward(
         self,
@@ -450,7 +494,14 @@ class AlignmentLoss(nn.Module):
                     mapping["position_fraction"], targets["position_target"], valid,
                     read_weight,
                 )
-            if "mapq_target" in targets:
+            if "mapq_correct" in targets and "mapq_logit" in mapping:
+                # Calibrated MAPQ (default): predict P(placement correct).
+                losses["mapq"] = self.mapq_calibration_loss(
+                    mapping["mapq_logit"], targets["mapq_correct"],
+                    targets.get("mapq_valid"), read_weight,
+                )
+            elif "mapq_target" in targets:
+                # Legacy: regress toward a target (baseline) MAPQ.
                 losses["mapq"] = self.mapq_loss(
                     mapping["mapq"], targets["mapq_target"], targets.get("mapq_valid"),
                     read_weight,

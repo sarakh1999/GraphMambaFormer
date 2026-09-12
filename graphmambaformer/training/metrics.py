@@ -26,6 +26,13 @@ __all__ = ["ValidationMetrics", "anchor_metrics", "chain_accuracy",
 #: A predicted start within this many bases of truth counts as correct.
 LOCUS_TOLERANCE = 50
 
+#: Reads whose *baseline* (truth-BAM) MAPQ is at or above this are the "easy"
+#: (confidently mappable) fraction; below it is the "hard" fraction. This splits
+#: the accuracy the way the goal is stated -- "match baselines on easy reads, win
+#: (or draw) on the hard fraction" -- using the baseline's own confidence, so the
+#: split is independent of our model. Overridable via ``TrainConfig.hard_mapq_threshold``.
+HARD_MAPQ_THRESHOLD = 20
+
 
 @dataclass
 class ValidationMetrics:
@@ -45,26 +52,66 @@ class ValidationMetrics:
     n_reads: int = 0
     #: Reads that had >=2 candidate chains, so chain_accuracy is meaningful.
     n_chain_scored: int = 0
+    #: Locus accuracy computed separately for each modality present in the val
+    #: set (mapped reads of that modality within tolerance). Empty on a
+    #: single-modality run that carries no modality tags.
+    locus_accuracy_by_modality: dict[str, float] = field(default_factory=dict)
+    #: Unweighted mean of ``locus_accuracy_by_modality`` — the "universal"
+    #: score that treats every modality equally, so an Illumina-dominated read
+    #: pool cannot hide poor long-read placement behind a read-micro-average.
+    macro_locus_accuracy: float = 0.0
+    #: Locus accuracy split by baseline confidence (see ``HARD_MAPQ_THRESHOLD``).
+    #: ``easy`` = reads the baseline mapped confidently (should approach the
+    #: baseline ~100%); ``hard`` = reads the baseline was unsure about (where a
+    #: learned aligner has room to *win*). Counts recorded so the rates are
+    #: interpretable and DDP-reducible.
+    locus_accuracy_easy: float = 0.0
+    locus_accuracy_hard: float = 0.0
+    n_easy: int = 0
+    n_hard: int = 0
+    #: Mean |expected - observed| error gap over MAPQ bins for the *reported*
+    #: alignments (placement-based calibration; 0 = perfectly calibrated). This
+    #: is the number to drive down to "win on MAPQ calibration".
+    mapq_calibration_mae: float = 0.0
 
     def one_line(self) -> str:
         chain = (
             f"chain={self.chain_accuracy:.1%}(n={self.n_chain_scored})"
             if self.n_chain_scored else "chain=n/a(<2 candidates)"
         )
+        macro = (
+            f" macro={self.macro_locus_accuracy:.1%}"
+            f"[{' '.join(f'{m[:3]}={a:.0%}' for m, a in sorted(self.locus_accuracy_by_modality.items()))}]"
+            if self.locus_accuracy_by_modality else ""
+        )
+        strat = (
+            f" easy={self.locus_accuracy_easy:.1%}(n={self.n_easy})"
+            f" hard={self.locus_accuracy_hard:.1%}(n={self.n_hard})"
+            if (self.n_easy or self.n_hard) else ""
+        )
         return (
-            f"val loss={self.loss:.4f} locus={self.locus_accuracy:.1%} "
+            f"val loss={self.loss:.4f} locus={self.locus_accuracy:.1%}{macro}{strat} "
             f"{chain} anchorAUC={self.anchor_auc:.3f} "
-            f"mapqMAE={self.mapq_mae:.1f} mapped={self.mapped_fraction:.1%}"
+            f"mapqCalMAE={self.mapq_calibration_mae:.3f} mapped={self.mapped_fraction:.1%}"
         )
 
     def monitored(self, name: str) -> Optional[float]:
         """The value of the early-stopping metric, or ``None`` if unmeasurable.
 
         Distinguishing "unmeasurable" from "zero" matters: chain accuracy is
-        undefined when every read has a single candidate, and treating that as
-        0.0 would make early stopping fire on a metric that can never improve.
+        undefined when every read has a single candidate, and the macro locus
+        accuracy is undefined when no read carried a modality tag — treating
+        either as 0.0 would make early stopping fire on a metric that can never
+        improve.
         """
         if name == "chain_accuracy" and not self.n_chain_scored:
+            return None
+        if name == "macro_locus_accuracy" and not self.locus_accuracy_by_modality:
+            # No per-modality breakdown (e.g. a single-modality run): the
+            # "universal" score is undefined, so fall back to the overall locus
+            # accuracy rather than -val_loss, which is a far better stop signal.
+            return self.locus_accuracy
+        if name == "locus_accuracy_hard" and not self.n_hard:
             return None
         return self.as_dict().get(name)
 
@@ -72,12 +119,19 @@ class ValidationMetrics:
         return {
             "loss": self.loss,
             "locus_accuracy": self.locus_accuracy,
+            "macro_locus_accuracy": self.macro_locus_accuracy,
             "chain_accuracy": self.chain_accuracy,
             "anchor_auc": self.anchor_auc,
             "anchor_precision": self.anchor_precision,
             "anchor_recall": self.anchor_recall,
             "mapq_mae": self.mapq_mae,
+            "mapq_calibration_mae": self.mapq_calibration_mae,
+            "locus_accuracy_easy": self.locus_accuracy_easy,
+            "locus_accuracy_hard": self.locus_accuracy_hard,
+            "n_easy": self.n_easy,
+            "n_hard": self.n_hard,
             "mapped_fraction": self.mapped_fraction,
+            **{f"locus/{m}": a for m, a in self.locus_accuracy_by_modality.items()},
             **{f"term/{k}": v for k, v in self.terms.items()},
         }
 

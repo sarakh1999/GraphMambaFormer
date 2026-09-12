@@ -76,5 +76,7 @@ architecture/*.pptx
 build/
 tmp_agnes_review/
 *.bak
+# Local pre-edit safety copies the agent makes before large refactors.
+.agent_backups/
 # WFA-GPU is cloned on demand by scripts/build_wfa_gpu.sh (nested git repo).
 third_party/

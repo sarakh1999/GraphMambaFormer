@@ -37,6 +37,8 @@ from ..distributed import DistContext, maybe_init_distributed
 from ..losses import GraphMambaLoss
 from ..progress import progress
 from .metrics import (
+    HARD_MAPQ_THRESHOLD,
+    LOCUS_TOLERANCE,
     ValidationMetrics,
     anchor_metrics,
     chain_accuracy,
@@ -67,11 +69,23 @@ class TrainConfig:
     #: it does not fill a full window so no batch is dropped.
     grad_accum: int = 1
     warmup_frac: float = 0.1
+    #: Cosine-decay floor as a fraction of the peak LR: the schedule decays to
+    #: ``lr * min_lr_frac`` instead of ~0 at the horizon, so the final epochs of a
+    #: long multi-sample run still learn (a plain cosine reaching 0 is what
+    #: stalled the short runs). Set 0 to recover the exact previous schedule.
+    min_lr_frac: float = 0.05
     #: Stop when the monitored metric has not improved for this many epochs.
     patience: int = 4
     #: Early-stopping metric. Falls back to -val_loss if it is unmeasurable on
-    #: the data at hand (see ValidationMetrics.monitored).
+    #: the data at hand (see ValidationMetrics.monitored). For a single universal
+    #: model across modalities, ``macro_locus_accuracy`` is the fair signal (it
+    #: treats every modality equally and degrades to overall locus accuracy on a
+    #: single-modality run).
     monitor: str = "locus_accuracy"
+    #: Baseline (truth-BAM) MAPQ at/above which a read counts as "easy"
+    #: (confidently mappable) for the easy/hard locus-accuracy split; below it is
+    #: the "hard" fraction. See :data:`HARD_MAPQ_THRESHOLD`.
+    hard_mapq_threshold: int = HARD_MAPQ_THRESHOLD
     log_every: int = 1
     #: How often (in steps) to flush ``history.json`` to disk during an epoch.
     #: The whole (growing) step log is re-serialised each flush, so doing it
@@ -128,6 +142,26 @@ class TrainConfig:
     #: Multi-GPU device list: ``"auto"`` (all visible CUDA/XPU when count>1),
     #: ``"all"``, ``"0,1"``, or ``"none"`` for single-device.
     devices: str = "auto"
+    #: Joint multi-modality training. When ``True`` each epoch draws a
+    #: modality-balanced, round-robin-interleaved batch list from the pooled
+    #: training set instead of the raw (Illumina-dominated) order: every
+    #: modality contributes ``balanced_batches_per_modality`` batches per epoch,
+    #: reshuffled each epoch so the abundant modality is fully covered over the
+    #: run while no single epoch is skewed, and the scarce modalities are cycled
+    #: (oversampled) up to the target. Off by default -> the original single
+    #: shuffled list, byte-for-byte.
+    balance_modalities: bool = False
+    #: Batches per modality per epoch under ``balance_modalities``. ``0`` = auto:
+    #: the median of the per-modality batch counts (keeps epochs a sane size —
+    #: it subsamples the abundant modality and lightly oversamples the scarce
+    #: ones, rather than inflating to the largest or starving to the smallest).
+    balanced_batches_per_modality: int = 0
+    #: Inverse-frequency per-read loss weighting by modality. When ``True`` the
+    #: trainer tags each batch with a ``(B,)`` weight (rare modality -> larger)
+    #: so the *loss* is modality-balanced even within a skewed batch. Independent
+    #: of ``balance_modalities`` (which balances *exposure*); use one or the
+    #: other to avoid double-correcting. Off by default.
+    modality_loss_weight: bool = False
 
 
 @dataclass
@@ -263,6 +297,10 @@ class Trainer:
             device_summary=summary, config=asdict(self.cfg)
         )
         self._step = 0
+        #: Per-modality inverse-frequency loss multipliers (mean 1 over reads),
+        #: populated in :meth:`fit` when ``modality_loss_weight`` is set. Empty
+        #: dict -> the uniform objective (no modality re-weighting).
+        self._modality_weight: dict[str, float] = {}
         if self.verbose and self.dist.enabled:
             print(f"multi-GPU DDP: world_size={self.dist.world_size} "
                   f"(this rank {self.dist.rank} on {self.device}); gradients "
@@ -345,12 +383,114 @@ class Trainer:
             yield sup.to(self.device), item[1]
 
     def _lr_at(self, step: int, total: int) -> float:
-        """Linear warmup then cosine decay."""
+        """Linear warmup then cosine decay to a floor (never to exactly 0).
+
+        The floor (``TrainConfig.min_lr_frac`` of the peak LR) matters for long
+        multi-sample runs: a plain cosine reaches ~0 at the horizon, so the last
+        epochs stop learning -- exactly the "LR collapsed, training stalled"
+        failure the short 4-epoch runs showed. Keeping a small floor lets late
+        epochs still refine the hard fraction. ``min_lr_frac == 0`` recovers the
+        previous exact-cosine schedule.
+        """
         warmup = max(1, int(total * self.cfg.warmup_frac))
         if step < warmup:
             return self.cfg.lr * (step + 1) / warmup
         progress = (step - warmup) / max(1, total - warmup)
-        return self.cfg.lr * 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+        floor = float(getattr(self.cfg, "min_lr_frac", 0.0) or 0.0)
+        cosine = 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+        return self.cfg.lr * (floor + (1.0 - floor) * cosine)
+
+    # ---- modality balancing ------------------------------------------------ #
+    @staticmethod
+    def _batch_modality(batch: tuple) -> str:
+        """The modality of a ``(reads, reference)`` batch (from its first read).
+
+        Batches are built one modality at a time (one manifest entry each), so
+        the first read's tag identifies the whole batch. Falls back to
+        ``"unknown"`` for an empty batch or a read without a modality attribute.
+        """
+        reads = batch[0]
+        if not reads:
+            return "unknown"
+        return getattr(reads[0], "modality", "unknown") or "unknown"
+
+    def _modality_weight_tensor(self, sup: Supervision) -> torch.Tensor:
+        """A ``(B,)`` per-read modality multiplier for ``sup`` on the device."""
+        n = int(sup.n_reads)
+        mod = sup.modality
+        if isinstance(mod, str) or mod is None:
+            vals = [self._modality_weight.get(mod, 1.0)] * n
+        else:
+            vals = [self._modality_weight.get(m, 1.0) for m in mod]
+        return torch.tensor(vals, dtype=torch.float32, device=self.device)
+
+    @staticmethod
+    def _group_by_modality(batches: Sequence[tuple]) -> dict[str, list[tuple]]:
+        """Bucket batches by modality, preserving each bucket's original order."""
+        groups: dict[str, list[tuple]] = {}
+        for b in batches:
+            groups.setdefault(Trainer._batch_modality(b), []).append(b)
+        return groups
+
+    def _compute_modality_weights(
+        self, batches: Sequence[tuple]
+    ) -> dict[str, float]:
+        """Inverse-frequency read weights per modality, normalized to mean 1.
+
+        ``w_m = total_reads / (n_modalities * reads_m)`` so ``sum_m w_m * reads_m
+        == total_reads`` — i.e. the average per-read weight is exactly 1, which
+        keeps the loss scale (and the Kendall balancing) unchanged while a rare
+        modality's reads count more.
+        """
+        counts: dict[str, int] = {}
+        for reads, _ in batches:
+            for r in reads:
+                m = getattr(r, "modality", "unknown") or "unknown"
+                counts[m] = counts.get(m, 0) + 1
+        total = sum(counts.values())
+        n_mod = len(counts)
+        if total == 0 or n_mod <= 1:
+            return {}  # nothing to balance
+        return {m: total / (n_mod * c) for m, c in counts.items()}
+
+    def _balanced_epoch(self, epoch: int) -> list[tuple]:
+        """A modality-balanced, interleaved batch list for one epoch.
+
+        Each modality contributes exactly ``self._balance_target`` batches:
+        its pool is shuffled with an epoch-dependent seed (so the abundant
+        modality is covered across epochs and the scarce ones are cycled), then
+        the per-modality slices are round-robin interleaved so consecutive
+        optimizer steps rotate through modalities rather than seeing one
+        modality in a block. Deterministic given ``(seed, epoch)`` so every DDP
+        rank builds the identical list before sharding.
+        """
+        import random as _random
+
+        target = self._balance_target
+        picked: dict[str, list[tuple]] = {}
+        for i, (mod, pool) in enumerate(sorted(self._mod_groups.items())):
+            rng = _random.Random(self.cfg.seed * 100003 + epoch * 131 + i)
+            order = list(pool)
+            rng.shuffle(order)
+            if len(order) >= target:
+                chosen = order[:target]
+            else:
+                # Cycle (oversample) the scarce modality up to the target, each
+                # wrap reshuffled so the repeats are not identical mini-epochs.
+                chosen = []
+                while len(chosen) < target:
+                    take = order[: target - len(chosen)]
+                    chosen.extend(take)
+                    rng.shuffle(order)
+            picked[mod] = chosen
+
+        # Round-robin interleave across modalities (sorted for determinism).
+        mods = sorted(picked)
+        out: list[tuple] = []
+        for j in range(target):
+            for mod in mods:
+                out.append(picked[mod][j])
+        return out
 
     # ---- epochs ------------------------------------------------------------ #
     def train_epoch(self, batches: Sequence[tuple], epoch: int,
@@ -390,6 +530,13 @@ class Trainer:
         window_losses: list[float] = []
         for micro_i, (sup, reference) in enumerate(batch_bar):
             is_step = ((micro_i + 1) % accum == 0) or (micro_i + 1 == n_batches)
+
+            # Modality re-weighting (optional): tag this batch's supervision with
+            # a per-read multiplier so the loss counts a rare modality more. Set
+            # on the freshly-moved ``sup`` (train only — validation loss stays
+            # uniform for comparability). A no-op when the feature is off.
+            if self._modality_weight:
+                sup.targets["modality_weight"] = self._modality_weight_tensor(sup)
 
             lr = self._lr_at(self._step, total_steps)
             for group in self.optimizer.param_groups:
@@ -532,7 +679,6 @@ class Trainer:
         self.model.eval()
         losses, terms = [], {}
         a_auc, a_prec, a_rec, c_acc, q_mae = [], [], [], [], []
-        all_mapq, all_correct = [], []
         n_chain_scored = 0
 
         for sup, reference in progress(
@@ -569,21 +715,40 @@ class Trainer:
                 n_chain_scored += n_scored
 
             mapping = getattr(outputs, "mapping", None)
-            if isinstance(mapping, dict) and "mapq" in mapping:
-                predicted = mapping["mapq"].flatten()
-                q_mae.append(mapq_mae(predicted, sup.targets["mapq_target"]))
-                all_mapq.extend(predicted.detach().float().cpu().tolist())
-                # "Correct" for calibration = the re-ranker picked the right chain.
-                scores = chain_scores["logits"]
-                if scores.dim() == 3:
-                    scores = scores.squeeze(-1)
-                picked = scores.argmax(-1)
-                all_correct.extend(
-                    (picked == sup.targets["chain_target"]).detach().cpu().tolist()
-                )
+            if isinstance(mapping, dict) and "mapq" in mapping and "mapq_target" in sup.targets:
+                # Informational only: MAE against the baseline MAPQ. The head is
+                # no longer trained to copy it (see mapq_calibration_loss), so
+                # this is expected to be large -- the calibration metric below is
+                # the one that reflects the objective.
+                q_mae.append(mapq_mae(mapping["mapq"].flatten(), sup.targets["mapq_target"]))
 
-        calib = mapq_calibration(all_mapq, all_correct)
         placement = self._locus_report(batches)
+        # Placement-based MAPQ calibration: the reported MAPQ of the reported
+        # alignment vs whether that alignment is actually within tolerance. This
+        # is the calibration that matters at inference, unlike the old chain-
+        # argmax proxy over the (decoy-padded) training candidates.
+        calib = mapq_calibration(placement["calib_mapq"], placement["calib_correct"])
+
+        # Per-modality locus accuracy, reduced from *counts* over a fixed
+        # modality vocabulary so every DDP rank issues the same collectives in
+        # the same order (a keys-differ reduction would dead-lock) and the
+        # result is the exact global rate rather than an average-of-rates. A
+        # no-op reduction in a single process. The macro average treats every
+        # present modality equally — the "universal" score.
+        from ..config import MODALITIES
+
+        mod_correct = placement["modality_correct"]
+        mod_total = placement["modality_total"]
+        per_modality: dict[str, float] = {}
+        for mod in MODALITIES:
+            tot = self.dist.reduce_sum(mod_total.get(mod, 0)) if self.dist.enabled \
+                else mod_total.get(mod, 0)
+            cor = self.dist.reduce_sum(mod_correct.get(mod, 0)) if self.dist.enabled \
+                else mod_correct.get(mod, 0)
+            if tot > 0:
+                per_modality[mod] = float(cor) / float(tot)
+        macro = float(np.mean(list(per_modality.values()))) if per_modality else 0.0
+
         metrics = ValidationMetrics(
             loss=float(np.mean(losses)) if losses else 0.0,
             terms={k: float(np.mean(v)) for k, v in terms.items()},
@@ -595,9 +760,22 @@ class Trainer:
             mapq_mae=float(np.mean(q_mae)) if q_mae else 0.0,
             mapq_expected_error=calib["expected_error"],
             mapq_observed_error=calib["observed_error"],
+            mapq_calibration_mae=calib["mae"],
             mapped_fraction=placement["mapped_fraction"],
             n_reads=sum(len(reads) for reads, _ in batches),
             n_chain_scored=n_chain_scored,
+            locus_accuracy_by_modality=per_modality,
+            macro_locus_accuracy=macro,
+            locus_accuracy_easy=(
+                placement["easy_correct"] / placement["easy_total"]
+                if placement["easy_total"] else 0.0
+            ),
+            locus_accuracy_hard=(
+                placement["hard_correct"] / placement["hard_total"]
+                if placement["hard_total"] else 0.0
+            ),
+            n_easy=int(placement["easy_total"]),
+            n_hard=int(placement["hard_total"]),
         )
         # Under DDP each rank validated its own shard; reduce to one global set
         # of numbers so the logged metrics *and* the early-stopping decision are
@@ -627,13 +805,18 @@ class Trainer:
         m.mapq_mae = mean(m.mapq_mae)
         m.mapq_expected_error = mean(m.mapq_expected_error)
         m.mapq_observed_error = mean(m.mapq_observed_error)
+        m.mapq_calibration_mae = mean(m.mapq_calibration_mae)
         m.mapped_fraction = mean(m.mapped_fraction)
+        m.locus_accuracy_easy = mean(m.locus_accuracy_easy)
+        m.locus_accuracy_hard = mean(m.locus_accuracy_hard)
         m.n_reads = int(round(self.dist.reduce_sum(m.n_reads)))
         m.n_chain_scored = int(round(self.dist.reduce_sum(m.n_chain_scored)))
+        m.n_easy = int(round(self.dist.reduce_sum(m.n_easy)))
+        m.n_hard = int(round(self.dist.reduce_sum(m.n_hard)))
         return m
 
     @torch.no_grad()
-    def _locus_report(self, batches: Sequence[tuple]) -> dict[str, float]:
+    def _locus_report(self, batches: Sequence[tuple]) -> dict:
         """Run the real aligner and check where it actually placed each read.
 
         This is the end-to-end number: it exercises seeding, chaining, the neural
@@ -646,8 +829,24 @@ class Trainer:
         """
         was_training = self.model.training
         self.model.eval()
+        tol = LOCUS_TOLERANCE
+        thr = int(getattr(self.cfg, "hard_mapq_threshold", HARD_MAPQ_THRESHOLD))
         try:
             predicted, truth, mapped = [], [], 0
+            # Per-modality placement counts, so a universal aligner can be judged
+            # on each modality separately (mapped reads of that modality within
+            # tolerance). Counts (not rates) so DDP can reduce them exactly.
+            mod_correct: dict[str, int] = {}
+            mod_total: dict[str, int] = {}
+            # Easy/hard split by the *baseline's* own MAPQ (read.mapq from the
+            # truth BAM): easy = reads the baseline mapped confidently (we should
+            # match ~100%), hard = reads it was unsure about (where we can win).
+            # Computed over mapped reads, consistent with locus_accuracy above.
+            easy_correct = easy_total = hard_correct = hard_total = 0
+            # Placement-based MAPQ calibration: the *reported* MAPQ of the
+            # reported alignment vs whether that alignment is actually correct.
+            calib_mapq: list[float] = []
+            calib_correct: list[bool] = []
             for reads, reference in progress(
                 batches, desc="locus report", unit="batch", leave=False
             ):
@@ -659,6 +858,20 @@ class Trainer:
                     mapped += 1
                     predicted.append(record.ref_start)
                     truth.append(read.ref_start)
+                    mod = getattr(read, "modality", "unknown") or "unknown"
+                    within = abs(int(record.ref_start) - int(read.ref_start)) <= tol
+                    mod_total[mod] = mod_total.get(mod, 0) + 1
+                    mod_correct[mod] = mod_correct.get(mod, 0) + int(within)
+                    calib_mapq.append(float(record.mapq))
+                    calib_correct.append(bool(within))
+                    base_mapq = getattr(read, "mapq", None)
+                    if base_mapq is not None:
+                        if int(base_mapq) >= thr:
+                            easy_total += 1
+                            easy_correct += int(within)
+                        else:
+                            hard_total += 1
+                            hard_correct += int(within)
         finally:
             self.model.train(was_training)
 
@@ -666,6 +879,14 @@ class Trainer:
         return {
             "locus_accuracy": locus_accuracy(predicted, truth),
             "mapped_fraction": mapped / max(n_total, 1),
+            "modality_correct": mod_correct,
+            "modality_total": mod_total,
+            "easy_correct": easy_correct,
+            "easy_total": easy_total,
+            "hard_correct": hard_correct,
+            "hard_total": hard_total,
+            "calib_mapq": calib_mapq,
+            "calib_correct": calib_correct,
         }
 
     # ---- driver ------------------------------------------------------------ #
@@ -683,13 +904,56 @@ class Trainer:
         before.
         """
         torch.manual_seed(self.cfg.seed)
-        # Data-parallel sharding: each rank trains on its own strided, equal-size
-        # slice of the pre-built batch list (rank i -> batches[i::world_size]).
-        # A no-op single process, so single-GPU sees the full list as before.
-        train_batches = self.dist.shard(train_batches)
-        val_batches = self.dist.shard(val_batches)
         accum = max(1, int(getattr(self.cfg, "grad_accum", 1)))
-        steps_per_epoch = max(1, math.ceil(len(train_batches) / accum))
+
+        # Optional inverse-frequency modality loss weighting, computed from the
+        # full (pre-shard) training pool so the frequencies are global.
+        if self.cfg.modality_loss_weight:
+            self._modality_weight = self._compute_modality_weights(train_batches)
+            if self.verbose and self._modality_weight:
+                pretty = ", ".join(
+                    f"{m}={w:.2f}" for m, w in sorted(self._modality_weight.items())
+                )
+                print(f"modality loss weights (inverse-frequency, mean 1): {pretty}")
+        else:
+            self._modality_weight = {}
+
+        # Joint multi-modality training: draw a balanced, interleaved batch list
+        # per epoch (see _balanced_epoch). Otherwise use the original single
+        # shuffled list, sharded once — byte-for-byte the previous behaviour.
+        self._balance = bool(self.cfg.balance_modalities)
+        if self._balance:
+            self._mod_groups = self._group_by_modality(train_batches)
+        if self._balance and len(self._mod_groups) > 1:
+            counts = sorted(len(v) for v in self._mod_groups.values())
+            target = int(self.cfg.balanced_batches_per_modality) or counts[len(counts) // 2]
+            self._balance_target = max(1, target)
+            epoch_len = self._balance_target * len(self._mod_groups)
+            per_rank = (
+                epoch_len // self.dist.world_size if self.dist.enabled else epoch_len
+            )
+            steps_per_epoch = max(1, math.ceil(max(1, per_rank) / accum))
+            if self.verbose:
+                comp = ", ".join(
+                    f"{m}:{len(v)}" for m, v in sorted(self._mod_groups.items())
+                )
+                print(f"balance-modalities: {len(self._mod_groups)} modalities "
+                      f"[{comp}] -> {self._balance_target} batches each per epoch "
+                      f"({epoch_len} batches/epoch, round-robin interleaved)")
+            # Data-parallel sharding of the balanced list happens per epoch below.
+        else:
+            if self._balance and self.verbose:
+                only = next(iter(self._mod_groups), "?")
+                print(f"balance-modalities: only one modality ({only}) present; "
+                      "using the plain shuffled list")
+            self._balance = False
+            # Data-parallel sharding: each rank trains on its own strided,
+            # equal-size slice (rank i -> batches[i::world_size]). No-op single
+            # process, so single-GPU sees the full list as before.
+            train_batches = self.dist.shard(train_batches)
+            steps_per_epoch = max(1, math.ceil(len(train_batches) / accum))
+
+        val_batches = self.dist.shard(val_batches)
         total_steps = max(1, self.cfg.epochs * steps_per_epoch)
         best, best_epoch, stale = -math.inf, -1, 0
         best_state: Optional[dict] = None
@@ -727,7 +991,14 @@ class Trainer:
                       "batches (TrainConfig.epoch_val_max_batches; 0 = full pass)")
 
         for epoch in epoch_bar:
-            summary = self.train_epoch(train_batches, epoch, total_steps,
+            # Under balancing, rebuild + shard a fresh interleaved list each
+            # epoch (deterministic per (seed, epoch), so every rank agrees);
+            # otherwise reuse the once-sharded list.
+            epoch_train = (
+                self.dist.shard(self._balanced_epoch(epoch))
+                if self._balance else train_batches
+            )
+            summary = self.train_epoch(epoch_train, epoch, total_steps,
                                        val_batches)
             metrics = self.validate(epoch_val)
 

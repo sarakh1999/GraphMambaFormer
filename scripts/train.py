@@ -655,6 +655,11 @@ def main() -> int:
                         "optimizer step; effective batch = batch-size * N, at the "
                         "memory of one micro-batch (1 = step every batch)")
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--min-lr-frac", type=float, default=0.05,
+                   help="cosine-decay floor as a fraction of peak LR: the LR "
+                        "decays to lr*this instead of ~0 at the horizon, so the "
+                        "final epochs of a long multi-sample run keep learning "
+                        "(0 = exact cosine to 0, the previous behaviour)")
     p.add_argument("--d-model", type=int, default=64,
                    help="small by default so a CPU run finishes quickly")
     p.add_argument("--device", default=None,
@@ -713,7 +718,32 @@ def main() -> int:
     p.add_argument("--patience", type=int, default=4)
     p.add_argument("--monitor", default="locus_accuracy",
                    help="early-stopping metric (falls back to -val_loss if the "
-                        "chosen metric is unmeasurable on this data)")
+                        "chosen metric is unmeasurable on this data). For joint "
+                        "multi-modality training prefer 'macro_locus_accuracy' "
+                        "(the unweighted mean over modalities) so the abundant "
+                        "modality cannot mask poor placement on the rare ones")
+    p.add_argument("--hard-mapq-threshold", type=int, default=20,
+                   help="baseline (truth-BAM) MAPQ at/above which a read is "
+                        "'easy' (confidently mappable) for the easy/hard "
+                        "locus-accuracy split; below it is the 'hard' fraction. "
+                        "The goal is to match the baseline on easy reads and win "
+                        "on hard ones, so this sets where that line is drawn")
+    p.add_argument("--balance-modalities", action="store_true",
+                   help="joint multi-modality training: each epoch draws a "
+                        "modality-balanced, round-robin-interleaved batch list "
+                        "instead of the raw (Illumina-dominated) order, so every "
+                        "modality gets equal gradient exposure. Recommended for "
+                        "training a universal aligner on all 3 modalities")
+    p.add_argument("--balanced-batches-per-modality", type=int, default=0,
+                   help="batches per modality per epoch under "
+                        "--balance-modalities (0 = auto: the median per-modality "
+                        "batch count; subsamples the abundant modality, "
+                        "oversamples the scarce ones)")
+    p.add_argument("--modality-loss-weight", action="store_true",
+                   help="inverse-frequency per-read loss weighting by modality so "
+                        "the loss is modality-balanced even within a skewed "
+                        "batch. Independent of --balance-modalities; use one or "
+                        "the other to avoid double-correcting")
     p.add_argument("--ref-mode", default="both",
                    choices=("linear", "pangenome", "both"),
                    help="train on linear genome, pangenome graph, or both")
@@ -924,8 +954,10 @@ def main() -> int:
         model, pipeline,
         cfg=TrainConfig(
             epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
+            min_lr_frac=args.min_lr_frac,
             grad_accum=args.grad_accum,
             patience=args.patience, monitor=args.monitor, out_dir=args.out,
+            hard_mapq_threshold=args.hard_mapq_threshold,
             save_checkpoint=not args.no_checkpoint,
             save_every_steps=args.save_every_steps,
             plot_every_steps=args.plot_every_steps,
@@ -933,6 +965,9 @@ def main() -> int:
             intra_val_max_batches=args.intra_val_max_batches,
             epoch_val_max_batches=args.epoch_val_max_batches,
             devices=args.devices,
+            balance_modalities=args.balance_modalities,
+            balanced_batches_per_modality=args.balanced_batches_per_modality,
+            modality_loss_weight=args.modality_loss_weight,
         ),
         loss_cfg=LossConfig(),
         accel=accel,
